@@ -11,7 +11,20 @@ permissions:
 
 jobs:
   check:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Lint
+            command: bun run lint
+          - name: Format
+            command: bun run format:check && git diff --check
+          - name: Test
+            command: bun test
+          - name: Build
+            command: bun run build
     steps:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -29,8 +42,9 @@ jobs:
       - name: Install dependencies
         run: bun ci
 
-      - name: Check repository
-        run: bun run check
+      - name: ${{ matrix.name }}
+        run: ${{ matrix.command }}
 
       - name: Verify generated distribution
+        if: matrix.name == 'Build'
         run: git diff --exit-code -- dist
