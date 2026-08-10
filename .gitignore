@@ -1,4 +1,5 @@
 node_modules/
 .opencode/
+docs/superpowers/
 *.tsbuildinfo
 .DS_Store
