@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "plugins": ["typescript", "unicorn", "oxc"],
+  "rules": {
+    "no-underscore-dangle": ["error", { "allow": ["__typename"] }]
+  },
+  "env": {
+    "node": true
+  },
+  "ignorePatterns": ["dist/**"],
+  "options": {
+    "typeAware": true,
+    "typeCheck": true,
+    "maxWarnings": 0
+  },
+  "overrides": [
+    {
+      "files": ["test/**/*.ts"],
+      "rules": {
+        "typescript/no-unsafe-type-assertion": "off",
+        "typescript/no-unnecessary-type-assertion": "off"
+      }
+    }
+  ]
+}

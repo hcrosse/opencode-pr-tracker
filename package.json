@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "opencode-pr-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Track GitHub pull requests in the OpenCode sidebar.",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "exports": {
+    "./server": {
+      "import": "./dist/server.js"
+    },
+    "./tui": {
+      "import": "./dist/tui.js"
+    }
+  },
+  "scripts": {
+    "test": "bun test",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "build": "bun ./scripts/build.ts",
+    "check": "bun run lint && bun run format:check && bun test && bun run build && git diff --check"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "1.18.15",
+    "proper-lockfile": "4.1.2"
+  },
+  "devDependencies": {
+    "@opentui/core": "0.4.5",
+    "@opentui/keymap": "0.4.5",
+    "@opentui/solid": "0.4.5",
+    "@types/bun": "1.3.14",
+    "@types/node": "24.12.2",
+    "@types/proper-lockfile": "4.1.4",
+    "oxfmt": "0.62.0",
+    "oxlint": "1.77.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "solid-js": "1.9.12",
+    "web-tree-sitter": "0.25.10"
+  },
+  "peerDependencies": {
+    "@opentui/core": "0.4.5",
+    "@opentui/keymap": "0.4.5",
+    "@opentui/solid": "0.4.5",
+    "solid-js": "1.9.12"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "bun@1.3.14",
+  "trustedDependencies": []
+}
