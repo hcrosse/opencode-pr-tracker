@@ -4,9 +4,10 @@ import { casesHandled } from "./exhaustive.js"
 import { parsePullRequestUrl, type PullRequestUrl, type Result } from "./url.js"
 
 export type PullRequestCi = "passed" | "pending" | "failed" | "none"
+export type PullRequestMergeability = "mergeable" | "conflicting" | "unknown"
 
 export type PullRequestState =
-  | Readonly<{ tag: "Open"; ci: PullRequestCi }>
+  | Readonly<{ tag: "Open"; ci: PullRequestCi; mergeability: PullRequestMergeability }>
   | Readonly<{ tag: "Merged" }>
   | Readonly<{ tag: "Closed" }>
 
@@ -83,7 +84,7 @@ const statusContextPending = new Set(["EXPECTED", "PENDING"])
 const statusContextPassed = new Set(["SUCCESS"])
 const statusContextFailed = new Set(["ERROR", "FAILURE"])
 const maximumPullRequestsPerBatch = 20
-const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt statusCheckRollup { contexts(first: 1) { checkRunCount statusContextCount checkRunCountsByState { state count } statusContextCountsByState { state count } } } }`
+const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt mergeable statusCheckRollup { contexts(first: 1) { checkRunCount statusContextCount checkRunCountsByState { state count } statusContextCountsByState { state count } } } }`
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -169,6 +170,19 @@ function samePullRequest(left: PullRequestUrl, right: PullRequestUrl): boolean {
   )
 }
 
+function parseMergeability(input: unknown): Result<PullRequestMergeability, InvalidGitHubResponse> {
+  switch (input) {
+    case "MERGEABLE":
+      return { ok: true, value: "mergeable" }
+    case "CONFLICTING":
+      return { ok: true, value: "conflicting" }
+    case "UNKNOWN":
+      return { ok: true, value: "unknown" }
+    default:
+      return invalidGitHubResponse
+  }
+}
+
 function parseResponse(
   input: unknown,
   pullRequest: PullRequestUrl,
@@ -197,11 +211,13 @@ function parseResponse(
 
   const ci = parseStatusCheckRollup(input.statusCheckRollup)
   if (!ci.ok) return ci
+  const mergeability = parseMergeability(input.mergeable)
+  if (!mergeability.ok) return mergeability
 
   let state: PullRequestState
   switch (input.state) {
     case "OPEN":
-      state = { tag: "Open", ci: ci.value }
+      state = { tag: "Open", ci: ci.value, mergeability: mergeability.value }
       break
     case "MERGED":
       state = { tag: "Merged" }
@@ -396,8 +412,17 @@ const openAppearances = {
 
 function stateAppearance(state: PullRequestState): StatusAppearance {
   switch (state.tag) {
-    case "Open":
-      return openAppearances[state.ci]
+    case "Open": {
+      switch (state.mergeability) {
+        case "conflicting":
+          return { tone: "red", label: "merge conflict", strikethrough: false }
+        case "mergeable":
+        case "unknown":
+          return openAppearances[state.ci]
+        default:
+          return casesHandled(state.mergeability)
+      }
+    }
     case "Merged":
       return { tone: "purple", label: "merged", strikethrough: true }
     case "Closed":

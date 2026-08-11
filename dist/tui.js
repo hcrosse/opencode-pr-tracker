@@ -1657,7 +1657,7 @@ var statusContextPending = new Set(["EXPECTED", "PENDING"]);
 var statusContextPassed = new Set(["SUCCESS"]);
 var statusContextFailed = new Set(["ERROR", "FAILURE"]);
 var maximumPullRequestsPerBatch = 20;
-var pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt statusCheckRollup { contexts(first: 1) { checkRunCount statusContextCount checkRunCountsByState { state count } statusContextCountsByState { state count } } } }`;
+var pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt mergeable statusCheckRollup { contexts(first: 1) { checkRunCount statusContextCount checkRunCountsByState { state count } statusContextCountsByState { state count } } } }`;
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -1726,6 +1726,18 @@ function parseStatusCheckRollup(input) {
 function samePullRequest(left, right) {
   return left.number === right.number && left.owner.toLowerCase() === right.owner.toLowerCase() && left.repository.toLowerCase() === right.repository.toLowerCase();
 }
+function parseMergeability(input) {
+  switch (input) {
+    case "MERGEABLE":
+      return { ok: true, value: "mergeable" };
+    case "CONFLICTING":
+      return { ok: true, value: "conflicting" };
+    case "UNKNOWN":
+      return { ok: true, value: "unknown" };
+    default:
+      return invalidGitHubResponse;
+  }
+}
 function parseResponse(input, pullRequest) {
   if (!isRecord(input) || input.__typename !== "PullRequest" || typeof input.title !== "string" || input.title.trim() === "") {
     return invalidGitHubResponse;
@@ -1750,10 +1762,13 @@ function parseResponse(input, pullRequest) {
   const ci = parseStatusCheckRollup(input.statusCheckRollup);
   if (!ci.ok)
     return ci;
+  const mergeability = parseMergeability(input.mergeable);
+  if (!mergeability.ok)
+    return mergeability;
   let state;
   switch (input.state) {
     case "OPEN":
-      state = { tag: "Open", ci: ci.value };
+      state = { tag: "Open", ci: ci.value, mergeability: mergeability.value };
       break;
     case "MERGED":
       state = { tag: "Merged" };
@@ -1919,8 +1934,17 @@ var openAppearances = {
 };
 function stateAppearance(state) {
   switch (state.tag) {
-    case "Open":
-      return openAppearances[state.ci];
+    case "Open": {
+      switch (state.mergeability) {
+        case "conflicting":
+          return { tone: "red", label: "merge conflict", strikethrough: false };
+        case "mergeable":
+        case "unknown":
+          return openAppearances[state.ci];
+        default:
+          return casesHandled(state.mergeability);
+      }
+    }
     case "Merged":
       return { tone: "purple", label: "merged", strikethrough: true };
     case "Closed":
@@ -2672,4 +2696,4 @@ export {
   attachPullRequest
 };
 
-//# debugId=4FC9790D7FF9F7F764756E2164756E21
+//# debugId=6F1EF96C8D57F76064756E2164756E21

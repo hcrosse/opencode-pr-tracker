@@ -37,6 +37,7 @@ function response(overrides: Record<string, unknown> = {}): Record<string, unkno
     state: "OPEN",
     url: pullRequest.url,
     mergedAt: null,
+    mergeable: "MERGEABLE",
     statusCheckRollup: rollup(),
     ...overrides,
   }
@@ -92,6 +93,7 @@ describe("GitHub client", () => {
     expect(calls[0]?.args[5]).toContain("query BatchPullRequests($url0: URI!, $url1: URI!)")
     expect(calls[0]?.args[5]).toContain("pr0: resource(url: $url0)")
     expect(calls[0]?.args[5]).toContain("pr1: resource(url: $url1)")
+    expect(calls[0]?.args[5]).toContain("title state url mergedAt mergeable statusCheckRollup")
     expect(calls[0]?.args[5]).toContain("checkRunCountsByState { state count }")
     expect(calls[0]?.args.slice(6)).toEqual(["-f", `url0=${pullRequest.url}`, "-f", `url1=${secondPullRequest.url}`])
   })
@@ -169,7 +171,17 @@ describe("GitHub client", () => {
   ])("aggregates $name", async ({ counts, expected }) => {
     const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup(counts) }))))
 
-    expect((await getOne(client)).state).toEqual({ tag: "Open", ci: expected })
+    expect((await getOne(client)).state).toEqual({ tag: "Open", ci: expected, mergeability: "mergeable" })
+  })
+
+  test.each([
+    { raw: "MERGEABLE", expected: "mergeable" },
+    { raw: "CONFLICTING", expected: "conflicting" },
+    { raw: "UNKNOWN", expected: "unknown" },
+  ])("parses $raw mergeability", async ({ raw, expected }) => {
+    const client = createGitHubClient(runnerFor(batchResponse(response({ mergeable: raw }))))
+
+    expect((await getOne(client)).state).toEqual({ tag: "Open", ci: "none", mergeability: expected })
   })
 
   test.each([
@@ -213,6 +225,30 @@ describe("GitHub client", () => {
     )
 
     expect(statusAppearance(await getOne(client))).toEqual({ tone, label, strikethrough: strike })
+  })
+
+  test("gives an open merge conflict precedence over CI", async () => {
+    const client = createGitHubClient(
+      runnerFor(batchResponse(response({ mergeable: "CONFLICTING", statusCheckRollup: rollup(successCounts) }))),
+    )
+
+    expect(statusAppearance(await getOne(client))).toEqual({
+      tone: "red",
+      label: "merge conflict",
+      strikethrough: false,
+    })
+  })
+
+  test("uses CI while GitHub computes mergeability", async () => {
+    const client = createGitHubClient(
+      runnerFor(batchResponse(response({ mergeable: "UNKNOWN", statusCheckRollup: rollup(pendingCounts) }))),
+    )
+
+    expect(statusAppearance(await getOne(client))).toEqual({
+      tone: "yellow",
+      label: "checks pending",
+      strikethrough: false,
+    })
   })
 
   test.each([
@@ -274,11 +310,15 @@ describe("GitHub client", () => {
     }),
     response({ url: "https://example.com/owner/repository/pull/42" }),
     response({ statusCheckRollup: rollup({ overrides: { checkRunCount: 1 } }) }),
+    response({ mergeable: "BLOCKED" }),
     response({ __typename: "Issue" }),
   ])("isolates malformed pull request data to its batch item", async (item) => {
-    const client = createGitHubClient(runnerFor(batchResponse(item)))
+    const client = createGitHubClient(runnerFor(batchResponse(item, response({ url: secondPullRequest.url }))))
 
-    expect(await client.get([pullRequest])).toEqual({ ok: true, value: [invalidItem] })
+    const result = await client.get([pullRequest, secondPullRequest])
+
+    expect(result.ok && result.value[0]).toEqual(invalidItem)
+    expect(result.ok && result.value[1]).toMatchObject({ ok: true, value: { pullRequest: secondPullRequest } })
   })
 
   test("preserves successful aliases when gh reports a partial GraphQL error", async () => {
@@ -357,7 +397,7 @@ describe("GitHub client", () => {
   test("treats a null status rollup as no checks", async () => {
     const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: null }))))
 
-    expect((await getOne(client)).state).toEqual({ tag: "Open", ci: "none" })
+    expect((await getOne(client)).state).toEqual({ tag: "Open", ci: "none", mergeability: "mergeable" })
   })
 
   test("marks stale and unavailable status appearances", () => {
@@ -366,10 +406,10 @@ describe("GitHub client", () => {
         tag: "Available",
         pullRequest,
         title: "Title",
-        state: { tag: "Open", ci: "pending" },
+        state: { tag: "Open", ci: "pending", mergeability: "conflicting" },
         stale: true,
       }),
-    ).toEqual({ tone: "yellow", label: "checks pending (stale)", strikethrough: false })
+    ).toEqual({ tone: "red", label: "merge conflict (stale)", strikethrough: false })
     expect(statusAppearance({ tag: "Unavailable" })).toEqual({
       tone: "gray",
       label: "status unavailable",
