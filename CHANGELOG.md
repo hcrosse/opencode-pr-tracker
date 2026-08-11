@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.1.0...v0.2.0) (2026-08-11)
+
+
+### Features
+
+* add manual pull request status sync ([#44](https://github.com/hcrosse/opencode-pr-tracker/issues/44)) ([3f9f986](https://github.com/hcrosse/opencode-pr-tracker/commit/3f9f986d49b7178e0e88bcbb598adcb636307182))
+
+
+### Bug Fixes
+
+* dispose TUI event subscriptions ([#46](https://github.com/hcrosse/opencode-pr-tracker/issues/46)) ([0ef55f8](https://github.com/hcrosse/opencode-pr-tracker/commit/0ef55f89618d199bd7f11467473686475af77784))
+* normalize pull request identity casing ([#48](https://github.com/hcrosse/opencode-pr-tracker/issues/48)) ([e7be8b0](https://github.com/hcrosse/opencode-pr-tracker/commit/e7be8b0da1aab3f0e39ec42905213325d1abd117))
+* reject backslashes in pull request URLs ([#45](https://github.com/hcrosse/opencode-pr-tracker/issues/45)) ([740d888](https://github.com/hcrosse/opencode-pr-tracker/commit/740d8881771db4d1fe8db08cd70d7019149129e6))
+
 ## 0.1.0 (2026-08-11)
 
 
