@@ -2085,7 +2085,7 @@ function startSessionPolling(input) {
     input.publish(project(attachments.value));
     await Promise.all(attachments.value.map(async (attachment) => {
       const previous = statuses.get(attachment.pullRequest.url);
-      if (previous?.tag === "Available" && previous.state.tag !== "Open")
+      if (previous?.tag === "Available" && previous.state.tag === "Merged")
         return;
       const result = await input.github.get(attachment.pullRequest, {
         signal: controller.signal
@@ -2519,4 +2519,4 @@ export {
   attachPullRequest
 };
 
-//# debugId=30F48A6FF8961D7064756E2164756E21
+//# debugId=DE2A979F1B3F862E64756E2164756E21

@@ -56,8 +56,9 @@ The plugin accepts canonical URLs in the form
 ## Sidebar
 
 Each attached pull request appears with its repository, number, title, and
-current state. Open pull requests refresh once per minute. Click a row to open
-the pull request on macOS or Linux.
+current state. Open and closed pull requests refresh at least once per minute
+and when session activity changes. Click a row to open the pull request on
+macOS or Linux.
 
 | State                    | Appearance            |
 | ------------------------ | --------------------- |
@@ -69,4 +70,4 @@ the pull request on macOS or Linux.
 | No checks or unavailable | Gray                  |
 
 If a refresh fails, the sidebar keeps the last successful status and marks it
-as stale. Merged and closed pull requests remain attached but stop refreshing.
+as stale. Merged pull requests remain attached but stop refreshing.
