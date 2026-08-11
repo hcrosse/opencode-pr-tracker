@@ -9,9 +9,13 @@ import type { Readable } from "node:stream"
 type RunOptions = Readonly<{
   cwd?: string
   env?: NodeJS.ProcessEnv
+  label?: string
 }>
 
 async function run(command: string, args: readonly string[], options: RunOptions = {}): Promise<string> {
+  const label = options.label ?? command
+  const startedAt = performance.now()
+  console.log(`[smoke] ${label} started`)
   const child = Bun.spawn([command, ...args], {
     ...(options.cwd ? { cwd: options.cwd } : {}),
     ...(options.env ? { env: options.env } : {}),
@@ -26,6 +30,7 @@ async function run(command: string, args: readonly string[], options: RunOptions
   if (exitCode !== 0) {
     throw new Error([`Command failed (${exitCode}): ${command} ${args.join(" ")}`, stdout, stderr].join("\n"))
   }
+  console.log(`[smoke] ${label} completed in ${((performance.now() - startedAt) / 1000).toFixed(1)}s`)
   return stdout.trim()
 }
 
@@ -192,9 +197,10 @@ try {
     ].map((directory) => mkdir(directory, { recursive: true })),
   )
 
-  await run(process.execPath, ["run", "build"], { cwd: repositoryRoot })
+  await run(process.execPath, ["run", "build"], { cwd: repositoryRoot, label: "build package" })
   const packOutput = await run("npm", ["pack", "--silent", "--pack-destination", packageDirectory], {
     cwd: repositoryRoot,
+    label: "pack distribution",
   })
   const packedNames = packOutput.split(/\r?\n/).filter((line) => line.endsWith(".tgz") && basename(line) === line)
   if (packedNames.length !== 1) {
@@ -204,17 +210,25 @@ try {
   if (packedName === undefined) throw new Error("npm pack did not return a package filename")
   const packedPath = join(packageDirectory, packedName)
 
-  await run("npm", ["install", "--no-audit", "--no-fund", "--prefix", installDirectory, packedPath])
-  await run("npm", [
-    "install",
-    "--ignore-scripts",
-    "--no-audit",
-    "--no-fund",
-    "--prefix",
-    opencodeDirectory,
-    `opencode-ai@${opencodeRelease}`,
-  ])
-  await run("node", [join(opencodeDirectory, "node_modules", "opencode-ai", "postinstall.mjs")])
+  await run("npm", ["install", "--no-audit", "--no-fund", "--prefix", installDirectory, packedPath], {
+    label: "install distribution",
+  })
+  await run(
+    "npm",
+    [
+      "install",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      "--prefix",
+      opencodeDirectory,
+      `opencode-ai@${opencodeRelease}`,
+    ],
+    { label: `install opencode-ai@${opencodeRelease}` },
+  )
+  await run("node", [join(opencodeDirectory, "node_modules", "opencode-ai", "postinstall.mjs")], {
+    label: "prepare OpenCode launcher",
+  })
 
   const opencodeBinary = join(opencodeDirectory, "node_modules", ".bin", "opencode")
   const pluginRoot = join(installDirectory, "node_modules", "opencode-pr-tracker")
@@ -235,18 +249,24 @@ try {
   )
   const opencodePackage: unknown = JSON.parse(opencodePackageSource)
   const installedVersion = packageVersion(opencodePackage)
-  const opencodeCliVersion = await run(opencodeBinary, ["--version"], { env: isolatedEnvironment })
+  const opencodeCliVersion = await run(opencodeBinary, ["--version"], {
+    env: isolatedEnvironment,
+    label: "read OpenCode version",
+  })
   console.log(`Testing opencode-ai ${installedVersion} (CLI ${opencodeCliVersion})`)
   const pluginUrl = pathToFileURL(pluginRoot).href
   await run(opencodeBinary, ["plugin", pluginUrl], {
     cwd: projectDirectory,
     env: isolatedEnvironment,
+    label: "register plugin",
   })
   const tuiConfigSource = await readFile(join(projectDirectory, ".opencode", "tui.json"), "utf8")
   const tuiConfig: unknown = JSON.parse(tuiConfigSource)
   assertPluginConfig(tuiConfig, pluginUrl)
 
   const port = await availablePort()
+  const serverStartedAt = performance.now()
+  console.log("[smoke] start OpenCode server")
   const server = spawn(opencodeBinary, ["serve", "--hostname", "127.0.0.1", "--port", String(port)], {
     cwd: projectDirectory,
     env: isolatedEnvironment,
@@ -261,6 +281,7 @@ try {
   let serverFailure: unknown
   try {
     await waitForServer(`http://127.0.0.1:${port}/global/health`, server)
+    console.log(`[smoke] OpenCode server ready in ${((performance.now() - serverStartedAt) / 1000).toFixed(1)}s`)
     const response = await fetch(
       `http://127.0.0.1:${port}/experimental/tool/ids?directory=${encodeURIComponent(projectDirectory)}`,
     )
@@ -280,6 +301,7 @@ try {
 
   await run(process.execPath, ["-e", tuiSmoke], {
     env: { ...isolatedEnvironment, PLUGIN_ROOT: pluginRoot },
+    label: "initialize TUI plugin",
   })
   console.log("OpenCode server and TUI plugin smoke checks passed")
 } finally {
