@@ -25,6 +25,7 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "build": "bun ./scripts/build.ts",
+    "smoke:opencode": "bun ./scripts/smoke-opencode.ts",
     "check": "bun run lint && bun run format:check && bun test && bun run build && git diff --check"
   },
   "dependencies": {
