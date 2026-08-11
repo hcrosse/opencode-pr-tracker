@@ -44,6 +44,7 @@ in the current project.
 - `/pr-attach` accepts a canonical pull request URL or a positive pull request number for the current GitHub repository.
 - `/pr-open` lets you select and open an attached pull request on macOS or Linux.
 - `/pr-detach` lets you select and remove an attached pull request.
+- `/pr-sync` immediately refreshes attached pull request status.
 - Agents can use the `pr_attach` and `pr_detach` tools when the server plugin is enabled.
 
 The `pr_detach` tool also accepts a positive pull request number when exactly
