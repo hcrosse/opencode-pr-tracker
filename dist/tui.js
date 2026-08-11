@@ -1683,12 +1683,20 @@ function aggregateChecks(input) {
     const check = parseCheck(rawCheck);
     if (!check.ok)
       return check;
-    if (check.value === "failed")
-      return { ok: true, value: "failed" };
-    if (check.value === "pending")
-      pending = true;
-    if (check.value === "passed")
-      passed = true;
+    switch (check.value) {
+      case "failed":
+        return { ok: true, value: "failed" };
+      case "pending":
+        pending = true;
+        break;
+      case "passed":
+        passed = true;
+        break;
+      case "ignored":
+        break;
+      default:
+        return casesHandled(check.value);
+    }
   }
   if (pending)
     return { ok: true, value: "pending" };
@@ -2287,15 +2295,20 @@ function showStateFailure(api, failure) {
   });
 }
 function toneColor(theme, tone) {
-  if (tone === "green")
-    return theme.success;
-  if (tone === "yellow")
-    return theme.warning;
-  if (tone === "red")
-    return theme.error;
-  if (tone === "purple")
-    return theme.secondary;
-  return theme.textMuted;
+  switch (tone) {
+    case "green":
+      return theme.success;
+    case "yellow":
+      return theme.warning;
+    case "red":
+      return theme.error;
+    case "purple":
+      return theme.secondary;
+    case "gray":
+      return theme.textMuted;
+    default:
+      return casesHandled(tone);
+  }
 }
 function PullRequestSidebar(props) {
   const [items, setItems] = createSignal([]);
@@ -2546,4 +2559,4 @@ export {
   attachPullRequest
 };
 
-//# debugId=20759C7F192A435B64756E2164756E21
+//# debugId=65306E2849E17F8464756E2164756E21
