@@ -1641,66 +1641,85 @@ var invalidGitHubResponse = {
     message: "GitHub returned an invalid pull request response"
   }
 };
-var checkRunPending = new Set(["QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED", "PENDING"]);
+var githubBatchLimitExceeded = {
+  ok: false,
+  error: {
+    tag: "GitHubBatchLimitExceeded",
+    limit: 20,
+    message: "GitHub batch cannot contain more than 20 pull requests"
+  }
+};
+var checkRunPending = new Set(["QUEUED", "IN_PROGRESS", "WAITING", "PENDING"]);
 var checkRunPassed = new Set(["SUCCESS"]);
 var checkRunFailed = new Set(["FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE"]);
 var checkRunIgnored = new Set(["NEUTRAL", "SKIPPED"]);
+var statusContextPending = new Set(["EXPECTED", "PENDING"]);
+var statusContextPassed = new Set(["SUCCESS"]);
+var statusContextFailed = new Set(["ERROR", "FAILURE"]);
+var maximumPullRequestsPerBatch = 20;
+var pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt statusCheckRollup { contexts(first: 1) { checkRunCount statusContextCount checkRunCountsByState { state count } statusContextCountsByState { state count } } } }`;
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-function parseCheck(input) {
-  if (!isRecord(input) || typeof input.__typename !== "string")
-    return invalidGitHubResponse;
-  if (input.__typename === "StatusContext") {
-    if (input.state === "SUCCESS")
-      return { ok: true, value: "passed" };
-    if (input.state === "PENDING" || input.state === "EXPECTED")
-      return { ok: true, value: "pending" };
-    if (input.state === "FAILURE" || input.state === "ERROR")
-      return { ok: true, value: "failed" };
-    return invalidGitHubResponse;
-  }
-  if (input.__typename !== "CheckRun" || typeof input.status !== "string")
-    return invalidGitHubResponse;
-  if (checkRunPending.has(input.status))
-    return { ok: true, value: "pending" };
-  if (input.status !== "COMPLETED" || typeof input.conclusion !== "string")
-    return invalidGitHubResponse;
-  if (checkRunPassed.has(input.conclusion))
-    return { ok: true, value: "passed" };
-  if (checkRunFailed.has(input.conclusion))
-    return { ok: true, value: "failed" };
-  if (checkRunIgnored.has(input.conclusion))
-    return { ok: true, value: "ignored" };
-  return invalidGitHubResponse;
+function classifyCountState(state, states) {
+  if (states.failed.has(state))
+    return "failed";
+  if (states.pending.has(state))
+    return "pending";
+  if (states.passed.has(state))
+    return "passed";
+  if (states.ignored?.has(state))
+    return "ignored";
+  return;
 }
-function aggregateChecks(input) {
-  if (!Array.isArray(input))
+function aggregateCounts(input, expectedTotal, states) {
+  if (!Array.isArray(input) || !Number.isInteger(expectedTotal) || Number(expectedTotal) < 0) {
     return invalidGitHubResponse;
-  let passed = false;
-  let pending = false;
-  for (const rawCheck of input) {
-    const check = parseCheck(rawCheck);
-    if (!check.ok)
-      return check;
-    switch (check.value) {
-      case "failed":
-        return { ok: true, value: "failed" };
-      case "pending":
-        pending = true;
-        break;
-      case "passed":
-        passed = true;
-        break;
-      case "ignored":
-        break;
-      default:
-        return casesHandled(check.value);
-    }
   }
-  if (pending)
+  const buckets = new Set;
+  const seenStates = new Set;
+  let total = 0;
+  for (const item of input) {
+    if (!isRecord(item) || typeof item.state !== "string" || !Number.isInteger(item.count) || Number(item.count) < 0 || seenStates.has(item.state)) {
+      return invalidGitHubResponse;
+    }
+    const bucket = classifyCountState(item.state, states);
+    if (bucket === undefined && Number(item.count) > 0)
+      return invalidGitHubResponse;
+    seenStates.add(item.state);
+    total += Number(item.count);
+    if (bucket !== undefined && Number(item.count) > 0)
+      buckets.add(bucket);
+  }
+  return total === expectedTotal ? { ok: true, value: buckets } : invalidGitHubResponse;
+}
+function parseStatusCheckRollup(input) {
+  if (input === null)
+    return { ok: true, value: "none" };
+  if (!isRecord(input) || !isRecord(input.contexts))
+    return invalidGitHubResponse;
+  const contexts = input.contexts;
+  const checkRuns = aggregateCounts(contexts.checkRunCountsByState, contexts.checkRunCount, {
+    passed: checkRunPassed,
+    pending: checkRunPending,
+    failed: checkRunFailed,
+    ignored: checkRunIgnored
+  });
+  if (!checkRuns.ok)
+    return checkRuns;
+  const statusContexts = aggregateCounts(contexts.statusContextCountsByState, contexts.statusContextCount, {
+    passed: statusContextPassed,
+    pending: statusContextPending,
+    failed: statusContextFailed
+  });
+  if (!statusContexts.ok)
+    return statusContexts;
+  const buckets = new Set([...checkRuns.value, ...statusContexts.value]);
+  if (buckets.has("failed"))
+    return { ok: true, value: "failed" };
+  if (buckets.has("pending"))
     return { ok: true, value: "pending" };
-  if (passed)
+  if (buckets.has("passed"))
     return { ok: true, value: "passed" };
   return { ok: true, value: "none" };
 }
@@ -1708,7 +1727,7 @@ function samePullRequest(left, right) {
   return left.number === right.number && left.owner.toLowerCase() === right.owner.toLowerCase() && left.repository.toLowerCase() === right.repository.toLowerCase();
 }
 function parseResponse(input, pullRequest) {
-  if (!isRecord(input) || typeof input.title !== "string" || input.title.trim() === "") {
+  if (!isRecord(input) || input.__typename !== "PullRequest" || typeof input.title !== "string" || input.title.trim() === "") {
     return invalidGitHubResponse;
   }
   if (input.state !== "OPEN" && input.state !== "CLOSED" && input.state !== "MERGED") {
@@ -1728,7 +1747,7 @@ function parseResponse(input, pullRequest) {
   const responseUrl = parsePullRequestUrl(input.url);
   if (!responseUrl.ok || !samePullRequest(responseUrl.value, pullRequest))
     return invalidGitHubResponse;
-  const ci = aggregateChecks(input.statusCheckRollup);
+  const ci = parseStatusCheckRollup(input.statusCheckRollup);
   if (!ci.ok)
     return ci;
   let state;
@@ -1756,15 +1775,67 @@ function parseResponse(input, pullRequest) {
     }
   };
 }
+function createBatchQuery(size) {
+  const variables = Array.from({ length: size }, (_, index) => `$url${index}: URI!`).join(", ");
+  const fields = Array.from({ length: size }, (_, index) => `pr${index}: resource(url: $url${index}) { ${pullRequestSelection} }`).join(" ");
+  return `query BatchPullRequests(${variables}) { ${fields} }`;
+}
+function parseGraphqlErrorAliases(input, size) {
+  if (input === undefined)
+    return { ok: true, value: new Set };
+  if (!Array.isArray(input))
+    return invalidGitHubResponse;
+  const aliases = new Set;
+  for (const error of input) {
+    if (!isRecord(error) || typeof error.message !== "string" || !Array.isArray(error.path) || typeof error.path[0] !== "string") {
+      return invalidGitHubResponse;
+    }
+    const match = /^pr([0-9]+)$/.exec(error.path[0]);
+    if (match === null)
+      return invalidGitHubResponse;
+    const index = Number(match[1]);
+    if (!Number.isInteger(index) || index < 0 || index >= size)
+      return invalidGitHubResponse;
+    aliases.add(index);
+  }
+  return { ok: true, value: aliases };
+}
+function parseBatchResponse(input, pullRequests) {
+  if (!isRecord(input) || !isRecord(input.data))
+    return invalidGitHubResponse;
+  const data = input.data;
+  const errorAliases = parseGraphqlErrorAliases(input.errors, pullRequests.length);
+  if (!errorAliases.ok)
+    return errorAliases;
+  return {
+    ok: true,
+    value: pullRequests.map((pullRequest, index) => errorAliases.value.has(index) ? invalidGitHubResponse : parseResponse(data[`pr${index}`], pullRequest))
+  };
+}
 function isCancellation(cause, signal) {
   if (signal?.aborted)
     return true;
   return cause instanceof Error && cause.name === "AbortError";
 }
+
+class ProcessExecutionError extends Error {
+  stdout;
+  name;
+  constructor(cause, stdout) {
+    super(cause.message, { cause });
+    this.stdout = stdout;
+    this.name = cause.name;
+  }
+}
+function processFailureStdout(cause) {
+  if (!isRecord(cause) || typeof cause.stdout !== "string" || cause.stdout.trim() === "")
+    return;
+  return cause.stdout;
+}
 var execFileRunner = (file, args, options) => new Promise((resolve, reject) => {
   execFile(file, [...args], { encoding: "utf8", ...options.signal ? { signal: options.signal } : {} }, (error, stdout) => {
     if (error) {
-      reject(error);
+      reject(new ProcessExecutionError(error, stdout));
       return;
     }
     resolve({ stdout });
@@ -1772,10 +1843,20 @@ var execFileRunner = (file, args, options) => new Promise((resolve, reject) => {
 });
 function createGitHubClient(runner = execFileRunner) {
   return {
-    async get(pullRequest, options = {}) {
+    async get(pullRequests, options = {}) {
+      if (pullRequests.length === 0)
+        return { ok: true, value: [] };
+      if (pullRequests.length > maximumPullRequestsPerBatch)
+        return githubBatchLimitExceeded;
+      const query = createBatchQuery(pullRequests.length);
+      const args = ["api", "graphql", "--method", "POST", "-f", `query=${query}`];
+      for (const [index, pullRequest] of pullRequests.entries()) {
+        args.push("-f", `url${index}=${pullRequest.url}`);
+      }
       let stdout;
+      let executionCause;
       try {
-        const output = await runner("gh", ["pr", "view", pullRequest.url, "--json", "title,state,url,mergedAt,statusCheckRollup"], options);
+        const output = await runner("gh", args, options);
         stdout = output.stdout;
       } catch (cause) {
         if (isCancellation(cause, options.signal)) {
@@ -1788,22 +1869,45 @@ function createGitHubClient(runner = execFileRunner) {
             }
           };
         }
-        return {
-          ok: false,
-          error: {
-            tag: "GitHubUnavailable",
-            message: "GitHub status unavailable",
-            cause
-          }
-        };
+        const partialStdout = processFailureStdout(cause);
+        if (partialStdout !== undefined) {
+          stdout = partialStdout;
+          executionCause = cause;
+        } else {
+          return {
+            ok: false,
+            error: {
+              tag: "GitHubUnavailable",
+              message: "GitHub status unavailable",
+              cause
+            }
+          };
+        }
       }
       let decoded;
       try {
         decoded = JSON.parse(stdout);
       } catch {
-        return invalidGitHubResponse;
+        return executionCause === undefined ? invalidGitHubResponse : {
+          ok: false,
+          error: {
+            tag: "GitHubUnavailable",
+            message: "GitHub status unavailable",
+            cause: executionCause
+          }
+        };
       }
-      return parseResponse(decoded, pullRequest);
+      const parsed = parseBatchResponse(decoded, pullRequests);
+      if (executionCause === undefined || parsed.ok)
+        return parsed;
+      return {
+        ok: false,
+        error: {
+          tag: "GitHubUnavailable",
+          message: "GitHub status unavailable",
+          cause: executionCause
+        }
+      };
     }
   };
 }
@@ -2083,18 +2187,21 @@ function startSessionPolling(input) {
         statuses.delete(url);
     }
     input.publish(project(attachments.value));
-    await Promise.all(attachments.value.map(async (attachment) => {
+    const refreshable = attachments.value.filter((attachment) => {
       const previous = statuses.get(attachment.pullRequest.url);
-      if (previous?.tag === "Available" && previous.state.tag === "Merged")
-        return;
-      const result = await input.github.get(attachment.pullRequest, {
-        signal: controller.signal
-      });
-      if (stopped || !result.ok && result.error.tag === "GitHubCancelled")
-        return;
-      if (result.ok) {
+      return previous?.tag !== "Available" || previous.state.tag !== "Merged";
+    });
+    const batch = await input.github.get(refreshable.map((attachment) => attachment.pullRequest), {
+      signal: controller.signal
+    });
+    if (stopped || !batch.ok && batch.error.tag === "GitHubCancelled")
+      return;
+    for (const [index, attachment] of refreshable.entries()) {
+      const previous = statuses.get(attachment.pullRequest.url);
+      const result = batch.ok ? batch.value[index] : undefined;
+      if (result?.ok) {
         statuses.set(attachment.pullRequest.url, result.value);
-        return;
+        continue;
       }
       statuses.set(attachment.pullRequest.url, previous?.tag === "Available" ? {
         ...previous,
@@ -2102,7 +2209,7 @@ function startSessionPolling(input) {
       } : {
         tag: "Unavailable"
       });
-    }));
+    }
     if (!stopped)
       input.publish(project(attachments.value));
   }
@@ -2519,4 +2626,4 @@ export {
   attachPullRequest
 };
 
-//# debugId=DE2A979F1B3F862E64756E2164756E21
+//# debugId=C195F6BFCA1D2CD864756E2164756E21

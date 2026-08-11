@@ -69,7 +69,7 @@ async function waitForServer(url: string, child: ReturnType<typeof spawn>): Prom
       throw new Error(`OpenCode server exited with code ${child.exitCode ?? child.signalCode}`)
     }
     try {
-      const response = await fetch(url)
+      const response = await fetch(url, { signal: AbortSignal.timeout(1_000) })
       if (response.ok) return
     } catch {
       // The server may refuse connections while it initializes the plugin.
@@ -249,6 +249,24 @@ try {
   )
   const opencodePackage: unknown = JSON.parse(opencodePackageSource)
   const installedVersion = packageVersion(opencodePackage)
+  for (const [label, directory] of [
+    ["prepare global OpenCode config", join(configDirectory, "opencode")],
+    ["prepare project OpenCode config", join(projectDirectory, ".opencode")],
+  ] as const) {
+    await run(
+      "npm",
+      [
+        "install",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund",
+        "--prefix",
+        directory,
+        `@opencode-ai/plugin@${installedVersion}`,
+      ],
+      { label },
+    )
+  }
   const opencodeCliVersion = await run(opencodeBinary, ["--version"], {
     env: isolatedEnvironment,
     label: "read OpenCode version",
@@ -267,11 +285,15 @@ try {
   const port = await availablePort()
   const serverStartedAt = performance.now()
   console.log("[smoke] start OpenCode server")
-  const server = spawn(opencodeBinary, ["serve", "--hostname", "127.0.0.1", "--port", String(port)], {
-    cwd: projectDirectory,
-    env: isolatedEnvironment,
-    stdio: ["ignore", "pipe", "pipe"],
-  })
+  const server = spawn(
+    opencodeBinary,
+    ["--print-logs", "--log-level", "DEBUG", "serve", "--hostname", "127.0.0.1", "--port", String(port)],
+    {
+      cwd: projectDirectory,
+      env: isolatedEnvironment,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  )
   const serverExited = new Promise<void>((resolveExit, reject) => {
     server.once("error", reject)
     server.once("exit", () => resolveExit())
@@ -284,6 +306,7 @@ try {
     console.log(`[smoke] OpenCode server ready in ${((performance.now() - serverStartedAt) / 1000).toFixed(1)}s`)
     const response = await fetch(
       `http://127.0.0.1:${port}/experimental/tool/ids?directory=${encodeURIComponent(projectDirectory)}`,
+      { signal: AbortSignal.timeout(60_000) },
     )
     if (!response.ok) throw new Error(`OpenCode tool endpoint returned HTTP ${response.status}`)
     assertTools(await response.json())
