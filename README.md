@@ -40,7 +40,7 @@ Replace `0.2.0` with the version you want. Omit `--global` for a plugin installe
 in the current project.
 
 The plugin checks for compatible stable releases at most once every 24 hours.
-When an update is available, the sidebar shows its version. Run
+When an update is available, the sidebar shows its version. Click it or run
 `/pr-tracker-plugin-update` to see the exact command for the current installation
 scope. The plugin never installs updates automatically.
 

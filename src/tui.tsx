@@ -475,7 +475,7 @@ type TuiDependencies = Readonly<{
 type PluginReleaseContext = Pick<TuiPluginMeta, "source" | "version">
 
 export function updateStatusLabel(version: string): string {
-  return `Update ${version} available (/pr-tracker-plugin-update)`
+  return `${version} available`
 }
 
 function toneColor(theme: TuiPluginApi["theme"]["current"], tone: ReturnType<typeof statusAppearance>["tone"]) {
@@ -542,7 +542,14 @@ function PullRequestSidebar(
       <text fg={props.api.theme.current.text}>
         <b>Pull requests</b>
       </text>
-      {update() ? <text fg={props.api.theme.current.warning}>{updateStatusLabel(update()!)}</text> : null}
+      {update() ? (
+        <box flexDirection="row" onMouseUp={() => props.api.keymap.dispatchCommand("pr.tracker.plugin.update")}>
+          <text fg={props.api.theme.current.warning}>• </text>
+          <text fg={props.api.theme.current.textMuted} attributes={TextAttributes.ITALIC}>
+            {updateStatusLabel(update()!)}
+          </text>
+        </box>
+      ) : null}
       {failure() ? <text fg={props.api.theme.current.error}>{failure()}</text> : null}
       {!failure() && items().length === 0 ? (
         <text fg={props.api.theme.current.textMuted}>No pull requests attached</text>

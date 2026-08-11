@@ -266,7 +266,7 @@ describe("TUI orchestration", () => {
     await startupFinished
     await Promise.resolve()
 
-    expect(updateStatusLabel("0.2.1")).toBe("Update 0.2.1 available (/pr-tracker-plugin-update)")
+    expect(updateStatusLabel("0.2.1")).toBe("0.2.1 available")
     expect(toasts).toEqual([])
     expect(cache.get("plugin-update-check-v1")).toEqual({
       checkedAt: new Date("2026-08-11T12:00:00.000Z").valueOf(),
