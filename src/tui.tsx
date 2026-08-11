@@ -78,6 +78,7 @@ export function startSessionPolling(
   const statuses = new Map<CanonicalPullRequestUrl, PullRequestStatus>()
   const controller = new AbortController()
   let timer: unknown
+  let timerRegistered = false
   let stopped = false
   let inFlight: Promise<void> | undefined
   let refreshQueued = false
@@ -147,10 +148,11 @@ export function startSessionPolling(
 
   return {
     start() {
-      if (timer === undefined) {
+      if (!timerRegistered) {
         timer = scheduler.setInterval(() => {
           refresh().catch(input.onError)
         }, pollIntervalMilliseconds)
+        timerRegistered = true
       }
       return refresh()
     },
@@ -159,7 +161,7 @@ export function startSessionPolling(
       if (stopped) return
       stopped = true
       controller.abort()
-      if (timer !== undefined) scheduler.clearInterval(timer)
+      if (timerRegistered) scheduler.clearInterval(timer)
     },
   }
 }
@@ -316,7 +318,7 @@ function selectPullRequest(
   })
 }
 
-function showStateFailure(api: TuiPluginApi, failure: StateFailure | AttachFailure): void {
+function showStateFailure(api: TuiPluginApi, failure: AttachFailure): void {
   api.ui.toast({ variant: "error", title: "Pull request tracker", message: failure.message })
 }
 

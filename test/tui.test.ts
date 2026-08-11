@@ -62,6 +62,20 @@ class RecordingScheduler implements PollScheduler {
   }
 }
 
+class UndefinedHandleScheduler implements PollScheduler {
+  intervals = 0
+  cleared: unknown[] = []
+
+  setInterval(): undefined {
+    this.intervals += 1
+    return undefined
+  }
+
+  clearInterval(handle: unknown): void {
+    this.cleared.push(handle)
+  }
+}
+
 describe("TUI orchestration", () => {
   test("registers model-free slash commands and the sidebar slot", () => {
     let layer: { commands: Array<{ name: string; slashName?: string }> } | undefined
@@ -227,6 +241,29 @@ describe("TUI orchestration", () => {
     expect(published).toHaveLength(2)
     polling.stop()
     expect(scheduler.cleared).toBe(true)
+  })
+
+  test("owns one interval when the scheduler handle is undefined", async () => {
+    const scheduler = new UndefinedHandleScheduler()
+    const polling = startSessionPolling({
+      sessionID: "session",
+      store: stateStore([]),
+      github: { get: async () => ({ ok: true, value: available() }) },
+      scheduler,
+      publish: () => undefined,
+      onStateFailure: () => undefined,
+      onError: (error) => {
+        throw error
+      },
+    })
+
+    await polling.start()
+    await polling.start()
+    polling.stop()
+    polling.stop()
+
+    expect(scheduler.intervals).toBe(1)
+    expect(scheduler.cleared).toEqual([undefined])
   })
 
   test("does not repoll terminal pull requests", async () => {
