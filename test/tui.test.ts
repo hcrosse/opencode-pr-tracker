@@ -9,7 +9,7 @@ import {
   startSessionPolling,
   type PollScheduler,
 } from "../src/tui.jsx"
-import type { AvailablePullRequestStatus, GitHubClient, ProcessRunner } from "../src/github.js"
+import type { AvailablePullRequestStatus, GitHubClient, ProcessRunner, PullRequestState } from "../src/github.js"
 import type { PullRequestAttachment, StateStore } from "../src/state.js"
 import { parsePullRequestUrl, type CanonicalPullRequestUrl } from "../src/url.js"
 
@@ -36,15 +36,13 @@ function stateStore(items: readonly PullRequestAttachment[] = [attachment]): Sta
   }
 }
 
-function available(overrides: Partial<AvailablePullRequestStatus> = {}): AvailablePullRequestStatus {
+function available(state: PullRequestState = { tag: "Open", ci: "passed" }): AvailablePullRequestStatus {
   return {
     tag: "Available",
     pullRequest,
     title: "Track pull requests",
-    lifecycle: "open",
-    ci: "passed",
+    state,
     stale: false,
-    ...overrides,
   }
 }
 
@@ -166,7 +164,7 @@ describe("TUI orchestration", () => {
       github: {
         async get() {
           calls += 1
-          return { ok: true, value: available({ lifecycle: "merged", ci: "failed" }) }
+          return { ok: true, value: available({ tag: "Merged" }) }
         },
       },
       scheduler: new RecordingScheduler(),

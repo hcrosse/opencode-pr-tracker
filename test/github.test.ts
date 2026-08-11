@@ -6,6 +6,9 @@ import { parsePullRequestUrl } from "../src/url.js"
 const parsed = parsePullRequestUrl("https://github.com/owner/repository/pull/42")
 if (!parsed.ok) throw new Error("test fixture URL is invalid")
 const pullRequest = parsed.value
+const successChecks = [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS" }]
+const pendingChecks = [{ __typename: "CheckRun", status: "IN_PROGRESS", conclusion: null }]
+const failedChecks = [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "FAILURE" }]
 
 function runnerFor(
   output: unknown,
@@ -93,29 +96,64 @@ describe("GitHub client", () => {
 
     const result = await client.get(pullRequest)
 
-    expect(result.ok && result.value.ci).toBe(expected)
+    if (!result.ok) throw new Error("expected GitHub response to parse")
+    expect(result.value.state).toEqual({ tag: "Open", ci: expected })
   })
 
   test.each([
-    { state: "MERGED", mergedAt: "2026-08-10T12:00:00Z", lifecycle: "merged", tone: "purple", strike: true },
-    { state: "CLOSED", mergedAt: null, lifecycle: "closed", tone: "red", strike: true },
-    { state: "OPEN", mergedAt: null, lifecycle: "open", tone: "red", strike: false },
-  ])("gives $lifecycle lifecycle precedence", async ({ state, mergedAt, lifecycle, tone, strike }) => {
-    const client = createGitHubClient(
-      runnerFor(
-        response({
-          state,
-          mergedAt,
-          statusCheckRollup: [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "FAILURE" }],
-        }),
-      ),
-    )
+    {
+      state: "MERGED",
+      mergedAt: "2026-08-10T12:00:00Z",
+      checks: [],
+      tone: "purple",
+      label: "merged",
+      strike: true,
+    },
+    { state: "CLOSED", mergedAt: null, checks: [], tone: "red", label: "closed", strike: true },
+    { state: "OPEN", mergedAt: null, checks: [], tone: "gray", label: "no checks", strike: false },
+    {
+      state: "OPEN",
+      mergedAt: null,
+      checks: successChecks,
+      tone: "green",
+      label: "checks passed",
+      strike: false,
+    },
+    {
+      state: "OPEN",
+      mergedAt: null,
+      checks: pendingChecks,
+      tone: "yellow",
+      label: "checks pending",
+      strike: false,
+    },
+    {
+      state: "OPEN",
+      mergedAt: null,
+      checks: failedChecks,
+      tone: "red",
+      label: "checks failed",
+      strike: false,
+    },
+  ])("projects $state status with $label appearance", async ({ state, mergedAt, checks, tone, label, strike }) => {
+    const client = createGitHubClient(runnerFor(response({ state, mergedAt, statusCheckRollup: checks })))
 
     const result = await client.get(pullRequest)
 
-    expect(result.ok && result.value.lifecycle).toBe(lifecycle)
     if (!result.ok) throw new Error("expected GitHub response to parse")
-    expect(statusAppearance(result.value)).toMatchObject({ tone, strikethrough: strike })
+    expect(statusAppearance(result.value)).toEqual({ tone, label, strikethrough: strike })
+  })
+
+  test.each([
+    { state: "MERGED", mergedAt: "2026-08-10T12:00:00Z", expected: { tag: "Merged" } },
+    { state: "CLOSED", mergedAt: null, expected: { tag: "Closed" } },
+  ])("accepts valid checks without retaining CI for $state pull requests", async ({ state, mergedAt, expected }) => {
+    const client = createGitHubClient(runnerFor(response({ state, mergedAt, statusCheckRollup: failedChecks })))
+
+    const result = await client.get(pullRequest)
+
+    if (!result.ok) throw new Error("expected GitHub response to parse")
+    expect(result.value.state).toEqual(expected)
   })
 
   test("classifies execution failures without exposing credentials", async () => {
@@ -142,6 +180,19 @@ describe("GitHub client", () => {
     JSON.stringify(
       response({ statusCheckRollup: [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "UNKNOWN" }] }),
     ),
+    JSON.stringify(
+      response({
+        state: "MERGED",
+        mergedAt: "2026-08-10T12:00:00Z",
+        statusCheckRollup: [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "UNKNOWN" }],
+      }),
+    ),
+    JSON.stringify(
+      response({
+        state: "CLOSED",
+        statusCheckRollup: [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "UNKNOWN" }],
+      }),
+    ),
     JSON.stringify(response({ url: "https://example.com/owner/repository/pull/42" })),
   ])("rejects malformed gh output", async (stdout) => {
     const client = createGitHubClient(async () => ({ stdout }))
@@ -161,8 +212,7 @@ describe("GitHub client", () => {
         tag: "Available",
         pullRequest,
         title: "Title",
-        lifecycle: "open",
-        ci: "pending",
+        state: { tag: "Open", ci: "pending" },
         stale: true,
       }),
     ).toEqual({ tone: "yellow", label: "checks pending (stale)", strikethrough: false })

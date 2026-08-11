@@ -1,16 +1,20 @@
 import { execFile } from "node:child_process"
 
+import { casesHandled } from "./exhaustive.js"
 import { parsePullRequestUrl, type PullRequestUrl, type Result } from "./url.js"
 
-export type PullRequestLifecycle = "open" | "merged" | "closed"
 export type PullRequestCi = "passed" | "pending" | "failed" | "none"
+
+export type PullRequestState =
+  | Readonly<{ tag: "Open"; ci: PullRequestCi }>
+  | Readonly<{ tag: "Merged" }>
+  | Readonly<{ tag: "Closed" }>
 
 export type AvailablePullRequestStatus = Readonly<{
   tag: "Available"
   pullRequest: PullRequestUrl
   title: string
-  lifecycle: PullRequestLifecycle
-  ci: PullRequestCi
+  state: PullRequestState
   stale: boolean
 }>
 
@@ -60,6 +64,8 @@ const checkRunPending = new Set(["QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED"
 const checkRunPassed = new Set(["SUCCESS"])
 const checkRunFailed = new Set(["FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE"])
 const checkRunIgnored = new Set(["NEUTRAL", "SKIPPED"])
+
+type ParsedLifecycle = "open" | "merged" | "closed"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -134,8 +140,21 @@ function parseResponse(
   const ci = aggregateChecks(input.statusCheckRollup)
   if (!ci.ok) return ci
 
-  const lifecycle: PullRequestLifecycle =
-    input.state === "MERGED" ? "merged" : input.state === "CLOSED" ? "closed" : "open"
+  const lifecycle: ParsedLifecycle = input.state === "MERGED" ? "merged" : input.state === "CLOSED" ? "closed" : "open"
+  let state: PullRequestState
+  switch (lifecycle) {
+    case "open":
+      state = { tag: "Open", ci: ci.value }
+      break
+    case "merged":
+      state = { tag: "Merged" }
+      break
+    case "closed":
+      state = { tag: "Closed" }
+      break
+    default:
+      return casesHandled(lifecycle)
+  }
 
   return {
     ok: true,
@@ -143,8 +162,7 @@ function parseResponse(
       tag: "Available",
       pullRequest,
       title: input.title,
-      lifecycle,
-      ci: ci.value,
+      state,
       stale: false,
     },
   }
@@ -221,23 +239,42 @@ export type StatusAppearance = Readonly<{
 }>
 
 export function statusAppearance(status: PullRequestStatus): StatusAppearance {
-  if (status.tag === "Unavailable") {
-    return { tone: "gray", label: "status unavailable", strikethrough: false }
-  }
-
   let appearance: StatusAppearance
-  if (status.lifecycle === "merged") {
-    appearance = { tone: "purple", label: "merged", strikethrough: true }
-  } else if (status.lifecycle === "closed") {
-    appearance = { tone: "red", label: "closed", strikethrough: true }
-  } else if (status.ci === "passed") {
-    appearance = { tone: "green", label: "checks passed", strikethrough: false }
-  } else if (status.ci === "pending") {
-    appearance = { tone: "yellow", label: "checks pending", strikethrough: false }
-  } else if (status.ci === "failed") {
-    appearance = { tone: "red", label: "checks failed", strikethrough: false }
-  } else {
-    appearance = { tone: "gray", label: "no checks", strikethrough: false }
+  switch (status.tag) {
+    case "Unavailable":
+      return { tone: "gray", label: "status unavailable", strikethrough: false }
+    case "Available":
+      switch (status.state.tag) {
+        case "Open":
+          switch (status.state.ci) {
+            case "passed":
+              appearance = { tone: "green", label: "checks passed", strikethrough: false }
+              break
+            case "pending":
+              appearance = { tone: "yellow", label: "checks pending", strikethrough: false }
+              break
+            case "failed":
+              appearance = { tone: "red", label: "checks failed", strikethrough: false }
+              break
+            case "none":
+              appearance = { tone: "gray", label: "no checks", strikethrough: false }
+              break
+            default:
+              return casesHandled(status.state.ci)
+          }
+          break
+        case "Merged":
+          appearance = { tone: "purple", label: "merged", strikethrough: true }
+          break
+        case "Closed":
+          appearance = { tone: "red", label: "closed", strikethrough: true }
+          break
+        default:
+          return casesHandled(status.state)
+      }
+      break
+    default:
+      return casesHandled(status)
   }
 
   return status.stale ? { ...appearance, label: `${appearance.label} (stale)` } : appearance
