@@ -1,0 +1,279 @@
+name: Workflow security
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - edited
+      - opened
+      - reopened
+      - synchronize
+
+permissions: {}
+
+concurrency:
+  group: workflow-security-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  pending:
+    name: Set workflow security pending
+    if: ${{ github.repository == 'hcrosse/opencode-pr-tracker' }}
+    permissions:
+      statuses: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report pending workflow security status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh api \
+            --method POST \
+            "repos/${REPOSITORY}/statuses/${HEAD_SHA}" \
+            --raw-field "state=pending" \
+            --raw-field "context=Workflow security" \
+            --raw-field "description=Trusted workflow scan pending" \
+            --raw-field "target_url=${RUN_URL}"
+
+  scan:
+    name: Scan workflows
+    needs: pending
+    if: ${{ github.repository == 'hcrosse/opencode-pr-tracker' }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch candidate workflows
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_REPOSITORY: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 - <<'PYTHON'
+          import base64
+          import binascii
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          def parse_repository(value: str, label: str) -> str:
+              if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", value):
+                  raise SystemExit(f"invalid {label} repository")
+              if any(part in {".", ".."} for part in value.split("/")):
+                  raise SystemExit(f"invalid {label} repository")
+              return value
+
+          def parse_sha(value: str, label: str) -> str:
+              if not re.fullmatch(r"[0-9a-f]{40}", value):
+                  raise SystemExit(f"invalid {label} SHA")
+              return value
+
+          base_repository = parse_repository(
+              os.environ["BASE_REPOSITORY"], "base"
+          )
+          if base_repository != "hcrosse/opencode-pr-tracker":
+              raise SystemExit("invalid base repository")
+          base_sha = parse_sha(os.environ["BASE_SHA"], "base")
+          if os.environ["BASE_REF"] != "main":
+              raise SystemExit("invalid base ref")
+          if os.environ["DEFAULT_BRANCH"] != "main":
+              raise SystemExit("invalid default branch")
+          head_repository = parse_repository(
+              os.environ["HEAD_REPOSITORY"], "head"
+          )
+          head_sha = parse_sha(os.environ["HEAD_SHA"], "head")
+
+          def api(endpoint: str) -> object:
+              response = subprocess.run(
+                  ["gh", "api", "--method", "GET", endpoint],
+                  check=True,
+                  stdout=subprocess.PIPE,
+                  text=True,
+              )
+              return json.loads(response.stdout)
+
+          def tree_entries(repository: str, tree_sha: str) -> list[object]:
+              payload = api(f"repos/{repository}/git/trees/{tree_sha}")
+              if not isinstance(payload, dict):
+                  raise SystemExit("invalid tree response")
+              if payload.get("truncated") is True:
+                  raise SystemExit("refusing truncated tree response")
+              entries = payload.get("tree")
+              if not isinstance(entries, list):
+                  raise SystemExit("invalid tree entries")
+              return entries
+
+          def directory_sha(entries: list[object], name: str) -> str:
+              matches = [
+                  entry
+                  for entry in entries
+                  if isinstance(entry, dict) and entry.get("path") == name
+              ]
+              if len(matches) != 1:
+                  raise SystemExit(f"missing or duplicate {name} directory")
+              entry = matches[0]
+              if entry.get("type") != "tree" or entry.get("mode") != "040000":
+                  raise SystemExit(f"{name} is not a directory")
+              sha = entry.get("sha")
+              if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+                  raise SystemExit(f"invalid {name} tree SHA")
+              return sha
+
+          def workflow_tree_entries(repository: str, commit_sha: str) -> list[object]:
+              root_entries = tree_entries(repository, commit_sha)
+              github_sha = directory_sha(root_entries, ".github")
+              github_entries = tree_entries(repository, github_sha)
+              workflows_sha = directory_sha(github_entries, "workflows")
+              return tree_entries(repository, workflows_sha)
+
+          workflow_entries = []
+
+          for entry in workflow_tree_entries(head_repository, head_sha):
+              if not isinstance(entry, dict):
+                  raise SystemExit("invalid workflow tree entry")
+              name = entry.get("path")
+              if not isinstance(name, str):
+                  raise SystemExit("invalid workflow path")
+              if not name.endswith((".yml", ".yaml")):
+                  continue
+              if Path(name).name != name or name in {".", ".."}:
+                  raise SystemExit("invalid workflow basename")
+              if entry.get("type") != "blob" or entry.get("mode") not in {
+                  "100644",
+                  "100755",
+              }:
+                  raise SystemExit(f"workflow is not a regular file: {name}")
+              sha = entry.get("sha")
+              if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+                  raise SystemExit(f"invalid workflow blob SHA: {name}")
+              workflow_entries.append((name, sha))
+
+          if not workflow_entries:
+              raise SystemExit("no workflow files found")
+
+          validator_name = "workflow-security.yml"
+          candidate_validator_shas = [
+              sha for name, sha in workflow_entries if name == validator_name
+          ]
+          if len(candidate_validator_shas) != 1:
+              raise SystemExit("candidate validator is missing or duplicated")
+
+          base_validator_shas = []
+          for entry in workflow_tree_entries(base_repository, base_sha):
+              if not isinstance(entry, dict) or entry.get("path") != validator_name:
+                  continue
+              if entry.get("type") != "blob" or entry.get("mode") not in {
+                  "100644",
+                  "100755",
+              }:
+                  raise SystemExit("base validator is not a regular file")
+              sha = entry.get("sha")
+              if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+                  raise SystemExit("invalid base validator blob SHA")
+              base_validator_shas.append(sha)
+
+          if len(base_validator_shas) != 1:
+              raise SystemExit("base validator is missing or duplicated")
+          if candidate_validator_shas[0] != base_validator_shas[0]:
+              raise SystemExit("candidate validator differs from base")
+
+          destination = Path("candidate/.github/workflows")
+          destination.mkdir(parents=True, exist_ok=False)
+
+          for name, sha in sorted(workflow_entries):
+              payload = api(f"repos/{head_repository}/git/blobs/{sha}")
+              if not isinstance(payload, dict) or payload.get("encoding") != "base64":
+                  raise SystemExit(f"workflow blob is not base64 encoded: {name}")
+              content = payload.get("content")
+              if not isinstance(content, str):
+                  raise SystemExit(f"workflow blob has invalid content: {name}")
+              try:
+                  decoded = base64.b64decode("".join(content.split()), validate=True)
+              except (binascii.Error, ValueError) as error:
+                  raise SystemExit(f"workflow blob has invalid base64: {name}") from error
+              (destination / name).write_bytes(decoded)
+          PYTHON
+
+      - name: Download and verify actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl --fail --location --silent --show-error \
+            --output "${archive}" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${archive}"
+          echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum --check --strict
+          tar --extract --gzip --file "${archive}" actionlint
+
+      - name: Run actionlint
+        run: |
+          shopt -s nullglob
+          workflow_files=(candidate/.github/workflows/*.yml candidate/.github/workflows/*.yaml)
+          ./actionlint -shellcheck= -pyflakes= "${workflow_files[@]}"
+
+      - name: Write trusted zizmor config
+        run: |
+          cat > trusted-zizmor.yml <<'YAML'
+          rules:
+            dangerous-triggers:
+              ignore:
+                - workflow-security.yml:3:1
+          YAML
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
+        with:
+          version: 1.29.0
+          inputs: candidate/.github/workflows
+          config: trusted-zizmor.yml
+          persona: regular
+          online-audits: false
+          token: ""
+          advanced-security: false
+          annotations: false
+
+  report:
+    name: Report workflow security
+    needs: scan
+    if: ${{ always() && github.repository == 'hcrosse/opencode-pr-tracker' }}
+    permissions:
+      statuses: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report workflow security status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SCAN_RESULT: ${{ needs.scan.result }}
+        run: |
+          if [[ "${SCAN_RESULT}" == "success" ]]; then
+            state="success"
+            description="Trusted workflow scan succeeded"
+          else
+            state="failure"
+            description="Trusted workflow scan failed"
+          fi
+
+          gh api \
+            --method POST \
+            "repos/${REPOSITORY}/statuses/${HEAD_SHA}" \
+            --raw-field "state=${state}" \
+            --raw-field "context=Workflow security" \
+            --raw-field "description=${description}" \
+            --raw-field "target_url=${RUN_URL}"
