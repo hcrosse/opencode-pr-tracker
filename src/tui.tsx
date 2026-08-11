@@ -10,6 +10,7 @@ import {
   statusAppearance,
   type GitHubClient,
   type ProcessRunner,
+  type PullRequestDiagnostic,
   type PullRequestStatus,
 } from "./github.js"
 import {
@@ -115,7 +116,12 @@ export function startSessionPolling(
       refreshable.map((attachment) => attachment.pullRequest),
       { signal: controller.signal },
     )
-    if (stopped || (!batch.ok && batch.error.tag === "GitHubCancelled")) return
+    if (stopped) return
+    let batchDiagnostic: PullRequestDiagnostic | undefined
+    if (!batch.ok) {
+      if (batch.error.tag === "GitHubCancelled") return
+      batchDiagnostic = batch.error.tag === "GitHubBatchLimitExceeded" ? "GitHubUnavailable" : batch.error.tag
+    }
 
     for (const [index, attachment] of refreshable.entries()) {
       const previous = statuses.get(attachment.pullRequest.url)
@@ -124,9 +130,10 @@ export function startSessionPolling(
         statuses.set(attachment.pullRequest.url, result.value)
         continue
       }
+      const diagnostic = result === undefined ? (batchDiagnostic ?? "GitHubUnavailable") : result.error.tag
       statuses.set(
         attachment.pullRequest.url,
-        previous?.tag === "Available" ? { ...previous, stale: true } : { tag: "Unavailable" },
+        previous?.tag === "Available" ? { ...previous, stale: true, diagnostic } : { tag: "Unavailable", diagnostic },
       )
     }
 

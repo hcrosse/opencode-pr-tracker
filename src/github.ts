@@ -16,14 +16,28 @@ export type AvailablePullRequestStatus = Readonly<{
   pullRequest: PullRequestUrl
   title: string
   state: PullRequestState
-  stale: boolean
-}>
+}> &
+  (Readonly<{ stale: false }> | Readonly<{ stale: true; diagnostic: PullRequestDiagnostic }>)
 
-export type PullRequestStatus = AvailablePullRequestStatus | Readonly<{ tag: "Unavailable" }>
+export type PullRequestStatus =
+  | AvailablePullRequestStatus
+  | Readonly<{ tag: "Unavailable"; diagnostic?: PullRequestDiagnostic }>
 
 export type GitHubUnavailable = Readonly<{
   tag: "GitHubUnavailable"
   message: "GitHub status unavailable"
+  cause: unknown
+}>
+
+export type GitHubCliMissing = Readonly<{
+  tag: "GitHubCliMissing"
+  message: "GitHub CLI is not installed"
+  cause: unknown
+}>
+
+export type GitHubAuthenticationRequired = Readonly<{
+  tag: "GitHubAuthenticationRequired"
+  message: "GitHub CLI authentication required"
   cause: unknown
 }>
 
@@ -44,8 +58,17 @@ export type GitHubBatchLimitExceeded = Readonly<{
   message: "GitHub batch cannot contain more than 20 pull requests"
 }>
 
-export type GitHubFailure = GitHubUnavailable | GitHubCancelled | InvalidGitHubResponse | GitHubBatchLimitExceeded
+export type GitHubFailure =
+  | GitHubCliMissing
+  | GitHubAuthenticationRequired
+  | GitHubUnavailable
+  | GitHubCancelled
+  | InvalidGitHubResponse
+  | GitHubBatchLimitExceeded
+
 export type GitHubBatch = readonly Result<AvailablePullRequestStatus, InvalidGitHubResponse>[]
+
+export type PullRequestDiagnostic = Exclude<GitHubFailure, GitHubCancelled | GitHubBatchLimitExceeded>["tag"]
 
 export type ProcessRunner = (
   file: string,
@@ -91,6 +114,35 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 type CheckBucket = "passed" | "pending" | "failed" | "ignored"
+
+type ProcessExecutionFailed = Readonly<{
+  tag: "ProcessExecutionFailed"
+  code: string | number | null
+  stderr: string
+  stdout: string
+  cause: unknown
+}>
+
+function parseProcessExecutionFailed(value: unknown): ProcessExecutionFailed | undefined {
+  if (
+    !isRecord(value) ||
+    value.tag !== "ProcessExecutionFailed" ||
+    (value.code !== null && typeof value.code !== "string" && typeof value.code !== "number") ||
+    typeof value.stderr !== "string" ||
+    typeof value.stdout !== "string" ||
+    !("cause" in value)
+  ) {
+    return undefined
+  }
+
+  return {
+    tag: "ProcessExecutionFailed",
+    code: value.code,
+    stderr: value.stderr,
+    stdout: value.stdout,
+    cause: value.cause,
+  }
+}
 
 function classifyCountState(
   state: string,
@@ -290,19 +342,27 @@ function parseBatchResponse(
 
 function isCancellation(cause: unknown, signal: AbortSignal | undefined): boolean {
   if (signal?.aborted) return true
-  return cause instanceof Error && cause.name === "AbortError"
+  const originalCause = parseProcessExecutionFailed(cause)?.cause ?? cause
+  return originalCause instanceof Error && originalCause.name === "AbortError"
 }
 
-class ProcessExecutionError extends Error {
-  override readonly name: string
+const authenticationFailureMarkers = ["http 401", "bad credentials", "not logged into", "gh auth login"] as const
 
-  constructor(
-    cause: Error,
-    readonly stdout: string,
-  ) {
-    super(cause.message, { cause })
-    this.name = cause.name
+function isAuthenticationFailure(failure: ProcessExecutionFailed): boolean {
+  if (failure.code === 4) return true
+  const stderr = failure.stderr.toLowerCase()
+  return authenticationFailureMarkers.some((marker) => stderr.includes(marker))
+}
+
+function classifyProcessFailure(cause: unknown): GitHubCliMissing | GitHubAuthenticationRequired | GitHubUnavailable {
+  const failure = parseProcessExecutionFailed(cause)
+  if (failure?.code === "ENOENT") {
+    return { tag: "GitHubCliMissing", message: "GitHub CLI is not installed", cause }
   }
+  if (failure && isAuthenticationFailure(failure)) {
+    return { tag: "GitHubAuthenticationRequired", message: "GitHub CLI authentication required", cause }
+  }
+  return { tag: "GitHubUnavailable", message: "GitHub status unavailable", cause }
 }
 
 function processFailureStdout(cause: unknown): string | undefined {
@@ -320,9 +380,15 @@ export const execFileRunner: ProcessRunner = (file, args, options) =>
         ...(options.signal ? { signal: options.signal } : {}),
         ...(options.cwd ? { cwd: options.cwd } : {}),
       },
-      (error, stdout) => {
+      (error, stdout, stderr) => {
         if (error) {
-          reject(new ProcessExecutionError(error, stdout))
+          reject({
+            tag: "ProcessExecutionFailed",
+            code: error.code ?? null,
+            stderr,
+            stdout,
+            cause: error,
+          } satisfies ProcessExecutionFailed)
           return
         }
         resolve({ stdout })
@@ -341,7 +407,7 @@ export function createGitHubClient(runner: ProcessRunner = execFileRunner): GitH
         args.push("-f", `url${index}=${pullRequest.url}`)
       }
       let stdout: string
-      let executionCause: unknown
+      let processFailure: GitHubCliMissing | GitHubAuthenticationRequired | GitHubUnavailable | undefined
       try {
         const output = await runner("gh", args, options)
         stdout = output.stdout
@@ -356,19 +422,12 @@ export function createGitHubClient(runner: ProcessRunner = execFileRunner): GitH
             },
           }
         }
+        processFailure = classifyProcessFailure(cause)
         const partialStdout = processFailureStdout(cause)
         if (partialStdout !== undefined) {
           stdout = partialStdout
-          executionCause = cause
         } else {
-          return {
-            ok: false,
-            error: {
-              tag: "GitHubUnavailable",
-              message: "GitHub status unavailable",
-              cause,
-            },
-          }
+          return { ok: false, error: processFailure }
         }
       }
 
@@ -376,27 +435,11 @@ export function createGitHubClient(runner: ProcessRunner = execFileRunner): GitH
       try {
         decoded = JSON.parse(stdout)
       } catch {
-        return executionCause === undefined
-          ? invalidGitHubResponse
-          : {
-              ok: false,
-              error: {
-                tag: "GitHubUnavailable",
-                message: "GitHub status unavailable",
-                cause: executionCause,
-              },
-            }
+        return processFailure === undefined ? invalidGitHubResponse : { ok: false, error: processFailure }
       }
       const parsed = parseBatchResponse(decoded, pullRequests)
-      if (executionCause === undefined || parsed.ok) return parsed
-      return {
-        ok: false,
-        error: {
-          tag: "GitHubUnavailable",
-          message: "GitHub status unavailable",
-          cause: executionCause,
-        },
-      }
+      if (processFailure === undefined || parsed.ok) return parsed
+      return { ok: false, error: processFailure }
     },
   }
 }
@@ -413,6 +456,13 @@ const openAppearances = {
   failed: { tone: "red", label: "checks failed", strikethrough: false },
   none: { tone: "gray", label: "no checks", strikethrough: false },
 } satisfies Record<PullRequestCi, StatusAppearance>
+
+const diagnosticLabels = {
+  GitHubCliMissing: "install gh",
+  GitHubAuthenticationRequired: "run gh auth login",
+  GitHubUnavailable: "GitHub unavailable",
+  InvalidGitHubResponse: "invalid GitHub response",
+} satisfies Record<PullRequestDiagnostic, string>
 
 function stateAppearance(state: PullRequestState): StatusAppearance {
   switch (state.tag) {
@@ -438,9 +488,15 @@ function stateAppearance(state: PullRequestState): StatusAppearance {
 
 export function statusAppearance(status: PullRequestStatus): StatusAppearance {
   if (status.tag === "Unavailable") {
-    return { tone: "gray", label: "status unavailable", strikethrough: false }
+    return {
+      tone: "gray",
+      label: status.diagnostic === undefined ? "status unavailable" : diagnosticLabels[status.diagnostic],
+      strikethrough: false,
+    }
   }
 
   const appearance = stateAppearance(status.state)
-  return status.stale ? { ...appearance, label: `${appearance.label} (stale)` } : appearance
+  return status.stale
+    ? { ...appearance, label: `${appearance.label} (stale; ${diagnosticLabels[status.diagnostic]})` }
+    : appearance
 }

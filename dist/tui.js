@@ -1661,6 +1661,18 @@ var pullRequestSelection = `__typename ... on PullRequest { title state url merg
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
+function parseProcessExecutionFailed(value) {
+  if (!isRecord(value) || value.tag !== "ProcessExecutionFailed" || value.code !== null && typeof value.code !== "string" && typeof value.code !== "number" || typeof value.stderr !== "string" || typeof value.stdout !== "string" || !("cause" in value)) {
+    return;
+  }
+  return {
+    tag: "ProcessExecutionFailed",
+    code: value.code,
+    stderr: value.stderr,
+    stdout: value.stdout,
+    cause: value.cause
+  };
+}
 function classifyCountState(state, states) {
   if (states.failed.has(state))
     return "failed";
@@ -1830,17 +1842,25 @@ function parseBatchResponse(input, pullRequests) {
 function isCancellation(cause, signal) {
   if (signal?.aborted)
     return true;
-  return cause instanceof Error && cause.name === "AbortError";
+  const originalCause = parseProcessExecutionFailed(cause)?.cause ?? cause;
+  return originalCause instanceof Error && originalCause.name === "AbortError";
 }
-
-class ProcessExecutionError extends Error {
-  stdout;
-  name;
-  constructor(cause, stdout) {
-    super(cause.message, { cause });
-    this.stdout = stdout;
-    this.name = cause.name;
+var authenticationFailureMarkers = ["http 401", "bad credentials", "not logged into", "gh auth login"];
+function isAuthenticationFailure(failure) {
+  if (failure.code === 4)
+    return true;
+  const stderr = failure.stderr.toLowerCase();
+  return authenticationFailureMarkers.some((marker) => stderr.includes(marker));
+}
+function classifyProcessFailure(cause) {
+  const failure = parseProcessExecutionFailed(cause);
+  if (failure?.code === "ENOENT") {
+    return { tag: "GitHubCliMissing", message: "GitHub CLI is not installed", cause };
   }
+  if (failure && isAuthenticationFailure(failure)) {
+    return { tag: "GitHubAuthenticationRequired", message: "GitHub CLI authentication required", cause };
+  }
+  return { tag: "GitHubUnavailable", message: "GitHub status unavailable", cause };
 }
 function processFailureStdout(cause) {
   if (!isRecord(cause) || typeof cause.stdout !== "string" || cause.stdout.trim() === "")
@@ -1852,9 +1872,15 @@ var execFileRunner = (file, args, options) => new Promise((resolve, reject) => {
     encoding: "utf8",
     ...options.signal ? { signal: options.signal } : {},
     ...options.cwd ? { cwd: options.cwd } : {}
-  }, (error, stdout) => {
+  }, (error, stdout, stderr) => {
     if (error) {
-      reject(new ProcessExecutionError(error, stdout));
+      reject({
+        tag: "ProcessExecutionFailed",
+        code: error.code ?? null,
+        stderr,
+        stdout,
+        cause: error
+      });
       return;
     }
     resolve({ stdout });
@@ -1873,7 +1899,7 @@ function createGitHubClient(runner = execFileRunner) {
         args.push("-f", `url${index}=${pullRequest.url}`);
       }
       let stdout;
-      let executionCause;
+      let processFailure;
       try {
         const output = await runner("gh", args, options);
         stdout = output.stdout;
@@ -1888,45 +1914,24 @@ function createGitHubClient(runner = execFileRunner) {
             }
           };
         }
+        processFailure = classifyProcessFailure(cause);
         const partialStdout = processFailureStdout(cause);
         if (partialStdout !== undefined) {
           stdout = partialStdout;
-          executionCause = cause;
         } else {
-          return {
-            ok: false,
-            error: {
-              tag: "GitHubUnavailable",
-              message: "GitHub status unavailable",
-              cause
-            }
-          };
+          return { ok: false, error: processFailure };
         }
       }
       let decoded;
       try {
         decoded = JSON.parse(stdout);
       } catch {
-        return executionCause === undefined ? invalidGitHubResponse : {
-          ok: false,
-          error: {
-            tag: "GitHubUnavailable",
-            message: "GitHub status unavailable",
-            cause: executionCause
-          }
-        };
+        return processFailure === undefined ? invalidGitHubResponse : { ok: false, error: processFailure };
       }
       const parsed = parseBatchResponse(decoded, pullRequests);
-      if (executionCause === undefined || parsed.ok)
+      if (processFailure === undefined || parsed.ok)
         return parsed;
-      return {
-        ok: false,
-        error: {
-          tag: "GitHubUnavailable",
-          message: "GitHub status unavailable",
-          cause: executionCause
-        }
-      };
+      return { ok: false, error: processFailure };
     }
   };
 }
@@ -1935,6 +1940,12 @@ var openAppearances = {
   pending: { tone: "yellow", label: "checks pending", strikethrough: false },
   failed: { tone: "red", label: "checks failed", strikethrough: false },
   none: { tone: "gray", label: "no checks", strikethrough: false }
+};
+var diagnosticLabels = {
+  GitHubCliMissing: "install gh",
+  GitHubAuthenticationRequired: "run gh auth login",
+  GitHubUnavailable: "GitHub unavailable",
+  InvalidGitHubResponse: "invalid GitHub response"
 };
 function stateAppearance(state) {
   switch (state.tag) {
@@ -1959,10 +1970,14 @@ function stateAppearance(state) {
 }
 function statusAppearance(status) {
   if (status.tag === "Unavailable") {
-    return { tone: "gray", label: "status unavailable", strikethrough: false };
+    return {
+      tone: "gray",
+      label: status.diagnostic === undefined ? "status unavailable" : diagnosticLabels[status.diagnostic],
+      strikethrough: false
+    };
   }
   const appearance = stateAppearance(status.state);
-  return status.stale ? { ...appearance, label: `${appearance.label} (stale)` } : appearance;
+  return status.stale ? { ...appearance, label: `${appearance.label} (stale; ${diagnosticLabels[status.diagnostic]})` } : appearance;
 }
 
 // src/attach.ts
@@ -2329,8 +2344,14 @@ function startSessionPolling(input) {
     const batch = await input.github.get(refreshable.map((attachment) => attachment.pullRequest), {
       signal: controller.signal
     });
-    if (stopped || !batch.ok && batch.error.tag === "GitHubCancelled")
+    if (stopped)
       return;
+    let batchDiagnostic;
+    if (!batch.ok) {
+      if (batch.error.tag === "GitHubCancelled")
+        return;
+      batchDiagnostic = batch.error.tag === "GitHubBatchLimitExceeded" ? "GitHubUnavailable" : batch.error.tag;
+    }
     for (const [index, attachment] of refreshable.entries()) {
       const previous = statuses.get(attachment.pullRequest.url);
       const result = batch.ok ? batch.value[index] : undefined;
@@ -2338,11 +2359,14 @@ function startSessionPolling(input) {
         statuses.set(attachment.pullRequest.url, result.value);
         continue;
       }
+      const diagnostic = result === undefined ? batchDiagnostic ?? "GitHubUnavailable" : result.error.tag;
       statuses.set(attachment.pullRequest.url, previous?.tag === "Available" ? {
         ...previous,
-        stale: true
+        stale: true,
+        diagnostic
       } : {
-        tag: "Unavailable"
+        tag: "Unavailable",
+        diagnostic
       });
     }
     if (!stopped)
@@ -2841,4 +2865,4 @@ export {
   attachPullRequest
 };
 
-//# debugId=C44F820F928FCC5A64756E2164756E21
+//# debugId=73D7339550CD79BA64756E2164756E21

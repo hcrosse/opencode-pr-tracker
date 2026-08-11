@@ -609,7 +609,12 @@ describe("TUI orchestration", () => {
 
     expect(latest.map((item) => item.status)).toMatchObject([
       { tag: "Available", state: { tag: "Open", ci: "failed", mergeability: "mergeable" }, stale: false },
-      { tag: "Available", state: { tag: "Open", ci: "passed", mergeability: "mergeable" }, stale: true },
+      {
+        tag: "Available",
+        state: { tag: "Open", ci: "passed", mergeability: "mergeable" },
+        stale: true,
+        diagnostic: "InvalidGitHubResponse",
+      },
     ])
   })
 
@@ -773,9 +778,9 @@ describe("TUI orchestration", () => {
     expect(calls).toBe(2)
   })
 
-  test("retains the last successful status and marks it stale", async () => {
+  test("retains stale diagnostics and clears them after a successful refresh", async () => {
     let availableResponse = true
-    let latest: readonly { status: { tag: string; stale?: boolean } }[] = []
+    let latest: readonly SidebarPullRequest[] = []
     const polling = startSessionPolling({
       sessionID: "session",
       store: stateStore(),
@@ -788,7 +793,11 @@ describe("TUI orchestration", () => {
               }
             : {
                 ok: false,
-                error: { tag: "GitHubUnavailable", message: "GitHub status unavailable", cause: new Error() },
+                error: {
+                  tag: "GitHubAuthenticationRequired",
+                  message: "GitHub CLI authentication required",
+                  cause: new Error(),
+                },
               }
         },
       },
@@ -806,7 +815,16 @@ describe("TUI orchestration", () => {
     availableResponse = false
     await polling.refresh()
 
-    expect(latest[0]?.status).toMatchObject({ tag: "Available", stale: true })
+    expect(latest[0]?.status).toEqual({
+      ...available(),
+      stale: true,
+      diagnostic: "GitHubAuthenticationRequired",
+    })
+
+    availableResponse = true
+    await polling.refresh()
+
+    expect(latest[0]?.status).toEqual(available())
   })
 
   test("clears published rows when persisted state becomes unreadable", async () => {
