@@ -18,8 +18,8 @@ async function temporaryDirectory(): Promise<string> {
   return directory
 }
 
-function pullRequest(number: number): PullRequestUrl {
-  const result = parsePullRequestUrl(`https://github.com/owner/repository/pull/${number}`)
+function pullRequest(number: number, repository = "repository"): PullRequestUrl {
+  const result = parsePullRequestUrl(`https://github.com/owner/${repository}/pull/${number}`)
   if (!result.ok) throw new Error("test fixture URL is invalid")
   return result.value
 }
@@ -193,6 +193,50 @@ describe("state store", () => {
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error("expected state to be readable")
     expect(new Set(result.value.map((item) => item.pullRequest.number))).toEqual(new Set([1, 2]))
+  })
+
+  test("atomically resolves attach and numeric detach races across stores", async () => {
+    const directory = await temporaryDirectory()
+    const firstStore = createStateStore({ directory })
+    const secondStore = createStateStore({ directory })
+    await firstStore.attach("session", pullRequest(1))
+
+    const [detached, attached] = await Promise.all([
+      firstStore.detachByNumber("session", 1),
+      secondStore.attach("session", pullRequest(1, "another")),
+    ])
+
+    expect(attached).toEqual({ ok: true, value: "added" })
+    expect(detached.ok).toBe(true)
+    if (!detached.ok) throw new Error("expected numeric detach to complete")
+    const current = await firstStore.list("session")
+    if (!current.ok) throw new Error("expected state to be readable")
+    if (detached.value.tag === "removed") {
+      expect(current.value.map((item) => item.pullRequest.url)).toEqual([pullRequest(1, "another").url])
+    } else {
+      expect(detached.value.tag).toBe("ambiguous")
+      expect(new Set(current.value.map((item) => item.pullRequest.url))).toEqual(
+        new Set([pullRequest(1).url, pullRequest(1, "another").url]),
+      )
+    }
+  })
+
+  test("serializes concurrent numeric detaches across stores", async () => {
+    const directory = await temporaryDirectory()
+    const firstStore = createStateStore({ directory })
+    const secondStore = createStateStore({ directory })
+    await firstStore.attach("session", pullRequest(1))
+
+    const results = await Promise.all([
+      firstStore.detachByNumber("session", 1),
+      secondStore.detachByNumber("session", 1),
+    ])
+
+    expect(results.every((result) => result.ok)).toBe(true)
+    expect(new Set(results.map((result) => (result.ok ? result.value.tag : "error")))).toEqual(
+      new Set(["absent", "removed"]),
+    )
+    expect(await firstStore.list("session")).toEqual({ ok: true, value: [] })
   })
 
   test("recovers a stale lock left by a terminated process", async () => {

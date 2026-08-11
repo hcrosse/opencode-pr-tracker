@@ -3,7 +3,11 @@ import { tool, type Hooks, type PluginModule } from "@opencode-ai/plugin"
 import { createStateStore, type AttachFailure, type StateStore } from "./state.js"
 import { formatPullRequestRef, parsePullRequestUrl, type InvalidPullRequestUrl } from "./url.js"
 
-export type PrToolErrorCode = InvalidPullRequestUrl["tag"] | AttachFailure["tag"]
+export type PrToolErrorCode =
+  | InvalidPullRequestUrl["tag"]
+  | AttachFailure["tag"]
+  | "InvalidPullRequestNumber"
+  | "AmbiguousPullRequestNumber"
 
 export class PrToolError extends Error {
   override readonly name = "PrToolError"
@@ -18,6 +22,12 @@ export class PrToolError extends Error {
 
 function toToolError(failure: AttachFailure): PrToolError {
   return new PrToolError(failure.tag, failure.message)
+}
+
+function formatReferenceList(references: readonly string[]): string {
+  if (references.length < 2) return references.join("")
+  if (references.length === 2) return references.join(" and ")
+  return `${references.slice(0, -1).join(", ")}, and ${references.at(-1)}`
 }
 
 export function createServerHooks(store: StateStore): Hooks {
@@ -42,12 +52,36 @@ export function createServerHooks(store: StateStore): Hooks {
         },
       }),
       pr_detach: tool({
-        description: "Detach a canonical GitHub pull request URL from the current OpenCode session.",
+        description: "Detach a pull request from the current OpenCode session by positive number or canonical URL.",
         args: {
-          url: tool.schema.string().describe("A https://github.com/<owner>/<repository>/pull/<number> URL"),
+          pull_request: tool.schema
+            .union([tool.schema.number().int().positive().max(Number.MAX_SAFE_INTEGER), tool.schema.string()])
+            .describe("A positive pull request number or https://github.com/<owner>/<repository>/pull/<number> URL"),
         },
         async execute(args, context) {
-          const pullRequest = parsePullRequestUrl(args.url)
+          if (typeof args.pull_request === "number") {
+            if (!Number.isSafeInteger(args.pull_request) || args.pull_request <= 0) {
+              throw new PrToolError(
+                "InvalidPullRequestNumber",
+                "Expected a positive pull request number or canonical GitHub URL",
+              )
+            }
+            const result = await store.detachByNumber(context.sessionID, args.pull_request)
+            if (!result.ok) throw toToolError(result.error)
+            if (result.value.tag === "absent") {
+              return `Pull request #${args.pull_request} is not attached to this session.`
+            }
+            if (result.value.tag === "ambiguous") {
+              const references = result.value.pullRequests.map(formatPullRequestRef)
+              throw new PrToolError(
+                "AmbiguousPullRequestNumber",
+                `Pull request #${args.pull_request} matches ${formatReferenceList(references)}. Use a canonical GitHub pull request URL.`,
+              )
+            }
+            return `Detached ${formatPullRequestRef(result.value.pullRequest)} from this session.`
+          }
+
+          const pullRequest = parsePullRequestUrl(args.pull_request)
           if (!pullRequest.ok) throw new PrToolError(pullRequest.error.tag, pullRequest.error.message)
 
           const result = await store.detach(context.sessionID, pullRequest.value)

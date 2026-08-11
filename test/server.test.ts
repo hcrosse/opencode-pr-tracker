@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import type { ToolContext } from "@opencode-ai/plugin"
+import { tool, type ToolContext } from "@opencode-ai/plugin"
 
 import serverModule, { createServerHooks, PrToolError } from "../src/server.js"
 import { createStateStore } from "../src/state.js"
@@ -61,15 +61,62 @@ describe("server tools", () => {
 
   test("detaches idempotently from the invoking session", async () => {
     const { tools } = await setup()
-    const args = { url: "https://github.com/owner/repository/pull/2" }
-    await tools.pr_attach!.execute(args, context("session"))
+    const url = "https://github.com/owner/repository/pull/2"
+    await tools.pr_attach!.execute({ url }, context("session"))
 
-    expect(await tools.pr_detach!.execute(args, context("session"))).toBe(
+    expect(await tools.pr_detach!.execute({ pull_request: url }, context("session"))).toBe(
       "Detached owner/repository#2 from this session.",
     )
-    expect(await tools.pr_detach!.execute(args, context("session"))).toBe(
+    expect(await tools.pr_detach!.execute({ pull_request: url }, context("session"))).toBe(
       "owner/repository#2 is not attached to this session.",
     )
+  })
+
+  test("detaches a unique session attachment by pull request number", async () => {
+    const { tools } = await setup()
+    await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/2" }, context("session"))
+
+    expect(await tools.pr_detach!.execute({ pull_request: 2 }, context("session"))).toBe(
+      "Detached owner/repository#2 from this session.",
+    )
+    expect(await tools.pr_detach!.execute({ pull_request: 2 }, context("session"))).toBe(
+      "Pull request #2 is not attached to this session.",
+    )
+  })
+
+  test("rejects ambiguous pull request numbers without detaching", async () => {
+    const { store, tools } = await setup()
+    const session = context("session")
+    await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/2" }, session)
+    await tools.pr_attach!.execute({ url: "https://github.com/another/project/pull/2" }, session)
+
+    expect(tools.pr_detach!.execute({ pull_request: 2 }, session)).rejects.toEqual(
+      new PrToolError(
+        "AmbiguousPullRequestNumber",
+        "Pull request #2 matches owner/repository#2 and another/project#2. Use a canonical GitHub pull request URL.",
+      ),
+    )
+    const attachments = await store.list("session")
+    expect(attachments.ok && attachments.value).toHaveLength(2)
+  })
+
+  test.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])("rejects invalid pull request number %s", async (number) => {
+    const { tools } = await setup()
+
+    expect(tools.pr_detach!.execute({ pull_request: number }, context("session"))).rejects.toEqual(
+      new PrToolError("InvalidPullRequestNumber", "Expected a positive pull request number or canonical GitHub URL"),
+    )
+  })
+
+  test("advertises only positive safe integers or URL strings for detach", async () => {
+    const { tools } = await setup()
+    const schema = tool.schema.object(tools.pr_detach!.args)
+
+    expect(schema.safeParse({ pull_request: 1 }).success).toBe(true)
+    expect(schema.safeParse({ pull_request: "https://github.com/owner/repository/pull/1" }).success).toBe(true)
+    for (const value of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(schema.safeParse({ pull_request: value }).success).toBe(false)
+    }
   })
 
   test("translates invalid input into a structured tool error", async () => {
