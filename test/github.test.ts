@@ -48,6 +48,29 @@ describe("GitHub client", () => {
     ])
   })
 
+  test("returns GitHubCancelled when its signal aborts", async () => {
+    const controller = new AbortController()
+    const cause = new Error("aborted")
+    const client = createGitHubClient(
+      (_file, _args, options) =>
+        new Promise((_resolve, reject) => {
+          options.signal?.addEventListener("abort", () => reject(cause), { once: true })
+        }),
+    )
+
+    const request = client.get(pullRequest, { signal: controller.signal })
+    controller.abort()
+
+    expect(await request).toEqual({
+      ok: false,
+      error: {
+        tag: "GitHubCancelled",
+        message: "GitHub status request cancelled",
+        cause,
+      },
+    })
+  })
+
   test.each([
     { name: "no checks", checks: [], expected: "none" },
     {

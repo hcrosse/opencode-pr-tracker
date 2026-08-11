@@ -98,9 +98,20 @@ function aggregateChecks(input: unknown): Result<PullRequestCi, InvalidGitHubRes
   for (const rawCheck of input) {
     const check = parseCheck(rawCheck)
     if (!check.ok) return check
-    if (check.value === "failed") return { ok: true, value: "failed" }
-    if (check.value === "pending") pending = true
-    if (check.value === "passed") passed = true
+    switch (check.value) {
+      case "failed":
+        return { ok: true, value: "failed" }
+      case "pending":
+        pending = true
+        break
+      case "passed":
+        passed = true
+        break
+      case "ignored":
+        break
+      default:
+        return casesHandled(check.value)
+    }
   }
 
   if (pending) return { ok: true, value: "pending" }

@@ -9,7 +9,13 @@ import {
   startSessionPolling,
   type PollScheduler,
 } from "../src/tui.jsx"
-import type { AvailablePullRequestStatus, GitHubClient, ProcessRunner, PullRequestState } from "../src/github.js"
+import {
+  createGitHubClient,
+  type AvailablePullRequestStatus,
+  type GitHubClient,
+  type ProcessRunner,
+  type PullRequestState,
+} from "../src/github.js"
 import type { PullRequestAttachment, StateStore } from "../src/state.js"
 import { parsePullRequestUrl, type CanonicalPullRequestUrl, type PullRequestUrl } from "../src/url.js"
 
@@ -241,6 +247,43 @@ describe("TUI orchestration", () => {
     expect(published).toHaveLength(2)
     polling.stop()
     expect(scheduler.cleared).toBe(true)
+  })
+
+  test("stop aborts an in-flight GitHub request without publishing its result", async () => {
+    let requestSignal: AbortSignal | undefined
+    let requestStarted: (() => void) | undefined
+    let releaseRequest: ((value: { stdout: string }) => void) | undefined
+    const started = new Promise<void>((resolve) => {
+      requestStarted = resolve
+    })
+    const runner: ProcessRunner = (_file, _args, options) =>
+      new Promise((resolve, reject) => {
+        requestSignal = options.signal
+        releaseRequest = resolve
+        requestStarted?.()
+        options.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true })
+      })
+    const published: unknown[] = []
+    const polling = startSessionPolling({
+      sessionID: "session",
+      store: stateStore(),
+      github: createGitHubClient(runner),
+      scheduler: new RecordingScheduler(),
+      publish: (items) => published.push(items),
+      onStateFailure: () => undefined,
+      onError: (error) => {
+        throw error
+      },
+    })
+
+    const initial = polling.start()
+    await started
+    polling.stop()
+    releaseRequest?.({ stdout: "{}" })
+    await initial
+
+    expect(requestSignal?.aborted).toBe(true)
+    expect(published).toHaveLength(1)
   })
 
   test("owns one interval when the scheduler handle is undefined", async () => {

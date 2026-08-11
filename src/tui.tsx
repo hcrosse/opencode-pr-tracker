@@ -329,11 +329,20 @@ type TuiDependencies = Readonly<{
 }>
 
 function toneColor(theme: TuiPluginApi["theme"]["current"], tone: ReturnType<typeof statusAppearance>["tone"]) {
-  if (tone === "green") return theme.success
-  if (tone === "yellow") return theme.warning
-  if (tone === "red") return theme.error
-  if (tone === "purple") return theme.secondary
-  return theme.textMuted
+  switch (tone) {
+    case "green":
+      return theme.success
+    case "yellow":
+      return theme.warning
+    case "red":
+      return theme.error
+    case "purple":
+      return theme.secondary
+    case "gray":
+      return theme.textMuted
+    default:
+      return casesHandled(tone)
+  }
 }
 
 function PullRequestSidebar(
