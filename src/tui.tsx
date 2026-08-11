@@ -470,9 +470,11 @@ function PullRequestSidebar(
 
 export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): void {
   const refreshBus = createRefreshBus()
-  api.event.on("session.updated", (event) => refreshBus.emit(event.properties.sessionID))
-  api.event.on("message.updated", (event) => refreshBus.emit(event.properties.sessionID))
-  api.event.on("message.part.updated", (event) => refreshBus.emit(event.properties.sessionID))
+  const disposeEvents = [
+    api.event.on("session.updated", (event) => refreshBus.emit(event.properties.sessionID)),
+    api.event.on("message.updated", (event) => refreshBus.emit(event.properties.sessionID)),
+    api.event.on("message.part.updated", (event) => refreshBus.emit(event.properties.sessionID)),
+  ]
   const disposeCommands = api.keymap.registerLayer({
     commands: [
       {
@@ -588,7 +590,10 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): v
     ],
     bindings: [],
   })
-  api.lifecycle.onDispose(disposeCommands)
+  api.lifecycle.onDispose(() => {
+    disposeCommands()
+    for (const disposeEvent of disposeEvents) disposeEvent()
+  })
 
   api.slots.register({
     order: 250,
