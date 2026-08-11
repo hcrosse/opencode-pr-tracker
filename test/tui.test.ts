@@ -329,7 +329,7 @@ describe("TUI orchestration", () => {
     expect(scheduler.intervals).toBe(0)
   })
 
-  test("does not repoll terminal pull requests", async () => {
+  test("does not repoll merged pull requests", async () => {
     let calls = 0
     const polling = startSessionPolling({
       sessionID: "session",
@@ -352,6 +352,39 @@ describe("TUI orchestration", () => {
     await polling.refresh()
 
     expect(calls).toBe(1)
+  })
+
+  test("rechecks closed pull requests and observes reopening", async () => {
+    let calls = 0
+    let latestState: PullRequestState | undefined
+    const polling = startSessionPolling({
+      sessionID: "session",
+      store: stateStore(),
+      github: {
+        async get() {
+          calls += 1
+          return {
+            ok: true,
+            value: available(calls === 1 ? { tag: "Closed" } : { tag: "Open", ci: "pending" }),
+          }
+        },
+      },
+      scheduler: new RecordingScheduler(),
+      publish: (items) => {
+        const status = items[0]?.status
+        if (status?.tag === "Available") latestState = status.state
+      },
+      onStateFailure: () => undefined,
+      onError: (error) => {
+        throw error
+      },
+    })
+
+    await polling.start()
+    await polling.refresh()
+
+    expect(calls).toBe(2)
+    expect(latestState).toEqual({ tag: "Open", ci: "pending" })
   })
 
   test("queues one trailing refresh requested during an active poll", async () => {

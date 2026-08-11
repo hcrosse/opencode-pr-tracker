@@ -109,7 +109,7 @@ export function startSessionPolling(
     await Promise.all(
       attachments.value.map(async (attachment) => {
         const previous = statuses.get(attachment.pullRequest.url)
-        if (previous?.tag === "Available" && previous.state.tag !== "Open") return
+        if (previous?.tag === "Available" && previous.state.tag === "Merged") return
 
         const result = await input.github.get(attachment.pullRequest, { signal: controller.signal })
         if (stopped || (!result.ok && result.error.tag === "GitHubCancelled")) return
