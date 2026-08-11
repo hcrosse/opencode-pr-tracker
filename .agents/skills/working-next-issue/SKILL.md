@@ -9,7 +9,7 @@ Use one issue, one Git-created worktree, and one pull request. Preserve every un
 
 ## Workflow
 
-1. Verify each currently attached pull request is merged. Detach merged pull requests with `pr_detach`; leave open or uncertain pull requests attached.
+1. Build the attachment list from pull request URLs supplied by the user or already known in the conversation. `pr_detach` cannot enumerate attachments, so ask for the list when it may be incomplete. Verify each listed pull request is merged, detach merged pull requests with `pr_detach`, and leave open or uncertain pull requests attached. Never claim all attachments are cleaned up without a complete list.
 2. Fetch the remote default branch without changing the primary checkout. List open issues with comments, assignees, and linked pull requests, then inspect suitable candidates. An issue is claimed if it has a `CLAIMED` comment, an assignee, a linked implementation pull request, or an active issue-specific worktree.
 3. Re-read the selected issue immediately before claiming it. If it is still unclaimed, post exactly `CLAIMED`, with no extra text. Re-read it afterward; the earliest claim wins. If another claim won the race, remove or retract only your claim and choose another issue.
 4. Set the Herdr session title to one lowercase word derived from the issue, such as `blockers`. If the Herdr title integration is unavailable, report that limitation instead of substituting another title mechanism.
@@ -22,6 +22,7 @@ Use one issue, one Git-created worktree, and one pull request. Preserve every un
 ## Stop Conditions
 
 - No suitable unclaimed issue exists.
+- The attached pull request list cannot be established.
 - A claim race cannot be resolved safely.
 - The selected issue lacks enough information to define correct behavior.
 - Required verification cannot run and the remaining risk is material.
