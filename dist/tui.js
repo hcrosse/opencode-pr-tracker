@@ -1848,7 +1848,11 @@ function processFailureStdout(cause) {
   return cause.stdout;
 }
 var execFileRunner = (file, args, options) => new Promise((resolve, reject) => {
-  execFile(file, [...args], { encoding: "utf8", ...options.signal ? { signal: options.signal } : {} }, (error, stdout) => {
+  execFile(file, [...args], {
+    encoding: "utf8",
+    ...options.signal ? { signal: options.signal } : {},
+    ...options.cwd ? { cwd: options.cwd } : {}
+  }, (error, stdout) => {
     if (error) {
       reject(new ProcessExecutionError(error, stdout));
       return;
@@ -1959,6 +1963,65 @@ function statusAppearance(status) {
   }
   const appearance = stateAppearance(status.state);
   return status.stale ? { ...appearance, label: `${appearance.label} (stale)` } : appearance;
+}
+
+// src/attach.ts
+var invalidPullRequestInput = {
+  ok: false,
+  error: {
+    tag: "InvalidPullRequestInput",
+    message: "Expected https://github.com/<owner>/<repository>/pull/<positive-integer> or a positive pull request number"
+  }
+};
+var repositoryResolutionFailed = {
+  tag: "RepositoryResolutionFailed",
+  message: "Unable to resolve the current GitHub repository with gh; attach with a full URL instead"
+};
+var repositoryResolutionCancelled = {
+  ok: false,
+  error: { tag: "RepositoryResolutionCancelled" }
+};
+function isCancellation2(cause, signal) {
+  if (signal?.aborted)
+    return true;
+  return cause instanceof Error && cause.name === "AbortError";
+}
+function parseRepositoryPullRequest(stdout, number) {
+  let decoded;
+  try {
+    decoded = JSON.parse(stdout);
+  } catch {
+    return { ok: false, error: repositoryResolutionFailed };
+  }
+  if (decoded === null || typeof decoded !== "object" || !("url" in decoded) || typeof decoded.url !== "string" || decoded.url === "") {
+    return { ok: false, error: repositoryResolutionFailed };
+  }
+  const repositoryUrl = decoded.url.endsWith("/") ? decoded.url.slice(0, -1) : decoded.url;
+  const pullRequest = parsePullRequestUrl(`${repositoryUrl}/pull/${number}`);
+  return pullRequest.ok ? pullRequest : { ok: false, error: repositoryResolutionFailed };
+}
+async function resolvePullRequestInput(input, options) {
+  const direct = parsePullRequestUrl(input);
+  if (direct.ok)
+    return direct;
+  if (input.trim() !== input || !/^\d+$/.test(input))
+    return invalidPullRequestInput;
+  const number = Number(input);
+  if (!Number.isSafeInteger(number) || number <= 0)
+    return invalidPullRequestInput;
+  let stdout;
+  try {
+    const result = await (options.runner ?? execFileRunner)("gh", ["repo", "view", "--json", "url"], {
+      cwd: options.directory,
+      ...options.signal ? { signal: options.signal } : {}
+    });
+    stdout = result.stdout;
+  } catch (cause) {
+    if (isCancellation2(cause, options.signal))
+      return repositoryResolutionCancelled;
+    return { ok: false, error: { ...repositoryResolutionFailed, cause } };
+  }
+  return parseRepositoryPullRequest(stdout, number);
 }
 
 // src/state.ts
@@ -2359,42 +2422,70 @@ function currentSessionID(api) {
     return;
   return typeof route.params?.sessionID === "string" ? route.params.sessionID : undefined;
 }
-function promptForPullRequest(api) {
+function promptForPullRequest(api, options) {
   return new Promise((resolve) => {
+    const controller = new AbortController;
+    const signal = AbortSignal.any([options.signal, controller.signal]);
     let finished = false;
     const finish = (value) => {
       if (finished)
         return;
       finished = true;
+      controller.abort();
       api.ui.dialog.clear();
       resolve(value);
     };
     api.ui.dialog.setSize("medium");
     api.ui.dialog.replace(() => {
       const [error, setError] = createSignal();
+      const [busy, setBusy] = createSignal(false);
       const DialogPrompt = api.ui.DialogPrompt;
       return _$createComponent(DialogPrompt, {
         title: "Attach pull request",
-        placeholder: "https://github.com/owner/repository/pull/123",
+        placeholder: "https://github.com/owner/repository/pull/123 or 123",
         description: () => error() ? (() => {
           var _el$ = _$createElement("text");
           _$insert(_el$, error);
           _$effect((_$p) => _$setProp(_el$, "fg", api.theme.current.error, _$p));
           return _el$;
         })() : null,
+        get busy() {
+          return busy();
+        },
+        busyText: "Resolving repository",
         onConfirm: (value) => {
-          const parsed = parsePullRequestUrl(value);
-          if (!parsed.ok) {
-            setError(parsed.error.message);
+          if (busy())
             return;
-          }
-          finish(parsed.value);
+          setBusy(true);
+          resolvePullRequestInput(value, {
+            directory: options.directory,
+            ...options.runner ? {
+              runner: options.runner
+            } : {},
+            signal
+          }).then((result) => {
+            if (finished)
+              return;
+            setBusy(false);
+            if (result.ok) {
+              finish(result.value);
+              return;
+            }
+            if (result.error.tag === "RepositoryResolutionCancelled") {
+              finish(undefined);
+              return;
+            }
+            setError(result.error.message);
+          });
         },
         onCancel: () => finish(undefined)
       });
     }, () => {
-      if (!finished)
-        resolve(undefined);
+      if (finished)
+        return;
+      finished = true;
+      controller.abort();
+      resolve(undefined);
     });
   });
 }
@@ -2573,7 +2664,13 @@ function registerTui(api, dependencies) {
           });
           return;
         }
-        const pullRequest = await promptForPullRequest(api);
+        const pullRequest = await promptForPullRequest(api, {
+          directory: api.state.path.directory,
+          ...dependencies.runner ? {
+            runner: dependencies.runner
+          } : {},
+          signal: api.lifecycle.signal
+        });
         if (pullRequest === undefined)
           return;
         const result = await dependencies.store.attach(sessionID, pullRequest);
@@ -2720,4 +2817,4 @@ export {
   attachPullRequest
 };
 
-//# debugId=AFE874DE07504C4E64756E2164756E21
+//# debugId=3470154B1B88D10764756E2164756E21

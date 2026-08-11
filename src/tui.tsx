@@ -3,6 +3,7 @@ import { TextAttributes } from "@opentui/core"
 import type { TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { createSignal, onCleanup } from "solid-js"
 
+import { resolvePullRequestInput } from "./attach.js"
 import {
   createGitHubClient,
   execFileRunner,
@@ -248,12 +249,22 @@ function currentSessionID(api: TuiPluginApi): string | undefined {
   return typeof route.params?.sessionID === "string" ? route.params.sessionID : undefined
 }
 
-function promptForPullRequest(api: TuiPluginApi): Promise<PullRequestUrl | undefined> {
+function promptForPullRequest(
+  api: TuiPluginApi,
+  options: Readonly<{
+    directory: string
+    runner?: ProcessRunner
+    signal: AbortSignal
+  }>,
+): Promise<PullRequestUrl | undefined> {
   return new Promise((resolve) => {
+    const controller = new AbortController()
+    const signal = AbortSignal.any([options.signal, controller.signal])
     let finished = false
     const finish = (value: PullRequestUrl | undefined) => {
       if (finished) return
       finished = true
+      controller.abort()
       api.ui.dialog.clear()
       resolve(value)
     }
@@ -262,26 +273,45 @@ function promptForPullRequest(api: TuiPluginApi): Promise<PullRequestUrl | undef
     api.ui.dialog.replace(
       () => {
         const [error, setError] = createSignal<string>()
+        const [busy, setBusy] = createSignal(false)
         const DialogPrompt = api.ui.DialogPrompt
         return (
           <DialogPrompt
             title="Attach pull request"
-            placeholder="https://github.com/owner/repository/pull/123"
+            placeholder="https://github.com/owner/repository/pull/123 or 123"
             description={() => (error() ? <text fg={api.theme.current.error}>{error()}</text> : null)}
+            busy={busy()}
+            busyText="Resolving repository"
             onConfirm={(value) => {
-              const parsed = parsePullRequestUrl(value)
-              if (!parsed.ok) {
-                setError(parsed.error.message)
-                return
-              }
-              finish(parsed.value)
+              if (busy()) return
+              setBusy(true)
+              void resolvePullRequestInput(value, {
+                directory: options.directory,
+                ...(options.runner ? { runner: options.runner } : {}),
+                signal,
+              }).then((result) => {
+                if (finished) return
+                setBusy(false)
+                if (result.ok) {
+                  finish(result.value)
+                  return
+                }
+                if (result.error.tag === "RepositoryResolutionCancelled") {
+                  finish(undefined)
+                  return
+                }
+                setError(result.error.message)
+              })
             }}
             onCancel={() => finish(undefined)}
           />
         )
       },
       () => {
-        if (!finished) resolve(undefined)
+        if (finished) return
+        finished = true
+        controller.abort()
+        resolve(undefined)
       },
     )
   })
@@ -450,7 +480,11 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): v
             api.ui.toast({ variant: "warning", title: "Pull request tracker", message: "Open a session first" })
             return
           }
-          const pullRequest = await promptForPullRequest(api)
+          const pullRequest = await promptForPullRequest(api, {
+            directory: api.state.path.directory,
+            ...(dependencies.runner ? { runner: dependencies.runner } : {}),
+            signal: api.lifecycle.signal,
+          })
           if (pullRequest === undefined) return
 
           const result = await dependencies.store.attach(sessionID, pullRequest)
