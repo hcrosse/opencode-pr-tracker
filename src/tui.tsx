@@ -21,6 +21,7 @@ import {
 import {
   formatPullRequestRef,
   parsePullRequestUrl,
+  type CanonicalPullRequestUrl,
   type InvalidPullRequestUrl,
   type PullRequestUrl,
   type Result,
@@ -73,7 +74,7 @@ export function startSessionPolling(
   }>,
 ): SessionPolling {
   const scheduler = input.scheduler ?? defaultScheduler
-  const statuses = new Map<string, PullRequestStatus>()
+  const statuses = new Map<CanonicalPullRequestUrl, PullRequestStatus>()
   const controller = new AbortController()
   let timer: unknown
   let stopped = false
@@ -96,7 +97,9 @@ export function startSessionPolling(
       return
     }
 
-    const attachedUrls = new Set<string>(attachments.value.map((attachment) => attachment.pullRequest.url))
+    const attachedUrls = new Set<CanonicalPullRequestUrl>(
+      attachments.value.map((attachment) => attachment.pullRequest.url),
+    )
     for (const url of statuses.keys()) {
       if (!attachedUrls.has(url)) statuses.delete(url)
     }

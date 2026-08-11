@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { formatPullRequestRef, parsePullRequestUrl } from "../src/url.js"
+import { formatPullRequestRef, parsePullRequestUrl, type PullRequestUrl } from "../src/url.js"
 
 describe("parsePullRequestUrl", () => {
   test("parses and canonicalizes a GitHub pull request URL", () => {
@@ -13,6 +13,15 @@ describe("parsePullRequestUrl", () => {
     expect(result.value.repository).toBe("OpenCode")
     expect(result.value.number).toBe(42)
     expect(formatPullRequestRef(result.value)).toBe("OpenCode-AI/OpenCode#42")
+
+    // @ts-expect-error -- PullRequestUrl can only be constructed by parsePullRequestUrl
+    const reconstructed: PullRequestUrl = {
+      url: result.value.url,
+      owner: result.value.owner,
+      repository: result.value.repository,
+      number: result.value.number,
+    }
+    void reconstructed
   })
 
   test.each([

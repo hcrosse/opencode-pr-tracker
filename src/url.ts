@@ -1,4 +1,5 @@
 declare const pullRequestUrlBrand: unique symbol
+declare const pullRequestBrand: unique symbol
 
 export type CanonicalPullRequestUrl = string & {
   readonly [pullRequestUrlBrand]: "CanonicalPullRequestUrl"
@@ -9,6 +10,7 @@ export type PullRequestUrl = Readonly<{
   owner: string
   repository: string
   number: number
+  readonly [pullRequestBrand]: "PullRequestUrl"
 }>
 
 export type InvalidPullRequestUrl = Readonly<{
@@ -38,8 +40,8 @@ export function parsePullRequestUrl(input: string): Result<PullRequestUrl, Inval
     return invalidPullRequestUrl
   }
 
-  const rawPath = input.slice(authorityEnd).split(/[?#]/, 1)[0]
-  for (const segment of rawPath?.split("/") ?? []) {
+  const rawPath = input.slice(authorityEnd).split(/[?#]/, 1).join("")
+  for (const segment of rawPath.split("/")) {
     let decoded: string
     try {
       decoded = decodeURIComponent(segment)
@@ -93,10 +95,10 @@ export function parsePullRequestUrl(input: string): Result<PullRequestUrl, Inval
   // SAFETY: every URL component passed the canonical GitHub PR checks above.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the parser establishes the brand invariant
   const url = `https://github.com/${owner}/${repository}/pull/${number}` as CanonicalPullRequestUrl
-  return {
-    ok: true,
-    value: { url, owner, repository, number },
-  }
+  const value = { url, owner, repository, number }
+  // SAFETY: the parser established canonical URL and component consistency.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- parser establishes the object brand
+  return { ok: true, value: value as PullRequestUrl }
 }
 
 export function formatPullRequestRef(pullRequest: PullRequestUrl): string {

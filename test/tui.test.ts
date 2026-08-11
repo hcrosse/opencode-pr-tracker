@@ -11,11 +11,12 @@ import {
 } from "../src/tui.jsx"
 import type { AvailablePullRequestStatus, GitHubClient, ProcessRunner } from "../src/github.js"
 import type { PullRequestAttachment, StateStore } from "../src/state.js"
-import { parsePullRequestUrl } from "../src/url.js"
+import { parsePullRequestUrl, type CanonicalPullRequestUrl } from "../src/url.js"
 
 const parsed = parsePullRequestUrl("https://github.com/owner/repository/pull/42")
 if (!parsed.ok) throw new Error("test fixture URL is invalid")
 const pullRequest = parsed.value
+const canonicalPullRequestUrl: CanonicalPullRequestUrl = pullRequest.url
 const attachment: PullRequestAttachment = {
   pullRequest,
   attachedAt: "2026-08-10T12:00:00.000Z",
@@ -122,8 +123,8 @@ describe("TUI orchestration", () => {
       ok: false,
       error: { tag: "InvalidPullRequestUrl" },
     })
-    expect(await attachPullRequest(store, "session", pullRequest.url)).toEqual({ ok: true, value: "added" })
-    expect(attached).toEqual([`session:${pullRequest.url}`])
+    expect(await attachPullRequest(store, "session", canonicalPullRequestUrl)).toEqual({ ok: true, value: "added" })
+    expect(attached).toEqual([`session:${canonicalPullRequestUrl}`])
   })
 
   test("polls immediately every sixty seconds and stops cleanly", async () => {
