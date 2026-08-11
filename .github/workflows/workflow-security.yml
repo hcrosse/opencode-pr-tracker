@@ -36,13 +36,11 @@ jobs:
         run: ./actionlint -shellcheck= -pyflakes=
 
       - name: Run zizmor
-        run: |
-          docker run --rm \
-            --volume "${GITHUB_WORKSPACE}:/workspace:ro" \
-            --workdir /workspace \
-            ghcr.io/zizmorcore/zizmor:1.29.0@sha256:863026d54f91271b10b60b67ad8054cb37120167e162482597db102b3026a284 \
-            --persona=regular \
-            --no-online-audits \
-            --color=always \
-            -- \
-            .github/workflows
+        uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
+        with:
+          version: 1.29.0
+          inputs: .github/workflows
+          persona: regular
+          online-audits: false
+          advanced-security: false
+          annotations: false
