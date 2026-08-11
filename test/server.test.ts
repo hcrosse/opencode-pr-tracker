@@ -75,6 +75,9 @@ describe("server tools", () => {
     expect(attachments.ok && String(attachments.value[0]?.pullRequest.url)).toBe(
       "https://github.com/owner/repository/pull/1",
     )
+    expect(await tools.pr_list!.execute({}, context("session-one"))).toBe(
+      "Attached pull requests:\n- https://github.com/owner/repository/pull/1",
+    )
 
     const first = attachments
     const second = await store.list("session-two")
@@ -183,7 +186,10 @@ describe("server tools", () => {
     const { tools } = await setup()
 
     expect(tools.pr_detach!.execute({ pull_request: number }, context("session"))).rejects.toEqual(
-      new PrToolError("InvalidPullRequestNumber", "Expected a positive pull request number or canonical GitHub URL"),
+      new PrToolError(
+        "InvalidPullRequestNumber",
+        "Expected 123, https://github.com/owner/repository/pull/123, or github.com/owner/repository/pull/123",
+      ),
     )
   })
 

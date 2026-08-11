@@ -85,7 +85,7 @@ export function createServerHooks(store: StateStore): Hooks {
             if (!Number.isSafeInteger(args.pull_request) || args.pull_request <= 0) {
               throw new PrToolError(
                 "InvalidPullRequestNumber",
-                "Expected a positive pull request number or canonical GitHub URL",
+                "Expected 123, https://github.com/owner/repository/pull/123, or github.com/owner/repository/pull/123",
               )
             }
             const result = await store.detachByNumber(context.sessionID, args.pull_request)
