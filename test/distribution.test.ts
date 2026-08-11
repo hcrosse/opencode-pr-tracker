@@ -29,3 +29,19 @@ test("the TUI bundle uses OpenTUI's reactive Solid transform", async () => {
   expect(source).toContain("=> items().map")
   expect(source).not.toContain('jsxDEV("box"')
 })
+
+test("the package exposes the public OpenCode plugin", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"))
+
+  expect(manifest).toMatchObject({
+    name: "@hcrosse/opencode-pr-tracker",
+    main: "./dist/server.js",
+    exports: {
+      "./server": { import: "./dist/server.js" },
+      "./tui": { import: "./dist/tui.js" },
+    },
+    files: ["dist", "README.md", "LICENSE"],
+    publishConfig: { access: "public" },
+    engines: { node: ">=22.12.0", opencode: ">=1.18.15 <2" },
+  })
+})
