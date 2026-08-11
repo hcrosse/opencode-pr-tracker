@@ -283,11 +283,14 @@ try {
   try {
     await waitForServer(`http://127.0.0.1:${port}/global/health`, server)
     console.log(`[smoke] OpenCode server ready in ${((performance.now() - serverStartedAt) / 1000).toFixed(1)}s`)
+    const toolIdsStartedAt = performance.now()
+    console.log("[smoke] load plugin tool IDs")
     const response = await fetch(
       `http://127.0.0.1:${port}/experimental/tool/ids?directory=${encodeURIComponent(projectDirectory)}`,
     )
     if (!response.ok) throw new Error(`OpenCode tool endpoint returned HTTP ${response.status}`)
     assertTools(await response.json())
+    console.log(`[smoke] plugin tool IDs loaded in ${((performance.now() - toolIdsStartedAt) / 1000).toFixed(1)}s`)
   } catch (error) {
     serverFailure = error
   } finally {
