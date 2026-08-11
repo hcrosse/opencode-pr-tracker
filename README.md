@@ -27,6 +27,18 @@ opencode plugin @hcrosse/opencode-pr-tracker@0.1.0
 
 Restart OpenCode after installation.
 
+## Update
+
+OpenCode caches installed npm plugins and does not update them automatically.
+Install each new release by its exact version with `--force`:
+
+```sh
+opencode plugin @hcrosse/opencode-pr-tracker@0.2.0 --global --force
+```
+
+Replace `0.2.0` with the version you want. Omit `--global` for a plugin installed
+in the current project.
+
 ## Commands
 
 - `/pr-attach` accepts a canonical pull request URL or a positive pull request number for the current GitHub repository.

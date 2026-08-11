@@ -122,11 +122,16 @@ describe("TUI orchestration", () => {
     let slots: Record<string, unknown> | undefined
     const disposers: Array<() => void> = []
     const events: string[] = []
+    const eventHandlers = new Map<string, (event: { properties: { sessionID: string } }) => void>()
+    const disposedEvents: string[] = []
+    let commandsDisposed = false
     const api = {
       keymap: {
         registerLayer(value: typeof layer) {
           layer = value
-          return () => undefined
+          return () => {
+            commandsDisposed = true
+          }
         },
       },
       slots: {
@@ -143,9 +148,12 @@ describe("TUI orchestration", () => {
         },
       },
       event: {
-        on(type: string) {
+        on(type: string, handler: (event: { properties: { sessionID: string } }) => void) {
           events.push(type)
-          return () => undefined
+          eventHandlers.set(type, handler)
+          return () => {
+            disposedEvents.push(type)
+          }
         },
       },
     } as unknown as TuiPluginApi
@@ -161,6 +169,14 @@ describe("TUI orchestration", () => {
     expect(slots).toHaveProperty("sidebar_content")
     expect(disposers).toHaveLength(1)
     expect(events).toEqual(["session.updated", "message.updated", "message.part.updated"])
+    for (const event of events) {
+      expect(() => eventHandlers.get(event)?.({ properties: { sessionID: "session" } })).not.toThrow()
+    }
+
+    disposers[0]?.()
+
+    expect(commandsDisposed).toBe(true)
+    expect(disposedEvents).toEqual(["session.updated", "message.updated", "message.part.updated"])
   })
 
   test("validates and attaches manual input through the shared state store", async () => {

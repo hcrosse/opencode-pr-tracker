@@ -101,6 +101,45 @@ describe("state store", () => {
     )
   })
 
+  test("treats pull request casing variants as one attachment", async () => {
+    const directory = await temporaryDirectory()
+    const store = createStateStore({ directory })
+    const mixedCase = parsePullRequestUrl("https://github.com/Owner/Repository/pull/1")
+    if (!mixedCase.ok) throw new Error("test fixture URL is invalid")
+
+    expect(await store.attach("session", mixedCase.value)).toEqual({ ok: true, value: "added" })
+    expect(await store.attach("session", pullRequest(1))).toEqual({ ok: true, value: "already_attached" })
+    expect(await store.detach("session", mixedCase.value)).toEqual({ ok: true, value: "removed" })
+    expect(await store.list("session")).toEqual({ ok: true, value: [] })
+  })
+
+  test("rejects persisted pull request URLs with non-normalized casing", async () => {
+    const directory = await temporaryDirectory()
+    const store = createStateStore({ directory })
+    await store.attach("session", pullRequest(1))
+    const [file] = await readdir(directory)
+    await writeFile(
+      join(directory, file!),
+      `${JSON.stringify({
+        version: 1,
+        pullRequests: [
+          {
+            url: "https://github.com/Owner/Repository/pull/1",
+            attachedAt: "2026-08-10T12:00:00.000Z",
+          },
+        ],
+      })}\n`,
+    )
+
+    expect(await store.list("session")).toEqual({
+      ok: false,
+      error: {
+        tag: "InvalidStateFile",
+        message: "The session pull request state file is invalid",
+      },
+    })
+  })
+
   test("keeps opaque session IDs inside the configured directory", async () => {
     const directory = await temporaryDirectory()
     const store = createStateStore({ directory })

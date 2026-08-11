@@ -8,11 +8,11 @@ describe("parsePullRequestUrl", () => {
 
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error("expected URL to parse")
-    expect(String(result.value.url)).toBe("https://github.com/OpenCode-AI/OpenCode/pull/42")
-    expect(result.value.owner).toBe("OpenCode-AI")
-    expect(result.value.repository).toBe("OpenCode")
+    expect(String(result.value.url)).toBe("https://github.com/opencode-ai/opencode/pull/42")
+    expect(result.value.owner).toBe("opencode-ai")
+    expect(result.value.repository).toBe("opencode")
     expect(result.value.number).toBe(42)
-    expect(formatPullRequestRef(result.value)).toBe("OpenCode-AI/OpenCode#42")
+    expect(formatPullRequestRef(result.value)).toBe("opencode-ai/opencode#42")
 
     // @ts-expect-error -- PullRequestUrl can only be constructed by parsePullRequestUrl
     const reconstructed: PullRequestUrl = {
@@ -43,6 +43,9 @@ describe("parsePullRequestUrl", () => {
     "https://github.com/owner/repo/pull/1#discussion",
     "https://github.com/ignored/../owner/repo/pull/1",
     "https://github.com/ignored/%2e%2e/owner/repo/pull/1",
+    "https://github.com/owner\\repo/pull/1",
+    "https://github.com/owner/repo\\pull\\1",
+    "https://github.com/ignored\\..\\owner/repo/pull/1",
     "https://github.com/owner%2Frepo/project/pull/1",
     "https://github.com/owner/repo%2Fproject/pull/1",
     " https://github.com/owner/repo/pull/1",
