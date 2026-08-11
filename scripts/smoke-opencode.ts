@@ -159,6 +159,7 @@ const commands = new Map(
 )
 const expected = [
   { name: "pr.attach", slashName: "pr-attach" },
+  { name: "pr.open", slashName: "pr-open" },
   { name: "pr.detach", slashName: "pr-detach" },
 ]
 for (const command of expected) {

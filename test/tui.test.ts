@@ -120,6 +120,7 @@ describe("TUI orchestration", () => {
 
     expect(layer?.commands.map(({ name, slashName }) => ({ name, slashName }))).toEqual([
       { name: "pr.attach", slashName: "pr-attach" },
+      { name: "pr.open", slashName: "pr-open" },
       { name: "pr.detach", slashName: "pr-detach" },
     ])
     expect(slots).toHaveProperty("sidebar_content")
@@ -145,10 +146,12 @@ describe("TUI orchestration", () => {
     expect(attached).toEqual([`session:${canonicalPullRequestUrl}`])
   })
 
-  test("preserves attach and detach command toast messages", async () => {
+  test("runs attach, open, and detach commands through shared seams", async () => {
     type Command = Readonly<{ name: string; run(): Promise<void> }>
     const commands = new Map<string, Command>()
     const toasts: string[] = []
+    const dialogTitles: string[] = []
+    const processCalls: Array<{ file: string; args: readonly string[]; signal: AbortSignal | undefined }> = []
     let attachCalls = 0
     let detachCalls = 0
     const store: StateStore = {
@@ -184,6 +187,129 @@ describe("TUI orchestration", () => {
           return null
         },
         DialogSelect(props: {
+          title: string
+          options: readonly { value: PullRequestUrl }[]
+          onSelect(value: { value: PullRequestUrl }): void
+        }) {
+          dialogTitles.push(props.title)
+          props.onSelect(props.options[0]!)
+          return null
+        },
+        dialog: {
+          clear() {},
+          setSize() {},
+          replace(render: () => unknown) {
+            render()
+          },
+        },
+        toast(input: { message: string }) {
+          toasts.push(input.message)
+        },
+      },
+    } as unknown as TuiPluginApi
+    const runner: ProcessRunner = async (file, args, options) => {
+      processCalls.push({ file, args, signal: options.signal })
+      return { stdout: "" }
+    }
+
+    registerTui(api, { store, github: { get: async () => ({ ok: true, value: available() }) }, runner })
+
+    await commands.get("pr.attach")!.run()
+    await commands.get("pr.attach")!.run()
+    await commands.get("pr.open")!.run()
+    await commands.get("pr.detach")!.run()
+    await commands.get("pr.detach")!.run()
+
+    expect(dialogTitles).toEqual(["Open pull request", "Detach pull request", "Detach pull request"])
+    expect(processCalls).toEqual([
+      {
+        file: process.platform === "darwin" ? "open" : "xdg-open",
+        args: [pullRequest.url],
+        signal: api.lifecycle.signal,
+      },
+    ])
+    expect(toasts).toEqual([
+      "Attached owner/repository#42",
+      "owner/repository#42 is already attached",
+      "Detached owner/repository#42",
+      "owner/repository#42 was not attached",
+    ])
+  })
+
+  test("warns when the open command has no session or attachments", async () => {
+    type Command = Readonly<{ name: string; run(): Promise<void> }>
+    const commands = new Map<string, Command>()
+    const toasts: string[] = []
+    let currentRoute: unknown = { name: "home" }
+    const api = {
+      route: {
+        get current() {
+          return currentRoute
+        },
+      },
+      keymap: {
+        registerLayer(layer: { commands: Command[] }) {
+          for (const command of layer.commands) commands.set(command.name, command)
+          return () => undefined
+        },
+      },
+      slots: { register: () => "pr-tracker" },
+      lifecycle: {
+        signal: new AbortController().signal,
+        onDispose: () => () => undefined,
+      },
+      event: { on: () => () => undefined },
+      ui: {
+        toast(input: { message: string }) {
+          toasts.push(input.message)
+        },
+      },
+    } as unknown as TuiPluginApi
+
+    registerTui(api, { store: stateStore([]), github: { get: async () => ({ ok: true, value: available() }) } })
+
+    await commands.get("pr.open")!.run()
+    currentRoute = { name: "session", params: { sessionID: "session" } }
+    await commands.get("pr.open")!.run()
+
+    expect(toasts).toEqual(["Open a session first", "No pull requests are attached"])
+  })
+
+  test("reports state and browser failures from the open command", async () => {
+    type Command = Readonly<{ name: string; run(): Promise<void> }>
+    const commands = new Map<string, Command>()
+    const toasts: string[] = []
+    let readable = false
+    const store: StateStore = {
+      ...stateStore(),
+      async list() {
+        return readable
+          ? { ok: true, value: [attachment] }
+          : {
+              ok: false,
+              error: {
+                tag: "InvalidStateFile",
+                message: "The session pull request state file is invalid",
+              },
+            }
+      },
+    }
+    const api = {
+      route: { current: { name: "session", params: { sessionID: "session" } } },
+      keymap: {
+        registerLayer(layer: { commands: Command[] }) {
+          for (const command of layer.commands) commands.set(command.name, command)
+          return () => undefined
+        },
+      },
+      slots: { register: () => "pr-tracker" },
+      lifecycle: {
+        signal: new AbortController().signal,
+        onDispose: () => () => undefined,
+      },
+      event: { on: () => () => undefined },
+      ui: {
+        DialogSelect(props: {
           options: readonly { value: PullRequestUrl }[]
           onSelect(value: { value: PullRequestUrl }): void
         }) {
@@ -202,20 +328,18 @@ describe("TUI orchestration", () => {
         },
       },
     } as unknown as TuiPluginApi
+    const cause = new Error("process failed")
+    const runner: ProcessRunner = async () => {
+      throw cause
+    }
 
-    registerTui(api, { store, github: { get: async () => ({ ok: true, value: available() }) } })
+    registerTui(api, { store, github: { get: async () => ({ ok: true, value: available() }) }, runner })
 
-    await commands.get("pr.attach")!.run()
-    await commands.get("pr.attach")!.run()
-    await commands.get("pr.detach")!.run()
-    await commands.get("pr.detach")!.run()
+    await commands.get("pr.open")!.run()
+    readable = true
+    await commands.get("pr.open")!.run()
 
-    expect(toasts).toEqual([
-      "Attached owner/repository#42",
-      "owner/repository#42 is already attached",
-      "Detached owner/repository#42",
-      "owner/repository#42 was not attached",
-    ])
+    expect(toasts).toEqual(["The session pull request state file is invalid", "Unable to open the pull request"])
   })
 
   test("polls immediately every sixty seconds and stops cleanly", async () => {

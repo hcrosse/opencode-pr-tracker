@@ -47,6 +47,7 @@ Restart OpenCode after changing either file.
 ## Commands
 
 - `/pr-attach` prompts for a pull request URL and attaches it to the current session.
+- `/pr-open` lets you select and open an attached pull request.
 - `/pr-detach` lets you select and remove an attached pull request.
 - Agents can use the `pr_attach` and `pr_detach` tools when the server plugin is enabled.
 

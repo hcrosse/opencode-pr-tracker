@@ -2243,7 +2243,7 @@ function promptForPullRequest(api) {
     });
   });
 }
-function selectPullRequest(api, attachments) {
+function selectPullRequest(api, title, attachments) {
   return new Promise((resolve) => {
     let finished = false;
     const finish = (value) => {
@@ -2257,7 +2257,7 @@ function selectPullRequest(api, attachments) {
     api.ui.dialog.replace(() => {
       const DialogSelect = api.ui.DialogSelect;
       return _$createComponent(DialogSelect, {
-        title: "Detach pull request",
+        title,
         get options() {
           return attachments.map((attachment) => ({
             title: formatPullRequestRef(attachment.pullRequest),
@@ -2435,6 +2435,52 @@ function registerTui(api, dependencies) {
         refreshBus.emit(sessionID);
       }
     }, {
+      name: "pr.open",
+      title: "Open pull request",
+      category: "Plugin",
+      namespace: "palette",
+      slashName: "pr-open",
+      async run() {
+        const sessionID = currentSessionID(api);
+        if (sessionID === undefined) {
+          api.ui.toast({
+            variant: "warning",
+            title: "Pull request tracker",
+            message: "Open a session first"
+          });
+          return;
+        }
+        const attachments = await dependencies.store.list(sessionID);
+        if (!attachments.ok) {
+          showStateFailure(api, attachments.error);
+          return;
+        }
+        if (attachments.value.length === 0) {
+          api.ui.toast({
+            variant: "info",
+            title: "Pull request tracker",
+            message: "No pull requests are attached"
+          });
+          return;
+        }
+        const pullRequest = await selectPullRequest(api, "Open pull request", attachments.value);
+        if (pullRequest === undefined)
+          return;
+        const result = await openPullRequest(pullRequest, {
+          ...dependencies.runner ? {
+            runner: dependencies.runner
+          } : {},
+          signal: api.lifecycle.signal
+        });
+        if (!result.ok) {
+          api.ui.toast({
+            variant: "error",
+            title: "Pull request tracker",
+            message: result.error.message
+          });
+        }
+      }
+    }, {
       name: "pr.detach",
       title: "Detach pull request",
       category: "Plugin",
@@ -2463,7 +2509,7 @@ function registerTui(api, dependencies) {
           });
           return;
         }
-        const pullRequest = await selectPullRequest(api, attachments.value);
+        const pullRequest = await selectPullRequest(api, "Detach pull request", attachments.value);
         if (pullRequest === undefined)
           return;
         const result = await dependencies.store.detach(sessionID, pullRequest);
@@ -2519,4 +2565,4 @@ export {
   attachPullRequest
 };
 
-//# debugId=DE2A979F1B3F862E64756E2164756E21
+//# debugId=4CC057CCC191748964756E2164756E21
