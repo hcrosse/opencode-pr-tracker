@@ -77,6 +77,37 @@ describe("server tools", () => {
     expect(second).toEqual({ ok: true, value: [] })
   })
 
+  test("reports when the invoking session has no attached pull requests", async () => {
+    const { tools } = await setup()
+
+    expect(await tools.pr_list!.execute({}, context("session"))).toBe("No pull requests are attached to this session.")
+  })
+
+  test("lists canonical pull request URLs in attachment order for the invoking session", async () => {
+    const { tools } = await setup()
+    await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/2" }, context("session"))
+    await tools.pr_attach!.execute({ url: "https://github.com/another/project/pull/1" }, context("session"))
+    await tools.pr_attach!.execute({ url: "https://github.com/other/session/pull/3" }, context("other-session"))
+
+    expect(await tools.pr_list!.execute({}, context("session"))).toBe(
+      "Attached pull requests:\n" +
+        "- https://github.com/owner/repository/pull/2\n" +
+        "- https://github.com/another/project/pull/1",
+    )
+  })
+
+  test("translates list state failures into structured tool errors", async () => {
+    const { directory, tools } = await setup()
+    await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/1" }, context("session"))
+    const [stateFile] = await readdir(directory)
+    if (stateFile === undefined) throw new Error("expected state file")
+    await writeFile(join(directory, stateFile), `${JSON.stringify({ version: 2, pullRequests: [] })}\n`)
+
+    expect(tools.pr_list!.execute({}, context("session"))).rejects.toEqual(
+      new PrToolError("InvalidStateFile", "The session pull request state file is invalid"),
+    )
+  })
+
   test("removes only the deleted session state", async () => {
     const { hooks, store, tools } = await setup()
     await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/1" }, context("deleted"))
