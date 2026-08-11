@@ -76,15 +76,15 @@ export function parsePullRequestUrl(input: string): Result<PullRequestUrl, Inval
     return invalidPullRequestUrl
   }
 
-  const owner = segments[1]
-  const repository = segments[2]
+  const rawOwner = segments[1]
+  const rawRepository = segments[2]
   const numberText = segments[4]
   if (
-    owner === undefined ||
-    repository === undefined ||
+    rawOwner === undefined ||
+    rawRepository === undefined ||
     numberText === undefined ||
-    !segmentPattern.test(owner) ||
-    !segmentPattern.test(repository) ||
+    !segmentPattern.test(rawOwner) ||
+    !segmentPattern.test(rawRepository) ||
     !/^\d+$/.test(numberText)
   ) {
     return invalidPullRequestUrl
@@ -93,6 +93,8 @@ export function parsePullRequestUrl(input: string): Result<PullRequestUrl, Inval
   const number = Number(numberText)
   if (!Number.isSafeInteger(number) || number <= 0) return invalidPullRequestUrl
 
+  const owner = rawOwner.toLowerCase()
+  const repository = rawRepository.toLowerCase()
   // SAFETY: every URL component passed the canonical GitHub PR checks above.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the parser establishes the brand invariant
   const url = `https://github.com/${owner}/${repository}/pull/${number}` as CanonicalPullRequestUrl
