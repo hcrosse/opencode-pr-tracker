@@ -57,7 +57,7 @@ function stateStore(items: readonly PullRequestAttachment[] = [attachment]): Sta
 }
 
 function available(
-  state: PullRequestState = { tag: "Open", ci: "passed", mergeability: "mergeable" },
+  state: PullRequestState = { tag: "Open", ci: "passed", mergeability: "mergeable", blocker: "none" },
   value: PullRequestUrl = pullRequest,
 ): AvailablePullRequestStatus {
   return {
@@ -934,7 +934,10 @@ describe("TUI orchestration", () => {
           value: [
             {
               ok: true,
-              value: available({ tag: "Open", ci: "failed", mergeability: "mergeable" }, pullRequests[0]),
+              value: available(
+                { tag: "Open", ci: "failed", mergeability: "mergeable", blocker: "none" },
+                pullRequests[0],
+              ),
             },
             {
               ok: false,
@@ -965,10 +968,14 @@ describe("TUI orchestration", () => {
     await polling.refresh()
 
     expect(latest.map((item) => item.status)).toMatchObject([
-      { tag: "Available", state: { tag: "Open", ci: "failed", mergeability: "mergeable" }, stale: false },
       {
         tag: "Available",
-        state: { tag: "Open", ci: "passed", mergeability: "mergeable" },
+        state: { tag: "Open", ci: "failed", mergeability: "mergeable", blocker: "none" },
+        stale: false,
+      },
+      {
+        tag: "Available",
+        state: { tag: "Open", ci: "passed", mergeability: "mergeable", blocker: "none" },
         stale: true,
         diagnostic: "InvalidGitHubResponse",
       },
@@ -1087,7 +1094,9 @@ describe("TUI orchestration", () => {
       store: stateStore(),
       github: githubStatuses(() => {
         calls += 1
-        return available(calls === 1 ? { tag: "Closed" } : { tag: "Open", ci: "pending", mergeability: "mergeable" })
+        return available(
+          calls === 1 ? { tag: "Closed" } : { tag: "Open", ci: "pending", mergeability: "mergeable", blocker: "none" },
+        )
       }),
       scheduler: new RecordingScheduler(),
       publish: (items) => {
@@ -1104,7 +1113,7 @@ describe("TUI orchestration", () => {
     await polling.refresh()
 
     expect(calls).toBe(2)
-    expect(latestState).toEqual({ tag: "Open", ci: "pending", mergeability: "mergeable" })
+    expect(latestState).toEqual({ tag: "Open", ci: "pending", mergeability: "mergeable", blocker: "none" })
   })
 
   test("queues one trailing refresh requested during an active poll", async () => {
