@@ -1555,6 +1555,11 @@ var require_proper_lockfile = __commonJS((exports, module) => {
 // src/server.ts
 import { tool } from "@opencode-ai/plugin";
 
+// src/exhaustive.ts
+function casesHandled(value) {
+  throw new Error(`Unhandled case: ${String(value)}`);
+}
+
 // src/state.ts
 var import_proper_lockfile = __toESM(require_proper_lockfile(), 1);
 import { createHash, randomUUID } from "crypto";
@@ -1582,8 +1587,8 @@ function parsePullRequestUrl(input) {
   if (input.slice("https://".length, authorityEnd).toLowerCase() !== "github.com") {
     return invalidPullRequestUrl;
   }
-  const rawPath = input.slice(authorityEnd).split(/[?#]/, 1)[0];
-  for (const segment of rawPath?.split("/") ?? []) {
+  const rawPath = input.slice(authorityEnd).split(/[?#]/, 1).join("");
+  for (const segment of rawPath.split("/")) {
     let decoded;
     try {
       decoded = decodeURIComponent(segment);
@@ -1616,10 +1621,8 @@ function parsePullRequestUrl(input) {
   if (!Number.isSafeInteger(number) || number <= 0)
     return invalidPullRequestUrl;
   const url = `https://github.com/${owner}/${repository}/pull/${number}`;
-  return {
-    ok: true,
-    value: { url, owner, repository, number }
-  };
+  const value = { url, owner, repository, number };
+  return { ok: true, value };
 }
 function formatPullRequestRef(pullRequest) {
   return `${pullRequest.owner}/${pullRequest.repository}#${pullRequest.number}`;
@@ -1746,12 +1749,7 @@ function createStateStore(options = {}) {
         return { ok: true, value: [] };
       return {
         ok: false,
-        error: {
-          tag: "StateUnavailable",
-          operation: "read",
-          message: "Unable to read the session pull request state",
-          cause
-        }
+        error: stateUnavailable("read", "Unable to read the session pull request state", cause)
       };
     }
     let decoded;
@@ -1784,12 +1782,7 @@ function createStateStore(options = {}) {
       });
       return {
         ok: false,
-        error: {
-          tag: "StateUnavailable",
-          operation: "write",
-          message: "Unable to write the session pull request state",
-          cause
-        }
+        error: stateUnavailable("write", "Unable to write the session pull request state", cause)
       };
     }
   }
@@ -1864,7 +1857,14 @@ function createServerHooks(store) {
           if (!result.ok)
             throw toToolError(result.error);
           const reference = formatPullRequestRef(pullRequest.value);
-          return result.value === "added" ? `Attached ${reference} to this session.` : `${reference} is already attached to this session.`;
+          switch (result.value) {
+            case "added":
+              return `Attached ${reference} to this session.`;
+            case "already_attached":
+              return `${reference} is already attached to this session.`;
+            default:
+              return casesHandled(result.value);
+          }
         }
       }),
       pr_detach: tool({
@@ -1880,7 +1880,14 @@ function createServerHooks(store) {
           if (!result.ok)
             throw toToolError(result.error);
           const reference = formatPullRequestRef(pullRequest.value);
-          return result.value === "removed" ? `Detached ${reference} from this session.` : `${reference} is not attached to this session.`;
+          switch (result.value) {
+            case "removed":
+              return `Detached ${reference} from this session.`;
+            case "absent":
+              return `${reference} is not attached to this session.`;
+            default:
+              return casesHandled(result.value);
+          }
         }
       })
     }
@@ -1897,4 +1904,4 @@ export {
   PrToolError
 };
 
-//# debugId=BBA346D8D94796CD64756E2164756E21
+//# debugId=D1A475033D00FFAE64756E2164756E21

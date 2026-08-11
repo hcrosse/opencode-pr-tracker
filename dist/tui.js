@@ -1564,6 +1564,11 @@ import { createComponent as _$createComponent } from "@opentui/solid";
 import { TextAttributes } from "@opentui/core";
 import { createSignal, onCleanup } from "solid-js";
 
+// src/exhaustive.ts
+function casesHandled(value) {
+  throw new Error(`Unhandled case: ${String(value)}`);
+}
+
 // src/github.ts
 import { execFile } from "child_process";
 
@@ -1587,8 +1592,8 @@ function parsePullRequestUrl(input) {
   if (input.slice("https://".length, authorityEnd).toLowerCase() !== "github.com") {
     return invalidPullRequestUrl;
   }
-  const rawPath = input.slice(authorityEnd).split(/[?#]/, 1)[0];
-  for (const segment of rawPath?.split("/") ?? []) {
+  const rawPath = input.slice(authorityEnd).split(/[?#]/, 1).join("");
+  for (const segment of rawPath.split("/")) {
     let decoded;
     try {
       decoded = decodeURIComponent(segment);
@@ -1621,10 +1626,8 @@ function parsePullRequestUrl(input) {
   if (!Number.isSafeInteger(number) || number <= 0)
     return invalidPullRequestUrl;
   const url = `https://github.com/${owner}/${repository}/pull/${number}`;
-  return {
-    ok: true,
-    value: { url, owner, repository, number }
-  };
+  const value = { url, owner, repository, number };
+  return { ok: true, value };
 }
 function formatPullRequestRef(pullRequest) {
   return `${pullRequest.owner}/${pullRequest.repository}#${pullRequest.number}`;
@@ -1721,14 +1724,27 @@ function parseResponse(input, pullRequest) {
   if (!ci.ok)
     return ci;
   const lifecycle = input.state === "MERGED" ? "merged" : input.state === "CLOSED" ? "closed" : "open";
+  let state;
+  switch (lifecycle) {
+    case "open":
+      state = { tag: "Open", ci: ci.value };
+      break;
+    case "merged":
+      state = { tag: "Merged" };
+      break;
+    case "closed":
+      state = { tag: "Closed" };
+      break;
+    default:
+      return casesHandled(lifecycle);
+  }
   return {
     ok: true,
     value: {
       tag: "Available",
       pullRequest,
       title: input.title,
-      lifecycle,
-      ci: ci.value,
+      state,
       stale: false
     }
   };
@@ -1785,22 +1801,42 @@ function createGitHubClient(runner = execFileRunner) {
   };
 }
 function statusAppearance(status) {
-  if (status.tag === "Unavailable") {
-    return { tone: "gray", label: "status unavailable", strikethrough: false };
-  }
   let appearance;
-  if (status.lifecycle === "merged") {
-    appearance = { tone: "purple", label: "merged", strikethrough: true };
-  } else if (status.lifecycle === "closed") {
-    appearance = { tone: "red", label: "closed", strikethrough: true };
-  } else if (status.ci === "passed") {
-    appearance = { tone: "green", label: "checks passed", strikethrough: false };
-  } else if (status.ci === "pending") {
-    appearance = { tone: "yellow", label: "checks pending", strikethrough: false };
-  } else if (status.ci === "failed") {
-    appearance = { tone: "red", label: "checks failed", strikethrough: false };
-  } else {
-    appearance = { tone: "gray", label: "no checks", strikethrough: false };
+  switch (status.tag) {
+    case "Unavailable":
+      return { tone: "gray", label: "status unavailable", strikethrough: false };
+    case "Available":
+      switch (status.state.tag) {
+        case "Open":
+          switch (status.state.ci) {
+            case "passed":
+              appearance = { tone: "green", label: "checks passed", strikethrough: false };
+              break;
+            case "pending":
+              appearance = { tone: "yellow", label: "checks pending", strikethrough: false };
+              break;
+            case "failed":
+              appearance = { tone: "red", label: "checks failed", strikethrough: false };
+              break;
+            case "none":
+              appearance = { tone: "gray", label: "no checks", strikethrough: false };
+              break;
+            default:
+              return casesHandled(status.state.ci);
+          }
+          break;
+        case "Merged":
+          appearance = { tone: "purple", label: "merged", strikethrough: true };
+          break;
+        case "Closed":
+          appearance = { tone: "red", label: "closed", strikethrough: true };
+          break;
+        default:
+          return casesHandled(status.state);
+      }
+      break;
+    default:
+      return casesHandled(status);
   }
   return status.stale ? { ...appearance, label: `${appearance.label} (stale)` } : appearance;
 }
@@ -1931,12 +1967,7 @@ function createStateStore(options = {}) {
         return { ok: true, value: [] };
       return {
         ok: false,
-        error: {
-          tag: "StateUnavailable",
-          operation: "read",
-          message: "Unable to read the session pull request state",
-          cause
-        }
+        error: stateUnavailable("read", "Unable to read the session pull request state", cause)
       };
     }
     let decoded;
@@ -1969,12 +2000,7 @@ function createStateStore(options = {}) {
       });
       return {
         ok: false,
-        error: {
-          tag: "StateUnavailable",
-          operation: "write",
-          message: "Unable to write the session pull request state",
-          cause
-        }
+        error: stateUnavailable("write", "Unable to write the session pull request state", cause)
       };
     }
   }
@@ -2038,6 +2064,7 @@ function startSessionPolling(input) {
   const statuses = new Map;
   const controller = new AbortController;
   let timer;
+  let timerRegistered = false;
   let stopped = false;
   let inFlight;
   let refreshQueued = false;
@@ -2066,7 +2093,7 @@ function startSessionPolling(input) {
     input.publish(project(attachments.value));
     await Promise.all(attachments.value.map(async (attachment) => {
       const previous = statuses.get(attachment.pullRequest.url);
-      if (previous?.tag === "Available" && previous.lifecycle !== "open")
+      if (previous?.tag === "Available" && previous.state.tag !== "Open")
         return;
       const result = await input.github.get(attachment.pullRequest, {
         signal: controller.signal
@@ -2107,10 +2134,11 @@ function startSessionPolling(input) {
   }
   return {
     start() {
-      if (timer === undefined) {
+      if (!timerRegistered) {
         timer = scheduler.setInterval(() => {
           refresh().catch(input.onError);
         }, pollIntervalMilliseconds);
+        timerRegistered = true;
       }
       return refresh();
     },
@@ -2120,7 +2148,7 @@ function startSessionPolling(input) {
         return;
       stopped = true;
       controller.abort();
-      if (timer !== undefined)
+      if (timerRegistered)
         scheduler.clearInterval(timer);
     }
   };
@@ -2133,7 +2161,8 @@ async function openPullRequest(pullRequest, options = {}) {
       ok: false,
       error: {
         tag: "UnsupportedPlatform",
-        message: `Opening pull requests is unsupported on ${platform}`
+        message: `Opening pull requests is unsupported on ${platform}`,
+        platform
       }
     };
   }
@@ -2404,10 +2433,21 @@ function registerTui(api, dependencies) {
           showStateFailure(api, result.error);
           return;
         }
+        let message;
+        switch (result.value) {
+          case "added":
+            message = `Attached ${formatPullRequestRef(pullRequest)}`;
+            break;
+          case "already_attached":
+            message = `${formatPullRequestRef(pullRequest)} is already attached`;
+            break;
+          default:
+            casesHandled(result.value);
+        }
         api.ui.toast({
           variant: "success",
           title: "Pull request tracker",
-          message: result.value === "added" ? `Attached ${formatPullRequestRef(pullRequest)}` : `${formatPullRequestRef(pullRequest)} is already attached`
+          message
         });
         refreshBus.emit(sessionID);
       }
@@ -2448,10 +2488,21 @@ function registerTui(api, dependencies) {
           showStateFailure(api, result.error);
           return;
         }
+        let message;
+        switch (result.value) {
+          case "removed":
+            message = `Detached ${formatPullRequestRef(pullRequest)}`;
+            break;
+          case "absent":
+            message = `${formatPullRequestRef(pullRequest)} was not attached`;
+            break;
+          default:
+            casesHandled(result.value);
+        }
         api.ui.toast({
           variant: "success",
           title: "Pull request tracker",
-          message: result.value === "removed" ? `Detached ${formatPullRequestRef(pullRequest)}` : `${formatPullRequestRef(pullRequest)} was not attached`
+          message
         });
         refreshBus.emit(sessionID);
       }
@@ -2495,4 +2546,4 @@ export {
   attachPullRequest
 };
 
-//# debugId=DD4C3771BABBED5B64756E2164756E21
+//# debugId=20759C7F192A435B64756E2164756E21
