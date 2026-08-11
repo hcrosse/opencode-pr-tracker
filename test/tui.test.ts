@@ -309,6 +309,26 @@ describe("TUI orchestration", () => {
     expect(scheduler.cleared).toEqual([undefined])
   })
 
+  test("does not register an interval after polling stops", async () => {
+    const scheduler = new UndefinedHandleScheduler()
+    const polling = startSessionPolling({
+      sessionID: "session",
+      store: stateStore([]),
+      github: { get: async () => ({ ok: true, value: available() }) },
+      scheduler,
+      publish: () => undefined,
+      onStateFailure: () => undefined,
+      onError: (error) => {
+        throw error
+      },
+    })
+
+    polling.stop()
+    await polling.start()
+
+    expect(scheduler.intervals).toBe(0)
+  })
+
   test("does not repoll terminal pull requests", async () => {
     let calls = 0
     const polling = startSessionPolling({

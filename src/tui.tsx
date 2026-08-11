@@ -147,6 +147,7 @@ export function startSessionPolling(
 
   return {
     start() {
+      if (stopped) return Promise.resolve()
       if (!timerRegistered) {
         timer = scheduler.setInterval(() => {
           refresh().catch(input.onError)
