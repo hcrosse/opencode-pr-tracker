@@ -38,8 +38,8 @@
     "build": "bun ./scripts/build.ts",
     "smoke:opencode": "bun ./scripts/smoke-opencode.ts",
     "prepack": "bun run build",
-    "package:check": "bun run build && bun ./scripts/check-package.ts",
-    "check": "bun run lint && bun run format:check && bun test && bun run build && bun run package:check && git diff --check"
+    "package:check": "bun run build && npm pack --dry-run --ignore-scripts",
+    "check": "bun run lint && bun run format:check && bun test && bun run package:check && git diff --check"
   },
   "dependencies": {
     "@opencode-ai/plugin": "1.18.15",

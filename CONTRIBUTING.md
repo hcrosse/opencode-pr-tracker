@@ -6,12 +6,12 @@ Install Bun 1.3.14, authenticate GitHub CLI, then run `bun ci`.
 
 ## Checks
 
-Run `bun run check` before opening a pull request. `dist/` is generated and
-ignored; do not add it to Git.
+Run `bun run check` before opening a pull request.
 
 ## Pull Requests
 
-Use `<type>[optional scope][!]: <description>` titles. Supported types are
+Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for
+pull request titles, such as `feat: add npm releases`. Supported types are
 `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, and
 `test`. Squash merges use the pull request title as the commit reaching `main`.
 
