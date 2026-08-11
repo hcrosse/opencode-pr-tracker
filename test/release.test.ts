@@ -64,6 +64,7 @@ test("the title workflow uses the local validator", async () => {
   const title = job(workflow, "title")
 
   expect(title.steps.some((candidate) => candidate.run?.includes("scripts/check-pr-title.ts"))).toBe(true)
+  expect(step(title, "Check out repository").with?.["persist-credentials"]).toBe(false)
 })
 
 test("package metadata defines the public plugin contract", async () => {
@@ -124,7 +125,10 @@ test("release packaging is serialized and checks out the exact tag", async () =>
   expect(workflow.concurrency).toEqual({ group: "release", "cancel-in-progress": false })
   expect(packageJob.needs).toBe("release")
   expect(packageJob.if).toBe("${{ needs.release.outputs.release_created == 'true' }}")
-  expect(step(packageJob, "Check out release tag").with?.ref).toBe("${{ needs.release.outputs.tag_name }}")
+  expect(step(packageJob, "Check out release tag").with).toMatchObject({
+    ref: "${{ needs.release.outputs.tag_name }}",
+    "persist-credentials": false,
+  })
 })
 
 test("the package artifact is uploaded and downloaded by ID without an archive wrapper", async () => {
@@ -160,8 +164,9 @@ test("OIDC is isolated to artifact verification and publication", async () => {
   expect(step(publish, "Set up Node.js").uses).toMatch(/^actions\/setup-node@[0-9a-f]{40}$/)
   expect(publish.steps.some((candidate) => candidate.uses?.startsWith("actions/checkout@"))).toBe(false)
 
-  const publishCommand = step(publish, "Publish package").run
-  expect(publishCommand).toContain("${{ steps.package.outputs.path }}")
-  expect(publishCommand).toContain("--access public")
-  expect(publishCommand).toContain("--ignore-scripts")
+  const publishStep = step(publish, "Publish package")
+  expect(publishStep.env?.PACKAGE_PATH).toBe("${{ steps.package.outputs.path }}")
+  expect(publishStep.run).toContain("$PACKAGE_PATH")
+  expect(publishStep.run).toContain("--access public")
+  expect(publishStep.run).toContain("--ignore-scripts")
 })
