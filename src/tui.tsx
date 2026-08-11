@@ -106,23 +106,28 @@ export function startSessionPolling(
     }
     input.publish(project(attachments.value))
 
-    await Promise.all(
-      attachments.value.map(async (attachment) => {
-        const previous = statuses.get(attachment.pullRequest.url)
-        if (previous?.tag === "Available" && previous.state.tag === "Merged") return
-
-        const result = await input.github.get(attachment.pullRequest, { signal: controller.signal })
-        if (stopped || (!result.ok && result.error.tag === "GitHubCancelled")) return
-        if (result.ok) {
-          statuses.set(attachment.pullRequest.url, result.value)
-          return
-        }
-        statuses.set(
-          attachment.pullRequest.url,
-          previous?.tag === "Available" ? { ...previous, stale: true } : { tag: "Unavailable" },
-        )
-      }),
+    const refreshable = attachments.value.filter((attachment) => {
+      const previous = statuses.get(attachment.pullRequest.url)
+      return previous?.tag !== "Available" || previous.state.tag !== "Merged"
+    })
+    const batch = await input.github.get(
+      refreshable.map((attachment) => attachment.pullRequest),
+      { signal: controller.signal },
     )
+    if (stopped || (!batch.ok && batch.error.tag === "GitHubCancelled")) return
+
+    for (const [index, attachment] of refreshable.entries()) {
+      const previous = statuses.get(attachment.pullRequest.url)
+      const result = batch.ok ? batch.value[index] : undefined
+      if (result?.ok) {
+        statuses.set(attachment.pullRequest.url, result.value)
+        continue
+      }
+      statuses.set(
+        attachment.pullRequest.url,
+        previous?.tag === "Available" ? { ...previous, stale: true } : { tag: "Unavailable" },
+      )
+    }
 
     if (!stopped) input.publish(project(attachments.value))
   }

@@ -1,14 +1,24 @@
 import { describe, expect, test } from "bun:test"
 
-import { createGitHubClient, statusAppearance, type ProcessRunner } from "../src/github.js"
+import { createGitHubClient, statusAppearance, type GitHubClient, type ProcessRunner } from "../src/github.js"
 import { parsePullRequestUrl } from "../src/url.js"
 
 const parsed = parsePullRequestUrl("https://github.com/owner/repository/pull/42")
 if (!parsed.ok) throw new Error("test fixture URL is invalid")
 const pullRequest = parsed.value
-const successChecks = [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS" }]
-const pendingChecks = [{ __typename: "CheckRun", status: "IN_PROGRESS", conclusion: null }]
-const failedChecks = [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "FAILURE" }]
+const secondParsed = parsePullRequestUrl("https://github.com/another/project/pull/7")
+if (!secondParsed.ok) throw new Error("second test fixture URL is invalid")
+const secondPullRequest = secondParsed.value
+const successCounts = { checkRuns: [{ state: "SUCCESS", count: 1 }] }
+const pendingCounts = { checkRuns: [{ state: "IN_PROGRESS", count: 1 }] }
+const failedCounts = { checkRuns: [{ state: "FAILURE", count: 1 }] }
+const invalidItem = {
+  ok: false,
+  error: {
+    tag: "InvalidGitHubResponse",
+    message: "GitHub returned an invalid pull request response",
+  },
+} as const
 
 function runnerFor(
   output: unknown,
@@ -22,30 +32,68 @@ function runnerFor(
 
 function response(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
+    __typename: "PullRequest",
     title: "Add pull request tracking",
     state: "OPEN",
     url: pullRequest.url,
     mergedAt: null,
-    statusCheckRollup: [],
+    statusCheckRollup: rollup(),
     ...overrides,
   }
 }
 
+function rollup(
+  input: Readonly<{
+    checkRuns?: readonly Readonly<{ state: string; count: number }>[]
+    statusContexts?: readonly Readonly<{ state: string; count: number }>[]
+    overrides?: Record<string, unknown>
+  }> = {},
+): Record<string, unknown> {
+  const checkRuns = input.checkRuns ?? []
+  const statusContexts = input.statusContexts ?? []
+  return {
+    contexts: {
+      checkRunCount: checkRuns.reduce((total, item) => total + item.count, 0),
+      statusContextCount: statusContexts.reduce((total, item) => total + item.count, 0),
+      checkRunCountsByState: checkRuns,
+      statusContextCountsByState: statusContexts,
+      ...input.overrides,
+    },
+  }
+}
+
+function batchResponse(...responses: readonly unknown[]): Record<string, unknown> {
+  return {
+    data: Object.fromEntries(responses.map((value, index) => [`pr${index}`, value])),
+  }
+}
+
+async function getOne(client: GitHubClient) {
+  const result = await client.get([pullRequest])
+  if (!result.ok) throw new Error("expected GitHub batch to parse")
+  const item = result.value[0]
+  if (item === undefined || !item.ok) throw new Error("expected pull request response to parse")
+  return item.value
+}
+
 describe("GitHub client", () => {
-  test("uses a fixed gh argument vector and propagates cancellation", async () => {
+  test("batches mixed-repository pull requests through one fixed gh graphql invocation", async () => {
     const calls: Array<{ file: string; args: readonly string[]; signal?: AbortSignal }> = []
-    const client = createGitHubClient(runnerFor(response(), calls))
+    const client = createGitHubClient(
+      runnerFor(batchResponse(response(), response({ url: secondPullRequest.url })), calls),
+    )
     const controller = new AbortController()
 
-    await client.get(pullRequest, { signal: controller.signal })
+    await client.get([pullRequest, secondPullRequest], { signal: controller.signal })
 
-    expect(calls).toEqual([
-      {
-        file: "gh",
-        args: ["pr", "view", pullRequest.url, "--json", "title,state,url,mergedAt,statusCheckRollup"],
-        signal: controller.signal,
-      },
-    ])
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ file: "gh", signal: controller.signal })
+    expect(calls[0]?.args.slice(0, 5)).toEqual(["api", "graphql", "--method", "POST", "-f"])
+    expect(calls[0]?.args[5]).toContain("query BatchPullRequests($url0: URI!, $url1: URI!)")
+    expect(calls[0]?.args[5]).toContain("pr0: resource(url: $url0)")
+    expect(calls[0]?.args[5]).toContain("pr1: resource(url: $url1)")
+    expect(calls[0]?.args[5]).toContain("checkRunCountsByState { state count }")
+    expect(calls[0]?.args.slice(6)).toEqual(["-f", `url0=${pullRequest.url}`, "-f", `url1=${secondPullRequest.url}`])
   })
 
   test("returns GitHubCancelled when its signal aborts", async () => {
@@ -58,7 +106,7 @@ describe("GitHub client", () => {
         }),
     )
 
-    const request = client.get(pullRequest, { signal: controller.signal })
+    const request = client.get([pullRequest], { signal: controller.signal })
     controller.abort()
 
     expect(await request).toEqual({
@@ -72,72 +120,73 @@ describe("GitHub client", () => {
   })
 
   test.each([
-    { name: "no checks", checks: [], expected: "none" },
+    { name: "no checks", counts: {}, expected: "none" },
     {
       name: "successful check run",
-      checks: [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS" }],
+      counts: successCounts,
       expected: "passed",
     },
     {
       name: "successful status context",
-      checks: [{ __typename: "StatusContext", state: "SUCCESS" }],
+      counts: { statusContexts: [{ state: "SUCCESS", count: 1 }] },
       expected: "passed",
     },
     {
       name: "pending check",
-      checks: [{ __typename: "CheckRun", status: "IN_PROGRESS", conclusion: null }],
+      counts: pendingCounts,
       expected: "pending",
     },
     {
       name: "pending status context",
-      checks: [{ __typename: "StatusContext", state: "PENDING" }],
+      counts: { statusContexts: [{ state: "PENDING", count: 1 }] },
       expected: "pending",
     },
     {
       name: "failure wins over pending",
-      checks: [
-        { __typename: "CheckRun", status: "IN_PROGRESS", conclusion: null },
-        { __typename: "CheckRun", status: "COMPLETED", conclusion: "FAILURE" },
-      ],
+      counts: {
+        checkRuns: [
+          { state: "IN_PROGRESS", count: 1 },
+          { state: "FAILURE", count: 1 },
+        ],
+      },
       expected: "failed",
     },
     {
       name: "error status fails",
-      checks: [{ __typename: "StatusContext", state: "ERROR" }],
+      counts: { statusContexts: [{ state: "ERROR", count: 1 }] },
       expected: "failed",
     },
     {
       name: "neutral and skipped checks are absent",
-      checks: [
-        { __typename: "CheckRun", status: "COMPLETED", conclusion: "NEUTRAL" },
-        { __typename: "CheckRun", status: "COMPLETED", conclusion: "SKIPPED" },
-      ],
+      counts: {
+        checkRuns: [
+          { state: "NEUTRAL", count: 1 },
+          { state: "SKIPPED", count: 1 },
+        ],
+      },
       expected: "none",
     },
-  ])("aggregates $name", async ({ checks, expected }) => {
-    const client = createGitHubClient(runnerFor(response({ statusCheckRollup: checks })))
+  ])("aggregates $name", async ({ counts, expected }) => {
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup(counts) }))))
 
-    const result = await client.get(pullRequest)
-
-    if (!result.ok) throw new Error("expected GitHub response to parse")
-    expect(result.value.state).toEqual({ tag: "Open", ci: expected })
+    expect((await getOne(client)).state).toEqual({ tag: "Open", ci: expected })
   })
 
   test.each([
     {
       state: "MERGED",
       mergedAt: "2026-08-10T12:00:00Z",
-      checks: [],
+      counts: {},
       tone: "purple",
       label: "merged",
       strike: true,
     },
-    { state: "CLOSED", mergedAt: null, checks: [], tone: "red", label: "closed", strike: true },
-    { state: "OPEN", mergedAt: null, checks: [], tone: "gray", label: "no checks", strike: false },
+    { state: "CLOSED", mergedAt: null, counts: {}, tone: "red", label: "closed", strike: true },
+    { state: "OPEN", mergedAt: null, counts: {}, tone: "gray", label: "no checks", strike: false },
     {
       state: "OPEN",
       mergedAt: null,
-      checks: successChecks,
+      counts: successCounts,
       tone: "green",
       label: "checks passed",
       strike: false,
@@ -145,7 +194,7 @@ describe("GitHub client", () => {
     {
       state: "OPEN",
       mergedAt: null,
-      checks: pendingChecks,
+      counts: pendingCounts,
       tone: "yellow",
       label: "checks pending",
       strike: false,
@@ -153,30 +202,28 @@ describe("GitHub client", () => {
     {
       state: "OPEN",
       mergedAt: null,
-      checks: failedChecks,
+      counts: failedCounts,
       tone: "red",
       label: "checks failed",
       strike: false,
     },
-  ])("projects $state status with $label appearance", async ({ state, mergedAt, checks, tone, label, strike }) => {
-    const client = createGitHubClient(runnerFor(response({ state, mergedAt, statusCheckRollup: checks })))
+  ])("projects $state status with $label appearance", async ({ state, mergedAt, counts, tone, label, strike }) => {
+    const client = createGitHubClient(
+      runnerFor(batchResponse(response({ state, mergedAt, statusCheckRollup: rollup(counts) }))),
+    )
 
-    const result = await client.get(pullRequest)
-
-    if (!result.ok) throw new Error("expected GitHub response to parse")
-    expect(statusAppearance(result.value)).toEqual({ tone, label, strikethrough: strike })
+    expect(statusAppearance(await getOne(client))).toEqual({ tone, label, strikethrough: strike })
   })
 
   test.each([
     { state: "MERGED", mergedAt: "2026-08-10T12:00:00Z", expected: { tag: "Merged" } },
     { state: "CLOSED", mergedAt: null, expected: { tag: "Closed" } },
   ])("accepts valid checks without retaining CI for $state pull requests", async ({ state, mergedAt, expected }) => {
-    const client = createGitHubClient(runnerFor(response({ state, mergedAt, statusCheckRollup: failedChecks })))
+    const client = createGitHubClient(
+      runnerFor(batchResponse(response({ state, mergedAt, statusCheckRollup: rollup(failedCounts) }))),
+    )
 
-    const result = await client.get(pullRequest)
-
-    if (!result.ok) throw new Error("expected GitHub response to parse")
-    expect(result.value.state).toEqual(expected)
+    expect((await getOne(client)).state).toEqual(expected)
   })
 
   test("classifies execution failures without exposing credentials", async () => {
@@ -185,7 +232,7 @@ describe("GitHub client", () => {
       throw cause
     })
 
-    expect(await client.get(pullRequest)).toEqual({
+    expect(await client.get([pullRequest])).toEqual({
       ok: false,
       error: {
         tag: "GitHubUnavailable",
@@ -198,35 +245,119 @@ describe("GitHub client", () => {
   test.each([
     "not json",
     JSON.stringify({ title: "Missing fields" }),
-    JSON.stringify(response({ state: "UNKNOWN" })),
-    JSON.stringify(response({ state: "CLOSED", mergedAt: "2026-08-10T12:00:00Z" })),
-    JSON.stringify(
-      response({ statusCheckRollup: [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "UNKNOWN" }] }),
-    ),
-    JSON.stringify(
-      response({
-        state: "MERGED",
-        mergedAt: "2026-08-10T12:00:00Z",
-        statusCheckRollup: [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "UNKNOWN" }],
-      }),
-    ),
-    JSON.stringify(
-      response({
-        state: "CLOSED",
-        statusCheckRollup: [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "UNKNOWN" }],
-      }),
-    ),
-    JSON.stringify(response({ url: "https://example.com/owner/repository/pull/42" })),
-  ])("rejects malformed gh output", async (stdout) => {
+    JSON.stringify({ data: [] }),
+    JSON.stringify({ data: { pr0: null }, errors: [{ path: ["pr0"] }] }),
+  ])("rejects malformed GraphQL envelopes", async (stdout) => {
     const client = createGitHubClient(async () => ({ stdout }))
 
-    expect(await client.get(pullRequest)).toEqual({
+    expect(await client.get([pullRequest])).toEqual({
       ok: false,
       error: {
         tag: "InvalidGitHubResponse",
         message: "GitHub returned an invalid pull request response",
       },
     })
+  })
+
+  test.each([
+    response({ state: "UNKNOWN" }),
+    response({ state: "CLOSED", mergedAt: "2026-08-10T12:00:00Z" }),
+    response({ statusCheckRollup: rollup({ checkRuns: [{ state: "UNKNOWN", count: 1 }] }) }),
+    response({
+      state: "MERGED",
+      mergedAt: "2026-08-10T12:00:00Z",
+      statusCheckRollup: rollup({ checkRuns: [{ state: "UNKNOWN", count: 1 }] }),
+    }),
+    response({
+      state: "CLOSED",
+      statusCheckRollup: rollup({ checkRuns: [{ state: "UNKNOWN", count: 1 }] }),
+    }),
+    response({ url: "https://example.com/owner/repository/pull/42" }),
+    response({ statusCheckRollup: rollup({ overrides: { checkRunCount: 1 } }) }),
+    response({ __typename: "Issue" }),
+  ])("isolates malformed pull request data to its batch item", async (item) => {
+    const client = createGitHubClient(runnerFor(batchResponse(item)))
+
+    expect(await client.get([pullRequest])).toEqual({ ok: true, value: [invalidItem] })
+  })
+
+  test("preserves successful aliases when gh reports a partial GraphQL error", async () => {
+    const stdout = JSON.stringify({
+      data: { pr0: response(), pr1: null },
+      errors: [{ message: "Resource could not be resolved", path: ["pr1"] }],
+    })
+    const client = createGitHubClient(async () => ({ stdout }))
+
+    const result = await client.get([pullRequest, secondPullRequest])
+
+    expect(result.ok && result.value[0]).toMatchObject({ ok: true, value: { pullRequest } })
+    expect(result.ok && result.value[1]).toEqual(invalidItem)
+  })
+
+  test("parses partial GraphQL data retained on a failed gh process", async () => {
+    const stdout = JSON.stringify({
+      data: { pr0: response(), pr1: null },
+      errors: [{ message: "Resource could not be resolved", path: ["pr1"] }],
+    })
+    const client = createGitHubClient(async () => {
+      throw Object.assign(new Error("GraphQL request failed"), { stdout })
+    })
+
+    const result = await client.get([pullRequest, secondPullRequest])
+
+    expect(result.ok && result.value[0]).toMatchObject({ ok: true, value: { pullRequest } })
+    expect(result.ok && result.value[1]).toEqual(invalidItem)
+  })
+
+  test("does not start a process for an empty batch", async () => {
+    let calls = 0
+    const client = createGitHubClient(async () => {
+      calls += 1
+      return { stdout: "" }
+    })
+
+    expect(await client.get([])).toEqual({ ok: true, value: [] })
+    expect(calls).toBe(0)
+  })
+
+  test("returns a typed failure before starting a batch above the attachment limit", async () => {
+    let calls = 0
+    const client = createGitHubClient(async () => {
+      calls += 1
+      return { stdout: "" }
+    })
+
+    expect(await client.get(Array.from({ length: 21 }, () => pullRequest))).toEqual({
+      ok: false,
+      error: {
+        tag: "GitHubBatchLimitExceeded",
+        limit: 20,
+        message: "GitHub batch cannot contain more than 20 pull requests",
+      },
+    })
+    expect(calls).toBe(0)
+  })
+
+  test("preserves a failed process classification when its stdout is not a valid partial response", async () => {
+    const cause = Object.assign(new Error("gh failed"), { stdout: JSON.stringify({ message: "Bad credentials" }) })
+    const client = createGitHubClient(async () => {
+      throw cause
+    })
+
+    expect(await client.get([pullRequest])).toEqual({
+      ok: false,
+      error: {
+        tag: "GitHubUnavailable",
+        message: "GitHub status unavailable",
+        cause,
+      },
+    })
+  })
+
+  test("treats a null status rollup as no checks", async () => {
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: null }))))
+
+    expect((await getOne(client)).state).toEqual({ tag: "Open", ci: "none" })
   })
 
   test("marks stale and unavailable status appearances", () => {
