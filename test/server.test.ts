@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { tool, type ToolContext } from "@opencode-ai/plugin"
+import { tool, type Hooks, type ToolContext } from "@opencode-ai/plugin"
 
 import serverModule, { createServerHooks, PrToolError } from "../src/server.js"
 import { createStateStore } from "../src/state.js"
@@ -19,7 +19,7 @@ async function setup() {
   directories.push(directory)
   const store = createStateStore({ directory, now: () => new Date("2026-08-10T12:00:00.000Z") })
   const hooks = createServerHooks(store)
-  return { store, tools: hooks.tool! }
+  return { directory, hooks, store, tools: hooks.tool! }
 }
 
 function context(sessionID: string): ToolContext {
@@ -32,6 +32,24 @@ function context(sessionID: string): ToolContext {
     abort: new AbortController().signal,
     metadata() {},
     async ask() {},
+  }
+}
+
+function sessionDeleted(sessionID: string): Parameters<NonNullable<Hooks["event"]>>[0] {
+  return {
+    event: {
+      type: "session.deleted",
+      properties: {
+        info: {
+          id: sessionID,
+          projectID: "project",
+          directory: "/project",
+          title: "Session",
+          version: "1",
+          time: { created: 1, updated: 1 },
+        },
+      },
+    },
   }
 }
 
@@ -57,6 +75,31 @@ describe("server tools", () => {
     const second = await store.list("session-two")
     expect(first.ok && first.value.map((item) => item.pullRequest.number)).toEqual([1])
     expect(second).toEqual({ ok: true, value: [] })
+  })
+
+  test("removes only the deleted session state", async () => {
+    const { hooks, store, tools } = await setup()
+    await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/1" }, context("deleted"))
+    await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/2" }, context("active"))
+
+    await hooks.event!(sessionDeleted("deleted"))
+
+    expect(await store.list("deleted")).toEqual({ ok: true, value: [] })
+    const active = await store.list("active")
+    expect(active.ok && active.value.map((item) => item.pullRequest.number)).toEqual([2])
+  })
+
+  test("surfaces corrupt state without removing it on session deletion", async () => {
+    const { directory, hooks, tools } = await setup()
+    await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/1" }, context("session"))
+    const [stateFile] = await readdir(directory)
+    if (stateFile === undefined) throw new Error("expected state file")
+    await writeFile(join(directory, stateFile), `${JSON.stringify({ version: 2, pullRequests: [] })}\n`)
+
+    expect(hooks.event!(sessionDeleted("session"))).rejects.toEqual(
+      new PrToolError("InvalidStateFile", "The session pull request state file is invalid"),
+    )
+    expect(await readdir(directory)).toEqual([stateFile])
   })
 
   test("detaches idempotently from the invoking session", async () => {

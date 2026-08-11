@@ -50,6 +50,9 @@ function stateStore(items: readonly PullRequestAttachment[] = [attachment]): Sta
     async detachByNumber() {
       return { ok: true, value: { tag: "absent" } }
     },
+    async removeSession() {
+      return { ok: true, value: "absent" }
+    },
   }
 }
 
@@ -320,6 +323,9 @@ describe("TUI orchestration", () => {
       },
       async detachByNumber() {
         return { ok: true, value: { tag: "absent" } }
+      },
+      async removeSession() {
+        return { ok: true, value: "absent" }
       },
     }
     const api = {

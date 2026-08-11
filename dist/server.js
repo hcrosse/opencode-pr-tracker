@@ -1734,14 +1734,14 @@ function createStateStore(options = {}) {
     }
     return result;
   }
-  async function read(sessionID) {
+  async function readExisting(sessionID) {
     const path = join(directory, fileName(sessionID));
     let content;
     try {
       content = await readFile(path, "utf8");
     } catch (cause) {
       if (isMissingFile(cause))
-        return { ok: true, value: [] };
+        return { ok: true, value: undefined };
       return {
         ok: false,
         error: stateUnavailable("read", "Unable to read the session pull request state", cause)
@@ -1754,6 +1754,12 @@ function createStateStore(options = {}) {
       return invalidStateFile;
     }
     return parseState(decoded);
+  }
+  async function read(sessionID) {
+    const result = await readExisting(sessionID);
+    if (!result.ok)
+      return result;
+    return { ok: true, value: result.value ?? [] };
   }
   async function write(sessionID, attachments) {
     const destination = join(directory, fileName(sessionID));
@@ -1844,6 +1850,24 @@ function createStateStore(options = {}) {
           return written;
         return { ok: true, value: { tag: "removed", pullRequest: match.pullRequest } };
       });
+    },
+    async removeSession(sessionID) {
+      return withLock(sessionID, async () => {
+        const current = await readExisting(sessionID);
+        if (!current.ok)
+          return current;
+        if (current.value === undefined)
+          return { ok: true, value: "absent" };
+        try {
+          await rm(join(directory, fileName(sessionID)), { force: true });
+          return { ok: true, value: "removed" };
+        } catch (cause) {
+          return {
+            ok: false,
+            error: stateUnavailable("write", "Unable to remove the session pull request state", cause)
+          };
+        }
+      });
     }
   };
 }
@@ -1869,6 +1893,13 @@ function formatReferenceList(references) {
 }
 function createServerHooks(store) {
   return {
+    async event({ event }) {
+      if (event.type !== "session.deleted")
+        return;
+      const result = await store.removeSession(event.properties.info.id);
+      if (!result.ok)
+        throw toToolError(result.error);
+    },
     tool: {
       pr_attach: tool({
         description: "Attach a canonical GitHub pull request URL to the current OpenCode session.",
@@ -1932,4 +1963,4 @@ export {
   PrToolError
 };
 
-//# debugId=68087306BC851F9C64756E2164756E21
+//# debugId=7F3A95F9015E656D64756E2164756E21
