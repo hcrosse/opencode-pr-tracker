@@ -11,6 +11,6 @@ Closes #
 ## Verification
 
 - [ ] `bun run check`
-- [ ] Built `dist/` files are up to date when `src/` changed.
+- [ ] The title follows [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), such as `feat: add npm releases`.
 
 <!-- List any additional focused checks, or explain why a check was not run. -->

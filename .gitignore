@@ -4,3 +4,4 @@ node_modules/
 docs/superpowers/
 *.tsbuildinfo
 .DS_Store
+dist/
