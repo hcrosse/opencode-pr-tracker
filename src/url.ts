@@ -32,6 +32,7 @@ const segmentPattern = /^[A-Za-z0-9._-]+$/
 
 export function parsePullRequestUrl(input: string): Result<PullRequestUrl, InvalidPullRequestUrl> {
   if (input.trim() !== input) return invalidPullRequestUrl
+  if (input.includes("\\")) return invalidPullRequestUrl
   if (!input.startsWith("https://")) return invalidPullRequestUrl
 
   const authorityEnd = input.indexOf("/", "https://".length)
