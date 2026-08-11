@@ -156,6 +156,7 @@ describe("TUI orchestration", () => {
       { name: "pr.attach", slashName: "pr-attach" },
       { name: "pr.open", slashName: "pr-open" },
       { name: "pr.detach", slashName: "pr-detach" },
+      { name: "pr.sync", slashName: "pr-sync" },
     ])
     expect(slots).toHaveProperty("sidebar_content")
     expect(disposers).toHaveLength(1)
@@ -437,6 +438,202 @@ describe("TUI orchestration", () => {
     expect(toasts).toEqual(["Open a session first", "No pull requests are attached"])
   })
 
+  test("reports manual sync outcomes from the refresh bus", async () => {
+    type Command = Readonly<{ name: string; run(): Promise<void> }>
+    const commands = new Map<string, Command>()
+    const toasts: string[] = []
+    let currentRoute: unknown = { name: "home" }
+    let listCalls = 0
+    const store: StateStore = {
+      ...stateStore(),
+      async list() {
+        listCalls += 1
+        return { ok: true, value: [attachment] }
+      },
+    }
+    const refreshOutcomes = [
+      undefined,
+      {
+        ok: false,
+        error: {
+          tag: "InvalidStateFile",
+          message: "The session pull request state file is invalid",
+        },
+      },
+      { ok: true, value: "no_attachments" },
+      {
+        ok: false,
+        error: {
+          tag: "GitHubUnavailable",
+          message: "GitHub status unavailable",
+          cause: new Error("offline"),
+        },
+      },
+      { ok: true, value: "stopped" },
+      { ok: true, value: "refreshed" },
+    ] as const
+    let refreshOutcome = 0
+    const refreshBus = {
+      emit() {},
+      async forceRefresh() {
+        return refreshOutcomes[refreshOutcome++]
+      },
+      subscribe() {
+        return () => undefined
+      },
+    }
+    const api = {
+      route: {
+        get current() {
+          return currentRoute
+        },
+      },
+      keymap: {
+        registerLayer(layer: { commands: Command[] }) {
+          for (const command of layer.commands) commands.set(command.name, command)
+          return () => undefined
+        },
+      },
+      slots: { register: () => "pr-tracker" },
+      lifecycle: {
+        signal: new AbortController().signal,
+        onDispose: () => () => undefined,
+      },
+      event: { on: () => () => undefined },
+      ui: {
+        toast(input: { message: string }) {
+          toasts.push(input.message)
+        },
+      },
+    } as unknown as TuiPluginApi
+
+    registerTui(api, { store, github: githubStatuses(), refreshBus })
+
+    await commands.get("pr.sync")!.run()
+    currentRoute = { name: "session", params: { sessionID: "session" } }
+    await commands.get("pr.sync")!.run()
+    await commands.get("pr.sync")!.run()
+    await commands.get("pr.sync")!.run()
+    await commands.get("pr.sync")!.run()
+    await commands.get("pr.sync")!.run()
+    await commands.get("pr.sync")!.run()
+
+    expect(listCalls).toBe(0)
+    expect(toasts).toEqual([
+      "Open a session first",
+      "Pull request sidebar is not available",
+      "The session pull request state file is invalid",
+      "No pull requests are attached",
+      "GitHub status unavailable",
+      "Unable to refresh pull request status",
+      "Pull request status synced",
+    ])
+  })
+
+  test("awaits manual sync through the refresh bus", async () => {
+    type Command = Readonly<{ name: string; run(): Promise<void> }>
+    const commands = new Map<string, Command>()
+    const toasts: string[] = []
+    const requestedSessions: string[] = []
+    let finishRefresh: (() => void) | undefined
+    let markRefreshStarted: (() => void) | undefined
+    const refresh = new Promise<void>((resolve) => {
+      finishRefresh = resolve
+    })
+    const refreshStarted = new Promise<void>((resolve) => {
+      markRefreshStarted = resolve
+    })
+    const api = {
+      route: { current: { name: "session", params: { sessionID: "session" } } },
+      keymap: {
+        registerLayer(layer: { commands: Command[] }) {
+          for (const command of layer.commands) commands.set(command.name, command)
+          return () => undefined
+        },
+      },
+      slots: { register: () => "pr-tracker" },
+      lifecycle: {
+        signal: new AbortController().signal,
+        onDispose: () => () => undefined,
+      },
+      event: { on: () => () => undefined },
+      ui: {
+        toast(input: { message: string }) {
+          toasts.push(input.message)
+        },
+      },
+    } as unknown as TuiPluginApi
+    const refreshBus = {
+      emit() {},
+      async forceRefresh(sessionID: string) {
+        requestedSessions.push(sessionID)
+        markRefreshStarted?.()
+        await refresh
+        return { ok: true, value: "refreshed" } as const
+      },
+      subscribe() {
+        return () => undefined
+      },
+    }
+
+    registerTui(api, { store: stateStore(), github: githubStatuses(), refreshBus })
+
+    const sync = commands.get("pr.sync")!.run()
+    await refreshStarted
+    expect(toasts).toEqual([])
+    finishRefresh?.()
+    await sync
+
+    expect(requestedSessions).toEqual(["session"])
+    expect(toasts).toEqual(["Pull request status synced"])
+  })
+
+  test("reports forced polling failures", async () => {
+    const stateFailure = {
+      tag: "InvalidStateFile",
+      message: "The session pull request state file is invalid",
+    } as const
+    const statePolling = startSessionPolling({
+      sessionID: "session",
+      store: {
+        ...stateStore(),
+        async list() {
+          return { ok: false, error: stateFailure }
+        },
+      },
+      github: githubStatuses(),
+      scheduler: new RecordingScheduler(),
+      publish: () => undefined,
+      onStateFailure: () => undefined,
+      onError: (error) => {
+        throw error
+      },
+    })
+    const githubFailure = {
+      tag: "GitHubUnavailable",
+      message: "GitHub status unavailable",
+      cause: new Error("offline"),
+    } as const
+    const githubPolling = startSessionPolling({
+      sessionID: "session",
+      store: stateStore(),
+      github: {
+        async get() {
+          return { ok: false, error: githubFailure }
+        },
+      },
+      scheduler: new RecordingScheduler(),
+      publish: () => undefined,
+      onStateFailure: () => undefined,
+      onError: (error) => {
+        throw error
+      },
+    })
+
+    expect(await statePolling.forceRefresh()).toEqual({ ok: false, error: stateFailure })
+    expect(await githubPolling.forceRefresh()).toEqual({ ok: false, error: githubFailure })
+  })
+
   test("reports state and browser failures from the open command", async () => {
     type Command = Readonly<{ name: string; run(): Promise<void> }>
     const commands = new Map<string, Command>()
@@ -698,7 +895,7 @@ describe("TUI orchestration", () => {
     expect(scheduler.intervals).toBe(0)
   })
 
-  test("does not repoll merged pull requests", async () => {
+  test("does not force refresh merged pull requests", async () => {
     let calls = 0
     const polling = startSessionPolling({
       sessionID: "session",
@@ -717,6 +914,7 @@ describe("TUI orchestration", () => {
 
     await polling.start()
     await polling.refresh()
+    await polling.forceRefresh()
 
     expect(calls).toBe(1)
   })
@@ -776,6 +974,111 @@ describe("TUI orchestration", () => {
     await Promise.all([initial, trailing])
 
     expect(calls).toBe(2)
+  })
+
+  test("coalesces forced requests into one awaited trailing refresh", async () => {
+    let calls = 0
+    let resolveFirst: ((value: ReturnType<typeof available>) => void) | undefined
+    let resolveSecond: ((value: ReturnType<typeof available>) => void) | undefined
+    let markSecondStarted: (() => void) | undefined
+    const first = new Promise<AvailablePullRequestStatus>((resolve) => {
+      resolveFirst = resolve
+    })
+    const second = new Promise<AvailablePullRequestStatus>((resolve) => {
+      resolveSecond = resolve
+    })
+    const secondStarted = new Promise<void>((resolve) => {
+      markSecondStarted = resolve
+    })
+    const polling = startSessionPolling({
+      sessionID: "session",
+      store: stateStore(),
+      github: githubStatuses(async () => {
+        calls += 1
+        if (calls === 1) return await first
+        markSecondStarted?.()
+        return await second
+      }),
+      scheduler: new RecordingScheduler(),
+      publish: () => undefined,
+      onStateFailure: () => undefined,
+      onError: (error) => {
+        throw error
+      },
+    })
+
+    const initial = polling.start()
+    const firstForced = polling.forceRefresh()
+    const secondForced = polling.forceRefresh()
+    let completed = false
+    const firstCompletion = firstForced.then(() => {
+      completed = true
+    })
+    resolveFirst?.(available())
+    await secondStarted
+
+    expect(completed).toBe(false)
+    resolveSecond?.(available())
+    await Promise.all([initial, firstCompletion, secondForced])
+    expect(calls).toBe(2)
+  })
+
+  test("reports the forced trailing result after an active poll rejects", async () => {
+    const leadingFailure = new Error("leading poll failed")
+    let rejectFirst: ((error: Error) => void) | undefined
+    let calls = 0
+    const first = new Promise<AvailablePullRequestStatus>((_resolve, reject) => {
+      rejectFirst = reject
+    })
+    const polling = startSessionPolling({
+      sessionID: "session",
+      store: stateStore(),
+      github: githubStatuses(async () => {
+        calls += 1
+        return calls === 1 ? await first : available()
+      }),
+      scheduler: new RecordingScheduler(),
+      publish: () => undefined,
+      onStateFailure: () => undefined,
+      onError: () => undefined,
+    })
+
+    const initial = polling.start().catch((error: unknown) => error)
+    const forced = polling.forceRefresh()
+    rejectFirst?.(leadingFailure)
+
+    expect(await forced).toEqual({ ok: true, value: "refreshed" })
+    expect(await initial).toBe(leadingFailure)
+    expect(calls).toBe(2)
+  })
+
+  test("resolves a queued forced refresh as stopped", async () => {
+    let resolveFirst: ((value: ReturnType<typeof available>) => void) | undefined
+    let calls = 0
+    const first = new Promise<AvailablePullRequestStatus>((resolve) => {
+      resolveFirst = resolve
+    })
+    const polling = startSessionPolling({
+      sessionID: "session",
+      store: stateStore(),
+      github: githubStatuses(async () => {
+        calls += 1
+        return await first
+      }),
+      scheduler: new RecordingScheduler(),
+      publish: () => undefined,
+      onStateFailure: () => undefined,
+      onError: () => undefined,
+    })
+
+    const initial = polling.start()
+    const forced = polling.forceRefresh()
+    polling.stop()
+    resolveFirst?.(available())
+
+    await initial
+    expect(await forced).toEqual({ ok: true, value: "stopped" })
+    expect(calls).toBe(0)
   })
 
   test("retains stale diagnostics and clears them after a successful refresh", async () => {

@@ -9,6 +9,7 @@ import {
   execFileRunner,
   statusAppearance,
   type GitHubClient,
+  type GitHubFailure,
   type ProcessRunner,
   type PullRequestDiagnostic,
   type PullRequestStatus,
@@ -42,8 +43,11 @@ export type PollScheduler = Readonly<{
 export type SessionPolling = Readonly<{
   start(): Promise<void>
   refresh(): Promise<void>
+  forceRefresh(): Promise<SessionRefreshResult>
   stop(): void
 }>
+
+export type SessionRefreshResult = Result<"refreshed" | "no_attachments" | "stopped", StateFailure | GitHubFailure>
 
 const pollIntervalMilliseconds = 60_000
 
@@ -81,8 +85,14 @@ export function startSessionPolling(
   let timer: unknown
   let timerRegistered = false
   let stopped = false
-  let inFlight: Promise<void> | undefined
-  let refreshQueued = false
+  let inFlight: Promise<SessionRefreshResult> | undefined
+  let queued:
+    | {
+        promise: Promise<SessionRefreshResult>
+        resolve(result: SessionRefreshResult): void
+        reject(error: unknown): void
+      }
+    | undefined
 
   function project(attachments: readonly PullRequestAttachment[]): SidebarPullRequest[] {
     return attachments.map((attachment) => ({
@@ -91,13 +101,13 @@ export function startSessionPolling(
     }))
   }
 
-  async function poll(): Promise<void> {
+  async function poll(): Promise<SessionRefreshResult> {
     const attachments = await input.store.list(input.sessionID)
-    if (stopped) return
+    if (stopped) return { ok: true, value: "stopped" }
     if (!attachments.ok) {
       input.publish([])
       input.onStateFailure(attachments.error)
-      return
+      return attachments
     }
 
     const attachedUrls = new Set<CanonicalPullRequestUrl>(
@@ -107,6 +117,7 @@ export function startSessionPolling(
       if (!attachedUrls.has(url)) statuses.delete(url)
     }
     input.publish(project(attachments.value))
+    if (attachments.value.length === 0) return { ok: true, value: "no_attachments" }
 
     const refreshable = attachments.value.filter((attachment) => {
       const previous = statuses.get(attachment.pullRequest.url)
@@ -116,11 +127,13 @@ export function startSessionPolling(
       refreshable.map((attachment) => attachment.pullRequest),
       { signal: controller.signal },
     )
-    if (stopped) return
+    if (stopped) return { ok: true, value: "stopped" }
     let batchDiagnostic: PullRequestDiagnostic | undefined
+    let failure: GitHubFailure | undefined
     if (!batch.ok) {
-      if (batch.error.tag === "GitHubCancelled") return
+      if (batch.error.tag === "GitHubCancelled") return batch
       batchDiagnostic = batch.error.tag === "GitHubBatchLimitExceeded" ? "GitHubUnavailable" : batch.error.tag
+      failure = batch.error
     }
 
     for (const [index, attachment] of refreshable.entries()) {
@@ -131,6 +144,7 @@ export function startSessionPolling(
         continue
       }
       const diagnostic = result === undefined ? (batchDiagnostic ?? "GitHubUnavailable") : result.error.tag
+      if (result !== undefined && !result.ok) failure ??= result.error
       statuses.set(
         attachment.pullRequest.url,
         previous?.tag === "Available" ? { ...previous, stale: true, diagnostic } : { tag: "Unavailable", diagnostic },
@@ -138,24 +152,45 @@ export function startSessionPolling(
     }
 
     if (!stopped) input.publish(project(attachments.value))
+    return failure === undefined ? { ok: true, value: "refreshed" } : { ok: false, error: failure }
   }
 
-  function refresh(): Promise<void> {
-    if (stopped) return Promise.resolve()
-    if (inFlight) {
-      refreshQueued = true
-      return inFlight
+  function startQueuedRefresh(): void {
+    inFlight = undefined
+    const next = queued
+    queued = undefined
+    if (next === undefined) return
+    if (stopped) {
+      next.resolve({ ok: true, value: "stopped" })
+      return
     }
-    const wrapped = poll().finally(() => {
-      inFlight = undefined
-      if (refreshQueued && !stopped) {
-        refreshQueued = false
-        return refresh()
-      }
-      return undefined
-    })
-    inFlight = wrapped
-    return wrapped
+    void requestRefresh().then(
+      (result) => next.resolve(result),
+      (error: unknown) => next.reject(error),
+    )
+  }
+
+  function requestRefresh(): Promise<SessionRefreshResult> {
+    if (stopped) return Promise.resolve({ ok: true, value: "stopped" })
+    if (inFlight) {
+      if (queued !== undefined) return queued.promise
+      let resolve!: (result: SessionRefreshResult) => void
+      let reject!: (error: unknown) => void
+      const promise = new Promise<SessionRefreshResult>((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise
+        reject = rejectPromise
+      })
+      queued = { promise, resolve, reject }
+      return promise
+    }
+    const current = poll()
+    inFlight = current
+    void current.then(startQueuedRefresh, startQueuedRefresh)
+    return current
+  }
+
+  function scheduledRefresh(): Promise<void> {
+    return requestRefresh().then(() => undefined)
   }
 
   return {
@@ -163,13 +198,14 @@ export function startSessionPolling(
       if (stopped) return Promise.resolve()
       if (!timerRegistered) {
         timer = scheduler.setInterval(() => {
-          refresh().catch(input.onError)
+          scheduledRefresh().catch(input.onError)
         }, pollIntervalMilliseconds)
         timerRegistered = true
       }
-      return refresh()
+      return scheduledRefresh()
     },
-    refresh,
+    refresh: scheduledRefresh,
+    forceRefresh: requestRefresh,
     stop() {
       if (stopped) return
       stopped = true
@@ -227,16 +263,35 @@ export async function openPullRequest(
   }
 }
 
+type RefreshListener = Readonly<{
+  refresh(): void
+  forceRefresh(): Promise<SessionRefreshResult>
+}>
+
 type RefreshBus = Readonly<{
   emit(sessionID: string): void
-  subscribe(sessionID: string, listener: () => void): () => void
+  forceRefresh(sessionID: string): Promise<SessionRefreshResult | undefined>
+  subscribe(sessionID: string, listener: RefreshListener): () => void
 }>
 
 function createRefreshBus(): RefreshBus {
-  const listeners = new Map<string, Set<() => void>>()
+  const listeners = new Map<string, Set<RefreshListener>>()
   return {
     emit(sessionID) {
-      for (const listener of listeners.get(sessionID) ?? []) listener()
+      for (const listener of listeners.get(sessionID) ?? []) listener.refresh()
+    },
+    async forceRefresh(sessionID) {
+      const sessionListeners = listeners.get(sessionID)
+      if (sessionListeners === undefined || sessionListeners.size === 0) return undefined
+      const settled = await Promise.allSettled([...sessionListeners].map((listener) => listener.forceRefresh()))
+      const rejected = settled.find((result) => result.status === "rejected")
+      if (rejected !== undefined) throw rejected.reason
+      const results = settled.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
+      return (
+        results.find((result) => !result.ok) ??
+        results.find((result) => result.ok && result.value === "refreshed") ??
+        results[0]
+      )
     },
     subscribe(sessionID, listener) {
       const sessionListeners = listeners.get(sessionID) ?? new Set()
@@ -369,6 +424,7 @@ type TuiDependencies = Readonly<{
   store: StateStore
   github: GitHubClient
   runner?: ProcessRunner
+  refreshBus?: RefreshBus
 }>
 
 function toneColor(theme: TuiPluginApi["theme"]["current"], tone: ReturnType<typeof statusAppearance>["tone"]) {
@@ -405,8 +461,18 @@ function PullRequestSidebar(
     onError: () => setFailure("Unable to refresh pull request status"),
   })
   polling.start().catch(() => setFailure("Unable to refresh pull request status"))
-  const unsubscribe = props.refreshBus.subscribe(props.sessionID, () => {
-    polling.refresh().catch(() => setFailure("Unable to refresh pull request status"))
+  const unsubscribe = props.refreshBus.subscribe(props.sessionID, {
+    refresh() {
+      polling.refresh().catch(() => setFailure("Unable to refresh pull request status"))
+    },
+    async forceRefresh() {
+      try {
+        return await polling.forceRefresh()
+      } catch (error) {
+        setFailure("Unable to refresh pull request status")
+        throw error
+      }
+    },
   })
   const onAbort = () => polling.stop()
   props.api.lifecycle.signal.addEventListener("abort", onAbort, { once: true })
@@ -469,7 +535,7 @@ function PullRequestSidebar(
 }
 
 export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): void {
-  const refreshBus = createRefreshBus()
+  const refreshBus = dependencies.refreshBus ?? createRefreshBus()
   api.event.on("session.updated", (event) => refreshBus.emit(event.properties.sessionID))
   api.event.on("message.updated", (event) => refreshBus.emit(event.properties.sessionID))
   api.event.on("message.part.updated", (event) => refreshBus.emit(event.properties.sessionID))
@@ -583,6 +649,64 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): v
             message,
           })
           refreshBus.emit(sessionID)
+        },
+      },
+      {
+        name: "pr.sync",
+        title: "Sync pull request status",
+        category: "Plugin",
+        namespace: "palette",
+        slashName: "pr-sync",
+        async run() {
+          const sessionID = currentSessionID(api)
+          if (sessionID === undefined) {
+            api.ui.toast({ variant: "warning", title: "Pull request tracker", message: "Open a session first" })
+            return
+          }
+          try {
+            const result = await refreshBus.forceRefresh(sessionID)
+            if (result === undefined) {
+              api.ui.toast({
+                variant: "warning",
+                title: "Pull request tracker",
+                message: "Pull request sidebar is not available",
+              })
+              return
+            }
+            if (!result.ok) {
+              api.ui.toast({ variant: "error", title: "Pull request tracker", message: result.error.message })
+              return
+            }
+            switch (result.value) {
+              case "refreshed":
+                api.ui.toast({
+                  variant: "success",
+                  title: "Pull request tracker",
+                  message: "Pull request status synced",
+                })
+                return
+              case "no_attachments":
+                api.ui.toast({
+                  variant: "info",
+                  title: "Pull request tracker",
+                  message: "No pull requests are attached",
+                })
+                return
+              case "stopped":
+                api.ui.toast({
+                  variant: "error",
+                  title: "Pull request tracker",
+                  message: "Unable to refresh pull request status",
+                })
+                return
+            }
+          } catch {
+            api.ui.toast({
+              variant: "error",
+              title: "Pull request tracker",
+              message: "Unable to refresh pull request status",
+            })
+          }
         },
       },
     ],
