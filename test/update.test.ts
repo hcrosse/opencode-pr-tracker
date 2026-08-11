@@ -142,7 +142,9 @@ describe("plugin update cache", () => {
   test("rejects expired, version-mismatched, and malformed entries", () => {
     expect(parseFreshUpdateCache({ ...cache, checkedAt: now - 86_400_000 }, cache, now)).toBeUndefined()
     expect(parseFreshUpdateCache(cache, { currentVersion: "0.2.1", opencodeVersion: "1.18.15" }, now)).toBeUndefined()
-    expect(parseFreshUpdateCache({ ...cache, availableVersion: 1 }, cache, now)).toBeUndefined()
+    for (const availableVersion of [1, "invalid", "0.1.0", "0.3.0-beta.1", "00.2.1", "0.2.1+.", "0.2.1+foo..bar"]) {
+      expect(parseFreshUpdateCache({ ...cache, availableVersion }, cache, now)).toBeUndefined()
+    }
   })
 })
 

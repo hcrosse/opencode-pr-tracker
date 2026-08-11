@@ -66,7 +66,16 @@ function parseRegistryReleases(input: unknown): readonly RegistryRelease[] | und
 }
 
 function isStableVersion(version: string): boolean {
-  return /^\d+\.\d+\.\d+(?:\+[0-9A-Za-z.-]+)?$/.test(version)
+  return /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(version)
+}
+
+function isNewerStableVersion(version: string, currentVersion: string): boolean {
+  if (!isStableVersion(version)) return false
+  try {
+    return Bun.semver.order(version, currentVersion) > 0
+  } catch {
+    return false
+  }
 }
 
 function newestCompatibleUpdate(
@@ -75,10 +84,9 @@ function newestCompatibleUpdate(
 ): AvailablePluginUpdate | undefined {
   let latest: string | undefined
   for (const release of releases) {
-    if (!isStableVersion(release.version)) continue
+    if (!isNewerStableVersion(release.version, versions.currentVersion)) continue
     try {
       if (!Bun.semver.satisfies(versions.opencodeVersion, release.opencodeRange)) continue
-      if (Bun.semver.order(release.version, versions.currentVersion) <= 0) continue
       if (latest === undefined || Bun.semver.order(release.version, latest) > 0) latest = release.version
     } catch {
       continue
@@ -161,7 +169,9 @@ export function parseFreshUpdateCache(
     now - input.checkedAt >= updateCacheMilliseconds ||
     input.currentVersion !== versions.currentVersion ||
     input.opencodeVersion !== versions.opencodeVersion ||
-    (input.availableVersion !== null && typeof input.availableVersion !== "string")
+    (input.availableVersion !== null &&
+      (typeof input.availableVersion !== "string" ||
+        !isNewerStableVersion(input.availableVersion, versions.currentVersion)))
   ) {
     return undefined
   }

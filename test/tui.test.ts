@@ -191,9 +191,13 @@ describe("TUI orchestration", () => {
     let kvReady = false
     const signals: Array<AbortSignal | undefined> = []
     let checks = 0
-    let finishStartup: (() => void) | undefined
-    const startupFinished = new Promise<void>((resolve) => {
-      finishStartup = resolve
+    let markFirstCheckStarted: (() => void) | undefined
+    const firstCheckStarted = new Promise<void>((resolve) => {
+      markFirstCheckStarted = resolve
+    })
+    let resolveFirstCheck: ((value: { currentVersion: string; version: string }) => void) | undefined
+    const firstCheck = new Promise<{ currentVersion: string; version: string }>((resolve) => {
+      resolveFirstCheck = resolve
     })
     const controller = new AbortController()
     const api = {
@@ -250,8 +254,11 @@ describe("TUI orchestration", () => {
         async updateChecker(_versions, options) {
           checks += 1
           signals.push(options?.signal)
-          finishStartup?.()
-          return { ok: true, value: { currentVersion: "0.2.0", version: "0.2.1" } }
+          if (checks === 1) {
+            markFirstCheckStarted?.()
+            return { ok: true, value: await firstCheck }
+          }
+          return { ok: true, value: { currentVersion: "0.2.0", version: "0.2.2" } }
         },
         async installationScopes(input) {
           scopeInputs.push(input)
@@ -261,29 +268,37 @@ describe("TUI orchestration", () => {
       { source: "npm", version: "0.2.0" },
     )
 
+    let commandFinished = false
+    const commandRun = commands
+      .get("pr.tracker.plugin.update")!
+      .run()
+      .then(() => {
+        commandFinished = true
+      })
     expect(checks).toBe(0)
     kvReady = true
-    await startupFinished
-    await Promise.resolve()
+    await firstCheckStarted
+    expect(checks).toBe(1)
+    expect(commandFinished).toBe(false)
+    resolveFirstCheck?.({ currentVersion: "0.2.0", version: "0.2.1" })
+    await commandRun
 
-    expect(updateStatusLabel("0.2.1")).toBe("0.2.1 available")
+    expect(updateStatusLabel("0.2.2")).toBe("0.2.2 available")
     expect(toasts).toEqual([])
     expect(cache.get("plugin-update-check-v1")).toEqual({
       checkedAt: new Date("2026-08-11T12:00:00.000Z").valueOf(),
       currentVersion: "0.2.0",
       opencodeVersion: "1.18.15",
-      availableVersion: "0.2.1",
+      availableVersion: "0.2.2",
     })
-
-    await commands.get("pr.tracker.plugin.update")!.run()
 
     expect(checks).toBe(2)
     expect(signals).toEqual([controller.signal, controller.signal])
     expect(scopeInputs).toEqual([{ projectConfigDirectory: "/project/.opencode", globalConfigDirectory: "/global" }])
     expect(dialogs).toEqual([
       {
-        title: "Update PR tracker to 0.2.1",
-        message: "opencode plugin @hcrosse/opencode-pr-tracker@0.2.1 --force\n\nRestart OpenCode after updating.",
+        title: "Update PR tracker to 0.2.2",
+        message: "opencode plugin @hcrosse/opencode-pr-tracker@0.2.2 --force\n\nRestart OpenCode after updating.",
       },
     ])
   })

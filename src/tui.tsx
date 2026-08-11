@@ -640,22 +640,33 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies, re
     release?.source === "npm" && release.version !== undefined
       ? { currentVersion: release.version, opencodeVersion: api.app.version }
       : undefined
+  let updateOperations: Promise<void> = Promise.resolve()
+  function serializeUpdateOperation<Value>(operation: () => Promise<Value>): Promise<Value> {
+    const result = updateOperations.then(operation)
+    updateOperations = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    return result
+  }
   let startupUpdateCheck: Promise<void> | undefined
   if (versions !== undefined) {
-    startupUpdateCheck = (async () => {
-      if (!(await waitForKvReady(api))) return
-      const cached = parseFreshUpdateCache(api.kv.get(updateCacheKey), versions, now())
-      if (cached !== undefined) {
-        updateBus.publish(cached ?? undefined)
-        return
+    startupUpdateCheck = serializeUpdateOperation(async () => {
+      try {
+        if (!(await waitForKvReady(api))) return
+        const cached = parseFreshUpdateCache(api.kv.get(updateCacheKey), versions, now())
+        if (cached !== undefined) {
+          updateBus.publish(cached ?? undefined)
+          return
+        }
+        const result = await updateChecker(versions, { signal: api.lifecycle.signal })
+        if (api.lifecycle.signal.aborted) return
+        const availableVersion = result.ok ? (result.value?.version ?? null) : null
+        writeUpdateCache(api, versions, availableVersion, now)
+        if (result.ok) updateBus.publish(result.value?.version)
+      } catch {
+        if (!api.lifecycle.signal.aborted && api.kv.ready) writeUpdateCache(api, versions, null, now)
       }
-      const result = await updateChecker(versions, { signal: api.lifecycle.signal })
-      if (api.lifecycle.signal.aborted) return
-      const availableVersion = result.ok ? (result.value?.version ?? null) : null
-      writeUpdateCache(api, versions, availableVersion, now)
-      if (result.ok) updateBus.publish(result.value?.version)
-    })().catch(() => {
-      if (!api.lifecycle.signal.aborted && api.kv.ready) writeUpdateCache(api, versions, null, now)
     })
   }
   const disposeEvents = [
@@ -853,14 +864,23 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies, re
             })
             return
           }
-          const result = await updateChecker(versions, { signal: api.lifecycle.signal })
-          if (api.lifecycle.signal.aborted || (!result.ok && result.error.tag === "UpdateCheckCancelled")) return
+          const result = await serializeUpdateOperation(async () => {
+            if (!(await waitForKvReady(api))) return undefined
+            const checked = await updateChecker(versions, { signal: api.lifecycle.signal })
+            if (api.lifecycle.signal.aborted || (!checked.ok && checked.error.tag === "UpdateCheckCancelled")) {
+              return undefined
+            }
+            if (checked.ok) {
+              writeUpdateCache(api, versions, checked.value?.version ?? null, now)
+              updateBus.publish(checked.value?.version)
+            }
+            return checked
+          })
+          if (result === undefined) return
           if (!result.ok) {
             api.ui.toast({ variant: "error", title: "Pull request tracker", message: result.error.message })
             return
           }
-          writeUpdateCache(api, versions, result.value?.version ?? null, now)
-          updateBus.publish(result.value?.version)
           if (result.value === undefined) {
             api.ui.toast({ variant: "info", title: "Pull request tracker", message: "PR tracker is up to date" })
             return
