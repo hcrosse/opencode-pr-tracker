@@ -2126,6 +2126,8 @@ function startSessionPolling(input) {
   }
   return {
     start() {
+      if (stopped)
+        return Promise.resolve();
       if (!timerRegistered) {
         timer = scheduler.setInterval(() => {
           refresh().catch(input.onError);
@@ -2517,4 +2519,4 @@ export {
   attachPullRequest
 };
 
-//# debugId=BE152376A99BCDDC64756E2164756E21
+//# debugId=30F48A6FF8961D7064756E2164756E21
