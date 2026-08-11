@@ -6,33 +6,7 @@ import { basename, join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import type { Readable } from "node:stream"
 
-type RunOptions = Readonly<{
-  cwd?: string
-  env?: NodeJS.ProcessEnv
-  label?: string
-}>
-
-async function run(command: string, args: readonly string[], options: RunOptions = {}): Promise<string> {
-  const label = options.label ?? command
-  const startedAt = performance.now()
-  console.log(`[smoke] ${label} started`)
-  const child = Bun.spawn([command, ...args], {
-    ...(options.cwd ? { cwd: options.cwd } : {}),
-    ...(options.env ? { env: options.env } : {}),
-    stdout: "pipe",
-    stderr: "pipe",
-  })
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ])
-  if (exitCode !== 0) {
-    throw new Error([`Command failed (${exitCode}): ${command} ${args.join(" ")}`, stdout, stderr].join("\n"))
-  }
-  console.log(`[smoke] ${label} completed in ${((performance.now() - startedAt) / 1000).toFixed(1)}s`)
-  return stdout.trim()
-}
+import { runCommand as run } from "./run-command.js"
 
 async function readStream(stream: Readable): Promise<string> {
   stream.setEncoding("utf8")
@@ -173,6 +147,7 @@ if (typeof slots?.sidebar_content !== "function" || disposers.length !== 1) {
 `
 
 const repositoryRoot = resolve(import.meta.dir, "..")
+const npmInstallTimeoutMs = 120_000
 const { SMOKE_OPENCODE_VERSION: opencodeRelease = "1.x", ...processEnvironment } = process.env
 const temporaryRoot = await mkdtemp(join(tmpdir(), "opencode-pr-tracker-smoke-"))
 
@@ -213,6 +188,7 @@ try {
 
   await run("npm", ["install", "--no-audit", "--no-fund", "--prefix", installDirectory, packedPath], {
     label: "install distribution",
+    timeoutMs: npmInstallTimeoutMs,
   })
   await run(
     "npm",
@@ -225,7 +201,7 @@ try {
       opencodeDirectory,
       `opencode-ai@${opencodeRelease}`,
     ],
-    { label: `install opencode-ai@${opencodeRelease}` },
+    { label: `install opencode-ai@${opencodeRelease}`, timeoutMs: npmInstallTimeoutMs },
   )
   await run("node", [join(opencodeDirectory, "node_modules", "opencode-ai", "postinstall.mjs")], {
     label: "prepare OpenCode launcher",
@@ -265,7 +241,7 @@ try {
         directory,
         `@opencode-ai/plugin@${installedVersion}`,
       ],
-      { label },
+      { label, timeoutMs: npmInstallTimeoutMs },
     )
   }
   const opencodeCliVersion = await run(opencodeBinary, ["--version"], {
