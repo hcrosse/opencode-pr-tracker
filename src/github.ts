@@ -50,7 +50,7 @@ export type GitHubBatch = readonly Result<AvailablePullRequestStatus, InvalidGit
 export type ProcessRunner = (
   file: string,
   args: readonly string[],
-  options: Readonly<{ signal?: AbortSignal }>,
+  options: Readonly<{ signal?: AbortSignal; cwd?: string }>,
 ) => Promise<Readonly<{ stdout: string }>>
 
 export type GitHubClient = Readonly<{
@@ -315,7 +315,11 @@ export const execFileRunner: ProcessRunner = (file, args, options) =>
     execFile(
       file,
       [...args],
-      { encoding: "utf8", ...(options.signal ? { signal: options.signal } : {}) },
+      {
+        encoding: "utf8",
+        ...(options.signal ? { signal: options.signal } : {}),
+        ...(options.cwd ? { cwd: options.cwd } : {}),
+      },
       (error, stdout) => {
         if (error) {
           reject(new ProcessExecutionError(error, stdout))

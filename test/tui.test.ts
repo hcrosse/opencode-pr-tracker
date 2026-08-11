@@ -180,6 +180,127 @@ describe("TUI orchestration", () => {
     expect(attached).toEqual([`session:${canonicalPullRequestUrl}`])
   })
 
+  test("resolves numeric attach input against the current session directory", async () => {
+    type Command = Readonly<{ name: string; run(): Promise<void> }>
+    const commands = new Map<string, Command>()
+    const attached: string[] = []
+    const processCalls: Array<{
+      file: string
+      args: readonly string[]
+      options: Readonly<{ signal?: AbortSignal; cwd?: string }>
+    }> = []
+    const store: StateStore = {
+      ...stateStore([]),
+      async attach(sessionID, value) {
+        attached.push(`${sessionID}:${value.url}`)
+        return { ok: true, value: "added" }
+      },
+    }
+    const runner: ProcessRunner = async (file, args, options) => {
+      processCalls.push({ file, args, options })
+      return { stdout: '{"url":"https://github.com/owner/repository"}' }
+    }
+    const controller = new AbortController()
+    const api = {
+      state: { path: { directory: "/project" } },
+      route: { current: { name: "session", params: { sessionID: "session" } } },
+      keymap: {
+        registerLayer(layer: { commands: Command[] }) {
+          for (const command of layer.commands) commands.set(command.name, command)
+          return () => undefined
+        },
+      },
+      slots: { register: () => "pr-tracker" },
+      lifecycle: {
+        signal: controller.signal,
+        onDispose: () => () => undefined,
+      },
+      event: { on: () => () => undefined },
+      ui: {
+        DialogPrompt(props: { onConfirm(value: string): void; onCancel?(): void }) {
+          props.onConfirm("42")
+          setTimeout(() => props.onCancel?.(), 10)
+          return null
+        },
+        dialog: {
+          clear() {},
+          setSize() {},
+          replace(render: () => unknown) {
+            render()
+          },
+        },
+        toast() {},
+      },
+    } as unknown as TuiPluginApi
+
+    registerTui(api, { store, github: githubStatuses(), runner })
+
+    await commands.get("pr.attach")!.run()
+
+    expect(processCalls).toHaveLength(1)
+    expect(processCalls[0]).toMatchObject({
+      file: "gh",
+      args: ["repo", "view", "--json", "url"],
+      options: { cwd: "/project" },
+    })
+    expect(processCalls[0]?.options.signal).toBeInstanceOf(AbortSignal)
+    expect(attached).toEqual(["session:https://github.com/owner/repository/pull/42"])
+  })
+
+  test("does not attach numeric input when repository resolution fails", async () => {
+    type Command = Readonly<{ name: string; run(): Promise<void> }>
+    const commands = new Map<string, Command>()
+    let attachCalls = 0
+    const store: StateStore = {
+      ...stateStore([]),
+      async attach() {
+        attachCalls += 1
+        return { ok: true, value: "added" }
+      },
+    }
+    const cause = new Error("gh failed")
+    const runner: ProcessRunner = async () => {
+      throw cause
+    }
+    const api = {
+      state: { path: { directory: "/project" } },
+      route: { current: { name: "session", params: { sessionID: "session" } } },
+      keymap: {
+        registerLayer(layer: { commands: Command[] }) {
+          for (const command of layer.commands) commands.set(command.name, command)
+          return () => undefined
+        },
+      },
+      slots: { register: () => "pr-tracker" },
+      lifecycle: {
+        signal: new AbortController().signal,
+        onDispose: () => () => undefined,
+      },
+      event: { on: () => () => undefined },
+      ui: {
+        DialogPrompt(props: { onConfirm(value: string): void; onCancel?(): void }) {
+          props.onConfirm("42")
+          setTimeout(() => props.onCancel?.(), 10)
+          return null
+        },
+        dialog: {
+          clear() {},
+          setSize() {},
+          replace(render: () => unknown) {
+            render()
+          },
+        },
+        toast() {},
+      },
+    } as unknown as TuiPluginApi
+
+    registerTui(api, { store, github: githubStatuses(), runner })
+
+    await commands.get("pr.attach")!.run()
+
+    expect(attachCalls).toBe(0)
+  })
+
   test("runs attach, open, and detach commands through shared seams", async () => {
     type Command = Readonly<{ name: string; run(): Promise<void> }>
     const commands = new Map<string, Command>()
@@ -208,6 +329,7 @@ describe("TUI orchestration", () => {
       },
     }
     const api = {
+      state: { path: { directory: "/project" } },
       route: { current: { name: "session", params: { sessionID: "session" } } },
       keymap: {
         registerLayer(layer: { commands: Command[] }) {
