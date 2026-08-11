@@ -318,6 +318,150 @@ describe("TUI orchestration", () => {
     expect(attachCalls).toBe(0)
   })
 
+  test("cancels an open attach dialog when the plugin lifecycle ends", async () => {
+    type Command = Readonly<{ name: string; run(): Promise<void> }>
+    const commands = new Map<string, Command>()
+    const controller = new AbortController()
+    let confirm: ((value: string) => void) | undefined
+    let dismiss: (() => void) | undefined
+    let clearCalls = 0
+    let attachCalls = 0
+    let runnerCalls = 0
+    const store: StateStore = {
+      ...stateStore([]),
+      async attach() {
+        attachCalls += 1
+        return { ok: true, value: "added" }
+      },
+    }
+    const api = {
+      state: { path: { directory: "/project" } },
+      route: { current: { name: "session", params: { sessionID: "session" } } },
+      keymap: {
+        registerLayer(layer: { commands: Command[] }) {
+          for (const command of layer.commands) commands.set(command.name, command)
+          return () => undefined
+        },
+      },
+      slots: { register: () => "pr-tracker" },
+      lifecycle: {
+        signal: controller.signal,
+        onDispose: () => () => undefined,
+      },
+      event: { on: () => () => undefined },
+      ui: {
+        DialogPrompt(props: { onConfirm(value: string): void }) {
+          confirm = (value) => props.onConfirm(value)
+          return null
+        },
+        dialog: {
+          clear() {
+            clearCalls += 1
+          },
+          setSize() {},
+          replace(render: () => unknown, onDismiss: () => void) {
+            dismiss = onDismiss
+            render()
+          },
+        },
+        toast() {},
+      },
+    } as unknown as TuiPluginApi
+
+    const runner: ProcessRunner = async () => {
+      runnerCalls += 1
+      return { stdout: '{"url":"https://github.com/owner/repository"}' }
+    }
+
+    registerTui(api, { store, github: githubStatuses(), runner })
+
+    const run = commands.get("pr.attach")!.run()
+    controller.abort()
+    const outcome = await Promise.race([
+      run.then(() => "resolved" as const),
+      Bun.sleep(10).then(() => "pending" as const),
+    ])
+    if (outcome === "pending") {
+      dismiss?.()
+      await run
+    }
+    confirm?.("42")
+    await Bun.sleep(0)
+
+    expect(outcome).toBe("resolved")
+    expect(clearCalls).toBe(1)
+    expect(runnerCalls).toBe(0)
+    expect(attachCalls).toBe(0)
+  })
+
+  test("cancels an open detach dialog when the plugin lifecycle ends", async () => {
+    type Command = Readonly<{ name: string; run(): Promise<void> }>
+    const commands = new Map<string, Command>()
+    const controller = new AbortController()
+    let select: ((option: { value: PullRequestUrl }) => void) | undefined
+    let markDialogOpened: (() => void) | undefined
+    const dialogOpened = new Promise<void>((resolve) => {
+      markDialogOpened = resolve
+    })
+    let clearCalls = 0
+    let detachCalls = 0
+    const store: StateStore = {
+      ...stateStore(),
+      async detach() {
+        detachCalls += 1
+        return { ok: true, value: "removed" }
+      },
+    }
+    const api = {
+      route: { current: { name: "session", params: { sessionID: "session" } } },
+      keymap: {
+        registerLayer(layer: { commands: Command[] }) {
+          for (const command of layer.commands) commands.set(command.name, command)
+          return () => undefined
+        },
+      },
+      slots: { register: () => "pr-tracker" },
+      lifecycle: {
+        signal: controller.signal,
+        onDispose: () => () => undefined,
+      },
+      event: { on: () => () => undefined },
+      ui: {
+        DialogSelect(props: { onSelect(option: { value: PullRequestUrl }): void }) {
+          select = (option) => props.onSelect(option)
+          markDialogOpened?.()
+          return null
+        },
+        dialog: {
+          clear() {
+            clearCalls += 1
+          },
+          setSize() {},
+          replace(render: () => unknown) {
+            render()
+          },
+        },
+        toast() {},
+      },
+    } as unknown as TuiPluginApi
+
+    registerTui(api, { store, github: githubStatuses() })
+
+    const run = commands.get("pr.detach")!.run()
+    await dialogOpened
+    controller.abort()
+    const outcome = await Promise.race([
+      run.then(() => "resolved" as const),
+      Bun.sleep(10).then(() => "pending" as const),
+    ])
+    select?.({ value: pullRequest })
+    await run
+
+    expect(outcome).toBe("resolved")
+    expect(clearCalls).toBe(1)
+    expect(detachCalls).toBe(0)
+  })
+
   test("runs attach, open, and detach commands through shared seams", async () => {
     type Command = Readonly<{ name: string; run(): Promise<void> }>
     const commands = new Map<string, Command>()
