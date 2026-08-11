@@ -186,12 +186,7 @@ export function createStateStore(options: Readonly<{ directory?: string; now?: (
       if (isMissingFile(cause)) return { ok: true, value: [] }
       return {
         ok: false,
-        error: {
-          tag: "StateUnavailable",
-          operation: "read",
-          message: "Unable to read the session pull request state",
-          cause,
-        },
+        error: stateUnavailable("read", "Unable to read the session pull request state", cause),
       }
     }
 
@@ -227,12 +222,7 @@ export function createStateStore(options: Readonly<{ directory?: string; now?: (
       await rm(temporary, { force: true }).catch(() => undefined)
       return {
         ok: false,
-        error: {
-          tag: "StateUnavailable",
-          operation: "write",
-          message: "Unable to write the session pull request state",
-          cause,
-        },
+        error: stateUnavailable("write", "Unable to write the session pull request state", cause),
       }
     }
   }

@@ -1582,8 +1582,8 @@ function parsePullRequestUrl(input) {
   if (input.slice("https://".length, authorityEnd).toLowerCase() !== "github.com") {
     return invalidPullRequestUrl;
   }
-  const rawPath = input.slice(authorityEnd).split(/[?#]/, 1)[0];
-  for (const segment of rawPath?.split("/") ?? []) {
+  const rawPath = input.slice(authorityEnd).split(/[?#]/, 1).join("");
+  for (const segment of rawPath.split("/")) {
     let decoded;
     try {
       decoded = decodeURIComponent(segment);
@@ -1616,10 +1616,8 @@ function parsePullRequestUrl(input) {
   if (!Number.isSafeInteger(number) || number <= 0)
     return invalidPullRequestUrl;
   const url = `https://github.com/${owner}/${repository}/pull/${number}`;
-  return {
-    ok: true,
-    value: { url, owner, repository, number }
-  };
+  const value = { url, owner, repository, number };
+  return { ok: true, value };
 }
 function formatPullRequestRef(pullRequest) {
   return `${pullRequest.owner}/${pullRequest.repository}#${pullRequest.number}`;
@@ -1746,12 +1744,7 @@ function createStateStore(options = {}) {
         return { ok: true, value: [] };
       return {
         ok: false,
-        error: {
-          tag: "StateUnavailable",
-          operation: "read",
-          message: "Unable to read the session pull request state",
-          cause
-        }
+        error: stateUnavailable("read", "Unable to read the session pull request state", cause)
       };
     }
     let decoded;
@@ -1784,12 +1777,7 @@ function createStateStore(options = {}) {
       });
       return {
         ok: false,
-        error: {
-          tag: "StateUnavailable",
-          operation: "write",
-          message: "Unable to write the session pull request state",
-          cause
-        }
+        error: stateUnavailable("write", "Unable to write the session pull request state", cause)
       };
     }
   }
@@ -1897,4 +1885,4 @@ export {
   PrToolError
 };
 
-//# debugId=BBA346D8D94796CD64756E2164756E21
+//# debugId=31344578608C35B064756E2164756E21

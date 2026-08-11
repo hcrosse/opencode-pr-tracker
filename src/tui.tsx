@@ -21,6 +21,7 @@ import {
 import {
   formatPullRequestRef,
   parsePullRequestUrl,
+  type CanonicalPullRequestUrl,
   type InvalidPullRequestUrl,
   type PullRequestUrl,
   type Result,
@@ -73,9 +74,10 @@ export function startSessionPolling(
   }>,
 ): SessionPolling {
   const scheduler = input.scheduler ?? defaultScheduler
-  const statuses = new Map<string, PullRequestStatus>()
+  const statuses = new Map<CanonicalPullRequestUrl, PullRequestStatus>()
   const controller = new AbortController()
   let timer: unknown
+  let timerRegistered = false
   let stopped = false
   let inFlight: Promise<void> | undefined
   let refreshQueued = false
@@ -96,7 +98,9 @@ export function startSessionPolling(
       return
     }
 
-    const attachedUrls = new Set<string>(attachments.value.map((attachment) => attachment.pullRequest.url))
+    const attachedUrls = new Set<CanonicalPullRequestUrl>(
+      attachments.value.map((attachment) => attachment.pullRequest.url),
+    )
     for (const url of statuses.keys()) {
       if (!attachedUrls.has(url)) statuses.delete(url)
     }
@@ -105,7 +109,7 @@ export function startSessionPolling(
     await Promise.all(
       attachments.value.map(async (attachment) => {
         const previous = statuses.get(attachment.pullRequest.url)
-        if (previous?.tag === "Available" && previous.lifecycle !== "open") return
+        if (previous?.tag === "Available" && previous.state.tag !== "Open") return
 
         const result = await input.github.get(attachment.pullRequest, { signal: controller.signal })
         if (stopped || (!result.ok && result.error.tag === "GitHubCancelled")) return
@@ -143,10 +147,11 @@ export function startSessionPolling(
 
   return {
     start() {
-      if (timer === undefined) {
+      if (!timerRegistered) {
         timer = scheduler.setInterval(() => {
           refresh().catch(input.onError)
         }, pollIntervalMilliseconds)
+        timerRegistered = true
       }
       return refresh()
     },
@@ -155,16 +160,22 @@ export function startSessionPolling(
       if (stopped) return
       stopped = true
       controller.abort()
-      if (timer !== undefined) scheduler.clearInterval(timer)
+      if (timerRegistered) scheduler.clearInterval(timer)
     },
   }
 }
 
-export type OpenPullRequestFailure = Readonly<{
-  tag: "OpenPullRequestFailed" | "UnsupportedPlatform"
-  message: string
-  cause?: unknown
-}>
+export type OpenPullRequestFailure =
+  | Readonly<{
+      tag: "UnsupportedPlatform"
+      message: string
+      platform: string
+    }>
+  | Readonly<{
+      tag: "OpenPullRequestFailed"
+      message: "Unable to open the pull request"
+      cause: unknown
+    }>
 
 export async function openPullRequest(
   pullRequest: PullRequestUrl,
@@ -179,7 +190,11 @@ export async function openPullRequest(
   if (executable === undefined) {
     return {
       ok: false,
-      error: { tag: "UnsupportedPlatform", message: `Opening pull requests is unsupported on ${platform}` },
+      error: {
+        tag: "UnsupportedPlatform",
+        message: `Opening pull requests is unsupported on ${platform}`,
+        platform,
+      },
     }
   }
 
@@ -302,7 +317,7 @@ function selectPullRequest(
   })
 }
 
-function showStateFailure(api: TuiPluginApi, failure: StateFailure | AttachFailure): void {
+function showStateFailure(api: TuiPluginApi, failure: AttachFailure): void {
   api.ui.toast({ variant: "error", title: "Pull request tracker", message: failure.message })
 }
 
@@ -313,11 +328,15 @@ type TuiDependencies = Readonly<{
 }>
 
 function toneColor(theme: TuiPluginApi["theme"]["current"], tone: ReturnType<typeof statusAppearance>["tone"]) {
-  if (tone === "green") return theme.success
-  if (tone === "yellow") return theme.warning
-  if (tone === "red") return theme.error
-  if (tone === "purple") return theme.secondary
-  return theme.textMuted
+  const colors = {
+    green: theme.success,
+    yellow: theme.warning,
+    red: theme.error,
+    purple: theme.secondary,
+    gray: theme.textMuted,
+  } satisfies Record<ReturnType<typeof statusAppearance>["tone"], typeof theme.success>
+
+  return colors[tone]
 }
 
 function PullRequestSidebar(
@@ -432,13 +451,14 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): v
             showStateFailure(api, result.error)
             return
           }
+          const message =
+            result.value === "added"
+              ? `Attached ${formatPullRequestRef(pullRequest)}`
+              : `${formatPullRequestRef(pullRequest)} is already attached`
           api.ui.toast({
             variant: "success",
             title: "Pull request tracker",
-            message:
-              result.value === "added"
-                ? `Attached ${formatPullRequestRef(pullRequest)}`
-                : `${formatPullRequestRef(pullRequest)} is already attached`,
+            message,
           })
           refreshBus.emit(sessionID)
         },
@@ -472,13 +492,14 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): v
             showStateFailure(api, result.error)
             return
           }
+          const message =
+            result.value === "removed"
+              ? `Detached ${formatPullRequestRef(pullRequest)}`
+              : `${formatPullRequestRef(pullRequest)} was not attached`
           api.ui.toast({
             variant: "success",
             title: "Pull request tracker",
-            message:
-              result.value === "removed"
-                ? `Detached ${formatPullRequestRef(pullRequest)}`
-                : `${formatPullRequestRef(pullRequest)} was not attached`,
+            message,
           })
           refreshBus.emit(sessionID)
         },

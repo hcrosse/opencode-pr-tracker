@@ -1,13 +1,9 @@
 import { tool, type Hooks, type PluginModule } from "@opencode-ai/plugin"
 
-import { createStateStore, type AttachFailure, type StateFailure, type StateStore } from "./state.js"
-import { formatPullRequestRef, parsePullRequestUrl } from "./url.js"
+import { createStateStore, type AttachFailure, type StateStore } from "./state.js"
+import { formatPullRequestRef, parsePullRequestUrl, type InvalidPullRequestUrl } from "./url.js"
 
-export type PrToolErrorCode =
-  | "InvalidPullRequestUrl"
-  | "AttachmentLimitReached"
-  | "InvalidStateFile"
-  | "StateUnavailable"
+export type PrToolErrorCode = InvalidPullRequestUrl["tag"] | AttachFailure["tag"]
 
 export class PrToolError extends Error {
   override readonly name = "PrToolError"
@@ -20,7 +16,7 @@ export class PrToolError extends Error {
   }
 }
 
-function toToolError(failure: AttachFailure | StateFailure): PrToolError {
+function toToolError(failure: AttachFailure): PrToolError {
   return new PrToolError(failure.tag, failure.message)
 }
 
