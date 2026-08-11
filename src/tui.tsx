@@ -380,7 +380,7 @@ function promptForPullRequest(
         return (
           <DialogPrompt
             title="Attach pull request"
-            placeholder="https://github.com/owner/repository/pull/123 or 123"
+            placeholder="https://github.com/owner/repository/pull/123, github.com/owner/repository/pull/123, or 123"
             description={() => (error() ? <text fg={api.theme.current.error}>{error()}</text> : null)}
             busy={busy()}
             busyText="Resolving repository"

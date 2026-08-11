@@ -52,9 +52,13 @@ export function createServerHooks(store: StateStore): Hooks {
         },
       }),
       pr_attach: tool({
-        description: "Attach a canonical GitHub pull request URL to the current OpenCode session.",
+        description: "Attach a GitHub pull request URL to the current OpenCode session.",
         args: {
-          url: tool.schema.string().describe("A https://github.com/<owner>/<repository>/pull/<number> URL"),
+          url: tool.schema
+            .string()
+            .describe(
+              "A https://github.com/<owner>/<repository>/pull/<number> or github.com/<owner>/<repository>/pull/<number> URL",
+            ),
         },
         async execute(args, context) {
           const pullRequest = parsePullRequestUrl(args.url)
@@ -70,11 +74,11 @@ export function createServerHooks(store: StateStore): Hooks {
         },
       }),
       pr_detach: tool({
-        description: "Detach a pull request from the current OpenCode session by positive number or canonical URL.",
+        description: "Detach a pull request from the current OpenCode session by positive number or GitHub URL.",
         args: {
           pull_request: tool.schema
             .union([tool.schema.number().int().positive().max(Number.MAX_SAFE_INTEGER), tool.schema.string()])
-            .describe("A positive pull request number or https://github.com/<owner>/<repository>/pull/<number> URL"),
+            .describe("https://github.com/owner/repository/pull/123, github.com/owner/repository/pull/123, or 123"),
         },
         async execute(args, context) {
           if (typeof args.pull_request === "number") {

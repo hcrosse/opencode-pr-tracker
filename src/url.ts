@@ -13,9 +13,12 @@ export type PullRequestUrl = Readonly<{
   readonly [pullRequestBrand]: "PullRequestUrl"
 }>
 
+const expectedPullRequestUrl =
+  "Expected https://github.com/<owner>/<repository>/pull/<positive-integer> or github.com/<owner>/<repository>/pull/<positive-integer>" as const
+
 export type InvalidPullRequestUrl = Readonly<{
   tag: "InvalidPullRequestUrl"
-  message: "Expected https://github.com/<owner>/<repository>/pull/<positive-integer>"
+  message: typeof expectedPullRequestUrl
 }>
 
 export type Result<Value, Failure> = Readonly<{ ok: true; value: Value }> | Readonly<{ ok: false; error: Failure }>
@@ -24,24 +27,28 @@ const invalidPullRequestUrl: Result<never, InvalidPullRequestUrl> = {
   ok: false,
   error: {
     tag: "InvalidPullRequestUrl",
-    message: "Expected https://github.com/<owner>/<repository>/pull/<positive-integer>",
+    message: expectedPullRequestUrl,
   },
 }
 
 const segmentPattern = /^[A-Za-z0-9._-]+$/
+const schemeLessPrefix = "github.com/"
 
 export function parsePullRequestUrl(input: string): Result<PullRequestUrl, InvalidPullRequestUrl> {
   if (input.trim() !== input) return invalidPullRequestUrl
   if (input.includes("\\")) return invalidPullRequestUrl
-  if (!input.startsWith("https://")) return invalidPullRequestUrl
 
-  const authorityEnd = input.indexOf("/", "https://".length)
+  const candidate =
+    input.slice(0, schemeLessPrefix.length).toLowerCase() === schemeLessPrefix ? `https://${input}` : input
+  if (!candidate.startsWith("https://")) return invalidPullRequestUrl
+
+  const authorityEnd = candidate.indexOf("/", "https://".length)
   if (authorityEnd === -1) return invalidPullRequestUrl
-  if (input.slice("https://".length, authorityEnd).toLowerCase() !== "github.com") {
+  if (candidate.slice("https://".length, authorityEnd).toLowerCase() !== "github.com") {
     return invalidPullRequestUrl
   }
 
-  const rawPath = input.slice(authorityEnd).split(/[?#]/, 1).join("")
+  const rawPath = candidate.slice(authorityEnd).split(/[?#]/, 1).join("")
   for (const segment of rawPath.split("/")) {
     let decoded: string
     try {
@@ -54,7 +61,7 @@ export function parsePullRequestUrl(input: string): Result<PullRequestUrl, Inval
 
   let parsed: URL
   try {
-    parsed = new URL(input)
+    parsed = new URL(candidate)
   } catch {
     return invalidPullRequestUrl
   }

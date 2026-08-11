@@ -46,7 +46,7 @@ scope. The plugin never installs updates automatically.
 
 ## Commands
 
-- `/pr-attach` accepts a canonical pull request URL or a positive pull request number for the current GitHub repository.
+- `/pr-attach` accepts a pull request URL, with or without `https://`, or a positive pull request number for the current GitHub repository.
 - `/pr-open` lets you select and open an attached pull request on macOS or Linux.
 - `/pr-detach` lets you select and remove an attached pull request.
 - `/pr-sync` immediately refreshes attached pull request status.
@@ -54,11 +54,12 @@ scope. The plugin never installs updates automatically.
 - Agents can use the `pr_list`, `pr_attach`, and `pr_detach` tools when the server plugin is enabled.
 
 The `pr_detach` tool also accepts a positive pull request number when exactly
-one session attachment has that number. Use a canonical URL when repositories
+one session attachment has that number. Use a pull request URL when repositories
 have attached pull requests with the same number.
 
-The plugin accepts canonical URLs in the form
-`https://github.com/<owner>/<repository>/pull/<number>`.
+The plugin accepts pull request URLs in the forms
+`https://github.com/<owner>/<repository>/pull/<number>` and
+`github.com/<owner>/<repository>/pull/<number>`.
 
 ## Sidebar
 
