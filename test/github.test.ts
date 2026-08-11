@@ -6,12 +6,9 @@ import { join } from "node:path"
 import {
   createGitHubClient,
   execFileRunner,
-  pullRequestDiagnostic,
   statusAppearance,
-  type GitHubFailure,
   type GitHubClient,
   type ProcessRunner,
-  type PullRequestDiagnostic,
 } from "../src/github.js"
 import { parsePullRequestUrl } from "../src/url.js"
 
@@ -98,11 +95,6 @@ function processFailureRunner(code: number, stderr: string): ProcessRunner {
     )
 }
 
-function projectDiagnostic(failure: GitHubFailure): PullRequestDiagnostic {
-  if (failure.tag === "GitHubCancelled") throw new Error("cancellation has no pull request diagnostic")
-  return pullRequestDiagnostic(failure)
-}
-
 describe("GitHub client", () => {
   test("batches mixed-repository pull requests through one fixed gh graphql invocation", async () => {
     const calls: Array<{ file: string; args: readonly string[]; signal?: AbortSignal }> = []
@@ -160,7 +152,6 @@ describe("GitHub client", () => {
       if (result.ok) return
       expect(result.error.tag).toBe("GitHubCliMissing")
       expect(result.error.message).toBe("GitHub CLI is not installed")
-      expect(projectDiagnostic(result.error)).toBe("GitHubCliMissing")
     } finally {
       await rm(directory, { recursive: true })
     }
@@ -200,9 +191,7 @@ describe("GitHub client", () => {
     expect(result.error.tag).toBe("GitHubAuthenticationRequired")
     expect(result.error.message).toBe("GitHub CLI authentication required")
     expect(result.error.message).not.toContain(credentialFragment)
-    const diagnostic = projectDiagnostic(result.error)
-    expect(diagnostic).toBe("GitHubAuthenticationRequired")
-    expect(diagnostic).not.toContain(credentialFragment)
+    expect(result.error.tag).not.toContain(credentialFragment)
   })
 
   test.each([
@@ -219,9 +208,7 @@ describe("GitHub client", () => {
     expect(result.error.tag).toBe("GitHubUnavailable")
     expect(result.error.message).toBe("GitHub status unavailable")
     expect(result.error.message).not.toContain(credentialFragment)
-    const diagnostic = projectDiagnostic(result.error)
-    expect(diagnostic).toBe("GitHubUnavailable")
-    expect(diagnostic).not.toContain(credentialFragment)
+    expect(result.error.tag).not.toContain(credentialFragment)
   })
 
   test("keeps adapter cancellation distinct from process failures", async () => {
@@ -395,15 +382,6 @@ describe("GitHub client", () => {
         cause,
       },
     })
-  })
-
-  test("projects invalid responses to a safe diagnostic", async () => {
-    const client = createGitHubClient(async () => ({ stdout: "not json" }))
-    const result = await client.get([pullRequest])
-
-    expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(projectDiagnostic(result.error)).toBe("InvalidGitHubResponse")
   })
 
   test.each([

@@ -1852,22 +1852,6 @@ function isAuthenticationFailure(failure) {
   const stderr = failure.stderr.toLowerCase();
   return authenticationFailureMarkers.some((marker) => stderr.includes(marker));
 }
-function pullRequestDiagnostic(failure) {
-  switch (failure.tag) {
-    case "GitHubCliMissing":
-      return "GitHubCliMissing";
-    case "GitHubAuthenticationRequired":
-      return "GitHubAuthenticationRequired";
-    case "GitHubUnavailable":
-      return "GitHubUnavailable";
-    case "InvalidGitHubResponse":
-      return "InvalidGitHubResponse";
-    case "GitHubBatchLimitExceeded":
-      return "GitHubUnavailable";
-    default:
-      return casesHandled(failure);
-  }
-}
 function classifyProcessFailure(cause) {
   const failure = parseProcessExecutionFailed(cause);
   if (failure?.code === "ENOENT") {
@@ -2366,7 +2350,7 @@ function startSessionPolling(input) {
     if (!batch.ok) {
       if (batch.error.tag === "GitHubCancelled")
         return;
-      batchDiagnostic = pullRequestDiagnostic(batch.error);
+      batchDiagnostic = batch.error.tag === "GitHubBatchLimitExceeded" ? "GitHubUnavailable" : batch.error.tag;
     }
     for (const [index, attachment] of refreshable.entries()) {
       const previous = statuses.get(attachment.pullRequest.url);
@@ -2375,7 +2359,7 @@ function startSessionPolling(input) {
         statuses.set(attachment.pullRequest.url, result.value);
         continue;
       }
-      const diagnostic = result === undefined ? batchDiagnostic ?? "GitHubUnavailable" : pullRequestDiagnostic(result.error);
+      const diagnostic = result === undefined ? batchDiagnostic ?? "GitHubUnavailable" : result.error.tag;
       statuses.set(attachment.pullRequest.url, previous?.tag === "Available" ? {
         ...previous,
         stale: true,
@@ -2881,4 +2865,4 @@ export {
   attachPullRequest
 };
 
-//# debugId=C0C7287A444D068764756E2164756E21
+//# debugId=73D7339550CD79BA64756E2164756E21

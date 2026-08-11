@@ -7,7 +7,6 @@ import { resolvePullRequestInput } from "./attach.js"
 import {
   createGitHubClient,
   execFileRunner,
-  pullRequestDiagnostic,
   statusAppearance,
   type GitHubClient,
   type ProcessRunner,
@@ -121,7 +120,7 @@ export function startSessionPolling(
     let batchDiagnostic: PullRequestDiagnostic | undefined
     if (!batch.ok) {
       if (batch.error.tag === "GitHubCancelled") return
-      batchDiagnostic = pullRequestDiagnostic(batch.error)
+      batchDiagnostic = batch.error.tag === "GitHubBatchLimitExceeded" ? "GitHubUnavailable" : batch.error.tag
     }
 
     for (const [index, attachment] of refreshable.entries()) {
@@ -131,8 +130,7 @@ export function startSessionPolling(
         statuses.set(attachment.pullRequest.url, result.value)
         continue
       }
-      const diagnostic =
-        result === undefined ? (batchDiagnostic ?? "GitHubUnavailable") : pullRequestDiagnostic(result.error)
+      const diagnostic = result === undefined ? (batchDiagnostic ?? "GitHubUnavailable") : result.error.tag
       statuses.set(
         attachment.pullRequest.url,
         previous?.tag === "Available" ? { ...previous, stale: true, diagnostic } : { tag: "Unavailable", diagnostic },

@@ -68,11 +68,7 @@ export type GitHubFailure =
 
 export type GitHubBatch = readonly Result<AvailablePullRequestStatus, InvalidGitHubResponse>[]
 
-export type PullRequestDiagnostic =
-  | "GitHubCliMissing"
-  | "GitHubAuthenticationRequired"
-  | "GitHubUnavailable"
-  | "InvalidGitHubResponse"
+export type PullRequestDiagnostic = Exclude<GitHubFailure, GitHubCancelled | GitHubBatchLimitExceeded>["tag"]
 
 export type ProcessRunner = (
   file: string,
@@ -356,23 +352,6 @@ function isAuthenticationFailure(failure: ProcessExecutionFailed): boolean {
   if (failure.code === 4) return true
   const stderr = failure.stderr.toLowerCase()
   return authenticationFailureMarkers.some((marker) => stderr.includes(marker))
-}
-
-export function pullRequestDiagnostic(failure: Exclude<GitHubFailure, GitHubCancelled>): PullRequestDiagnostic {
-  switch (failure.tag) {
-    case "GitHubCliMissing":
-      return "GitHubCliMissing"
-    case "GitHubAuthenticationRequired":
-      return "GitHubAuthenticationRequired"
-    case "GitHubUnavailable":
-      return "GitHubUnavailable"
-    case "InvalidGitHubResponse":
-      return "InvalidGitHubResponse"
-    case "GitHubBatchLimitExceeded":
-      return "GitHubUnavailable"
-    default:
-      return casesHandled(failure)
-  }
 }
 
 function classifyProcessFailure(cause: unknown): GitHubCliMissing | GitHubAuthenticationRequired | GitHubUnavailable {
