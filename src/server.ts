@@ -38,6 +38,19 @@ export function createServerHooks(store: StateStore): Hooks {
       if (!result.ok) throw toToolError(result.error)
     },
     tool: {
+      pr_list: tool({
+        description: "List pull requests attached to the current OpenCode session.",
+        args: {},
+        async execute(_args, context) {
+          const result = await store.list(context.sessionID)
+          if (!result.ok) throw toToolError(result.error)
+          if (result.value.length === 0) return "No pull requests are attached to this session."
+
+          return `Attached pull requests:\n${result.value
+            .map((attachment) => `- ${attachment.pullRequest.url}`)
+            .join("\n")}`
+        },
+      }),
       pr_attach: tool({
         description: "Attach a canonical GitHub pull request URL to the current OpenCode session.",
         args: {

@@ -51,7 +51,7 @@ scope. The plugin never installs updates automatically.
 - `/pr-detach` lets you select and remove an attached pull request.
 - `/pr-sync` immediately refreshes attached pull request status.
 - `/pr-tracker-plugin-update` checks for a compatible plugin release and shows the update command.
-- Agents can use the `pr_attach` and `pr_detach` tools when the server plugin is enabled.
+- Agents can use the `pr_list`, `pr_attach`, and `pr_detach` tools when the server plugin is enabled.
 
 The `pr_detach` tool also accepts a positive pull request number when exactly
 one session attachment has that number. Use a canonical URL when repositories
