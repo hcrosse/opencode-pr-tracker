@@ -65,8 +65,6 @@ const checkRunPassed = new Set(["SUCCESS"])
 const checkRunFailed = new Set(["FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE"])
 const checkRunIgnored = new Set(["NEUTRAL", "SKIPPED"])
 
-type ParsedLifecycle = "open" | "merged" | "closed"
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
@@ -151,20 +149,19 @@ function parseResponse(
   const ci = aggregateChecks(input.statusCheckRollup)
   if (!ci.ok) return ci
 
-  const lifecycle: ParsedLifecycle = input.state === "MERGED" ? "merged" : input.state === "CLOSED" ? "closed" : "open"
   let state: PullRequestState
-  switch (lifecycle) {
-    case "open":
+  switch (input.state) {
+    case "OPEN":
       state = { tag: "Open", ci: ci.value }
       break
-    case "merged":
+    case "MERGED":
       state = { tag: "Merged" }
       break
-    case "closed":
+    case "CLOSED":
       state = { tag: "Closed" }
       break
     default:
-      return casesHandled(lifecycle)
+      return casesHandled(input.state)
   }
 
   return {
@@ -249,44 +246,31 @@ export type StatusAppearance = Readonly<{
   strikethrough: boolean
 }>
 
-export function statusAppearance(status: PullRequestStatus): StatusAppearance {
-  let appearance: StatusAppearance
-  switch (status.tag) {
-    case "Unavailable":
-      return { tone: "gray", label: "status unavailable", strikethrough: false }
-    case "Available":
-      switch (status.state.tag) {
-        case "Open":
-          switch (status.state.ci) {
-            case "passed":
-              appearance = { tone: "green", label: "checks passed", strikethrough: false }
-              break
-            case "pending":
-              appearance = { tone: "yellow", label: "checks pending", strikethrough: false }
-              break
-            case "failed":
-              appearance = { tone: "red", label: "checks failed", strikethrough: false }
-              break
-            case "none":
-              appearance = { tone: "gray", label: "no checks", strikethrough: false }
-              break
-            default:
-              return casesHandled(status.state.ci)
-          }
-          break
-        case "Merged":
-          appearance = { tone: "purple", label: "merged", strikethrough: true }
-          break
-        case "Closed":
-          appearance = { tone: "red", label: "closed", strikethrough: true }
-          break
-        default:
-          return casesHandled(status.state)
-      }
-      break
+const openAppearances = {
+  passed: { tone: "green", label: "checks passed", strikethrough: false },
+  pending: { tone: "yellow", label: "checks pending", strikethrough: false },
+  failed: { tone: "red", label: "checks failed", strikethrough: false },
+  none: { tone: "gray", label: "no checks", strikethrough: false },
+} satisfies Record<PullRequestCi, StatusAppearance>
+
+function stateAppearance(state: PullRequestState): StatusAppearance {
+  switch (state.tag) {
+    case "Open":
+      return openAppearances[state.ci]
+    case "Merged":
+      return { tone: "purple", label: "merged", strikethrough: true }
+    case "Closed":
+      return { tone: "red", label: "closed", strikethrough: true }
     default:
-      return casesHandled(status)
+      return casesHandled(state)
+  }
+}
+
+export function statusAppearance(status: PullRequestStatus): StatusAppearance {
+  if (status.tag === "Unavailable") {
+    return { tone: "gray", label: "status unavailable", strikethrough: false }
   }
 
+  const appearance = stateAppearance(status.state)
   return status.stale ? { ...appearance, label: `${appearance.label} (stale)` } : appearance
 }

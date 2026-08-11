@@ -3,7 +3,6 @@ import { TextAttributes } from "@opentui/core"
 import type { TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { createSignal, onCleanup } from "solid-js"
 
-import { casesHandled } from "./exhaustive.js"
 import {
   createGitHubClient,
   execFileRunner,
@@ -329,20 +328,15 @@ type TuiDependencies = Readonly<{
 }>
 
 function toneColor(theme: TuiPluginApi["theme"]["current"], tone: ReturnType<typeof statusAppearance>["tone"]) {
-  switch (tone) {
-    case "green":
-      return theme.success
-    case "yellow":
-      return theme.warning
-    case "red":
-      return theme.error
-    case "purple":
-      return theme.secondary
-    case "gray":
-      return theme.textMuted
-    default:
-      return casesHandled(tone)
-  }
+  const colors = {
+    green: theme.success,
+    yellow: theme.warning,
+    red: theme.error,
+    purple: theme.secondary,
+    gray: theme.textMuted,
+  } satisfies Record<ReturnType<typeof statusAppearance>["tone"], typeof theme.success>
+
+  return colors[tone]
 }
 
 function PullRequestSidebar(
@@ -457,17 +451,10 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): v
             showStateFailure(api, result.error)
             return
           }
-          let message: string
-          switch (result.value) {
-            case "added":
-              message = `Attached ${formatPullRequestRef(pullRequest)}`
-              break
-            case "already_attached":
-              message = `${formatPullRequestRef(pullRequest)} is already attached`
-              break
-            default:
-              casesHandled(result.value)
-          }
+          const message =
+            result.value === "added"
+              ? `Attached ${formatPullRequestRef(pullRequest)}`
+              : `${formatPullRequestRef(pullRequest)} is already attached`
           api.ui.toast({
             variant: "success",
             title: "Pull request tracker",
@@ -505,17 +492,10 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): v
             showStateFailure(api, result.error)
             return
           }
-          let message: string
-          switch (result.value) {
-            case "removed":
-              message = `Detached ${formatPullRequestRef(pullRequest)}`
-              break
-            case "absent":
-              message = `${formatPullRequestRef(pullRequest)} was not attached`
-              break
-            default:
-              casesHandled(result.value)
-          }
+          const message =
+            result.value === "removed"
+              ? `Detached ${formatPullRequestRef(pullRequest)}`
+              : `${formatPullRequestRef(pullRequest)} was not attached`
           api.ui.toast({
             variant: "success",
             title: "Pull request tracker",

@@ -1,6 +1,5 @@
 import { tool, type Hooks, type PluginModule } from "@opencode-ai/plugin"
 
-import { casesHandled } from "./exhaustive.js"
 import { createStateStore, type AttachFailure, type StateStore } from "./state.js"
 import { formatPullRequestRef, parsePullRequestUrl, type InvalidPullRequestUrl } from "./url.js"
 
@@ -37,14 +36,9 @@ export function createServerHooks(store: StateStore): Hooks {
           if (!result.ok) throw toToolError(result.error)
 
           const reference = formatPullRequestRef(pullRequest.value)
-          switch (result.value) {
-            case "added":
-              return `Attached ${reference} to this session.`
-            case "already_attached":
-              return `${reference} is already attached to this session.`
-            default:
-              return casesHandled(result.value)
-          }
+          return result.value === "added"
+            ? `Attached ${reference} to this session.`
+            : `${reference} is already attached to this session.`
         },
       }),
       pr_detach: tool({
@@ -60,14 +54,9 @@ export function createServerHooks(store: StateStore): Hooks {
           if (!result.ok) throw toToolError(result.error)
 
           const reference = formatPullRequestRef(pullRequest.value)
-          switch (result.value) {
-            case "removed":
-              return `Detached ${reference} from this session.`
-            case "absent":
-              return `${reference} is not attached to this session.`
-            default:
-              return casesHandled(result.value)
-          }
+          return result.value === "removed"
+            ? `Detached ${reference} from this session.`
+            : `${reference} is not attached to this session.`
         },
       }),
     },
