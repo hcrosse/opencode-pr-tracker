@@ -396,6 +396,14 @@ describe("GitHub client", () => {
       expected: "none",
     },
     {
+      name: "deprecated draft state",
+      overrides: {
+        mergeStateStatus: "DRAFT",
+        baseRef: {},
+      },
+      expected: "none",
+    },
+    {
       name: "strict ruleset without required checks",
       overrides: {
         mergeStateStatus: "BEHIND",

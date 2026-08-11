@@ -250,6 +250,7 @@ function parseMergeStateStatus(input: unknown): Result<"behind" | "other", Inval
     case "BLOCKED":
     case "CLEAN":
     case "DIRTY":
+    case "DRAFT":
     case "HAS_HOOKS":
     case "UNKNOWN":
     case "UNSTABLE":
