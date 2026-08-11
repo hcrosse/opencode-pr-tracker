@@ -54,7 +54,7 @@ function stateStore(items: readonly PullRequestAttachment[] = [attachment]): Sta
 }
 
 function available(
-  state: PullRequestState = { tag: "Open", ci: "passed" },
+  state: PullRequestState = { tag: "Open", ci: "passed", mergeability: "mergeable" },
   value: PullRequestUrl = pullRequest,
 ): AvailablePullRequestStatus {
   return {
@@ -447,7 +447,10 @@ describe("TUI orchestration", () => {
         return {
           ok: true,
           value: [
-            { ok: true, value: available({ tag: "Open", ci: "failed" }, pullRequests[0]) },
+            {
+              ok: true,
+              value: available({ tag: "Open", ci: "failed", mergeability: "mergeable" }, pullRequests[0]),
+            },
             {
               ok: false,
               error: {
@@ -477,8 +480,8 @@ describe("TUI orchestration", () => {
     await polling.refresh()
 
     expect(latest.map((item) => item.status)).toMatchObject([
-      { tag: "Available", state: { tag: "Open", ci: "failed" }, stale: false },
-      { tag: "Available", state: { tag: "Open", ci: "passed" }, stale: true },
+      { tag: "Available", state: { tag: "Open", ci: "failed", mergeability: "mergeable" }, stale: false },
+      { tag: "Available", state: { tag: "Open", ci: "passed", mergeability: "mergeable" }, stale: true },
     ])
   })
 
@@ -593,7 +596,7 @@ describe("TUI orchestration", () => {
       store: stateStore(),
       github: githubStatuses(() => {
         calls += 1
-        return available(calls === 1 ? { tag: "Closed" } : { tag: "Open", ci: "pending" })
+        return available(calls === 1 ? { tag: "Closed" } : { tag: "Open", ci: "pending", mergeability: "mergeable" })
       }),
       scheduler: new RecordingScheduler(),
       publish: (items) => {
@@ -610,7 +613,7 @@ describe("TUI orchestration", () => {
     await polling.refresh()
 
     expect(calls).toBe(2)
-    expect(latestState).toEqual({ tag: "Open", ci: "pending" })
+    expect(latestState).toEqual({ tag: "Open", ci: "pending", mergeability: "mergeable" })
   })
 
   test("queues one trailing refresh requested during an active poll", async () => {

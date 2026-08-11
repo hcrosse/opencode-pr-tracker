@@ -1,8 +1,8 @@
 # OpenCode PR Tracker
 
 Track GitHub pull requests from an OpenCode session. The plugin adds tools and
-slash commands for attaching pull requests, then shows their lifecycle and CI
-status in the TUI sidebar.
+slash commands for attaching pull requests, then shows their lifecycle,
+mergeability, and CI status in the TUI sidebar.
 
 ## Requirements
 
@@ -69,10 +69,14 @@ macOS or Linux.
 | ------------------------ | --------------------- |
 | Merged                   | Purple, strikethrough |
 | Closed                   | Red, strikethrough    |
+| Merge conflict           | Red                   |
 | Checks passed            | Green                 |
 | Checks pending           | Yellow                |
 | Checks failed            | Red                   |
 | No checks or unavailable | Gray                  |
+
+Merged and closed states take precedence. For open pull requests, merge
+conflicts take precedence over CI status.
 
 If a refresh fails, the sidebar keeps the last successful status and marks it
 as stale. Merged pull requests remain attached but stop refreshing.
