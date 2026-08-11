@@ -1,4 +1,5 @@
 node_modules/
 .opencode/
+.worktrees/
 *.tsbuildinfo
 .DS_Store
