@@ -9,9 +9,9 @@ const pullRequest = parsed.value
 const secondParsed = parsePullRequestUrl("https://github.com/another/project/pull/7")
 if (!secondParsed.ok) throw new Error("second test fixture URL is invalid")
 const secondPullRequest = secondParsed.value
-const successChecks = [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS" }]
-const pendingChecks = [{ __typename: "CheckRun", status: "IN_PROGRESS", conclusion: null }]
-const failedChecks = [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "FAILURE" }]
+const successCounts = { checkRuns: [{ state: "SUCCESS", count: 1 }] }
+const pendingCounts = { checkRuns: [{ state: "IN_PROGRESS", count: 1 }] }
+const failedCounts = { checkRuns: [{ state: "FAILURE", count: 1 }] }
 const invalidItem = {
   ok: false,
   error: {
@@ -42,26 +42,22 @@ function response(overrides: Record<string, unknown> = {}): Record<string, unkno
   }
 }
 
-function rollup(nodes: readonly unknown[] = [], overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  const checkRunStates = new Map<string, number>()
-  const statusContextStates = new Map<string, number>()
-  for (const node of nodes) {
-    if (node === null || typeof node !== "object" || Array.isArray(node) || !("__typename" in node)) continue
-    if (node.__typename === "CheckRun" && "status" in node && "conclusion" in node) {
-      const state = node.status === "COMPLETED" ? node.conclusion : node.status
-      if (typeof state === "string") checkRunStates.set(state, (checkRunStates.get(state) ?? 0) + 1)
-    }
-    if (node.__typename === "StatusContext" && "state" in node && typeof node.state === "string") {
-      statusContextStates.set(node.state, (statusContextStates.get(node.state) ?? 0) + 1)
-    }
-  }
+function rollup(
+  input: Readonly<{
+    checkRuns?: readonly Readonly<{ state: string; count: number }>[]
+    statusContexts?: readonly Readonly<{ state: string; count: number }>[]
+    overrides?: Record<string, unknown>
+  }> = {},
+): Record<string, unknown> {
+  const checkRuns = input.checkRuns ?? []
+  const statusContexts = input.statusContexts ?? []
   return {
     contexts: {
-      checkRunCount: [...checkRunStates.values()].reduce((total, count) => total + count, 0),
-      statusContextCount: [...statusContextStates.values()].reduce((total, count) => total + count, 0),
-      checkRunCountsByState: [...checkRunStates].map(([state, count]) => ({ state, count })),
-      statusContextCountsByState: [...statusContextStates].map(([state, count]) => ({ state, count })),
-      ...overrides,
+      checkRunCount: checkRuns.reduce((total, item) => total + item.count, 0),
+      statusContextCount: statusContexts.reduce((total, item) => total + item.count, 0),
+      checkRunCountsByState: checkRuns,
+      statusContextCountsByState: statusContexts,
+      ...input.overrides,
     },
   }
 }
@@ -124,50 +120,54 @@ describe("GitHub client", () => {
   })
 
   test.each([
-    { name: "no checks", checks: [], expected: "none" },
+    { name: "no checks", counts: {}, expected: "none" },
     {
       name: "successful check run",
-      checks: [{ __typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS" }],
+      counts: successCounts,
       expected: "passed",
     },
     {
       name: "successful status context",
-      checks: [{ __typename: "StatusContext", state: "SUCCESS" }],
+      counts: { statusContexts: [{ state: "SUCCESS", count: 1 }] },
       expected: "passed",
     },
     {
       name: "pending check",
-      checks: [{ __typename: "CheckRun", status: "IN_PROGRESS", conclusion: null }],
+      counts: pendingCounts,
       expected: "pending",
     },
     {
       name: "pending status context",
-      checks: [{ __typename: "StatusContext", state: "PENDING" }],
+      counts: { statusContexts: [{ state: "PENDING", count: 1 }] },
       expected: "pending",
     },
     {
       name: "failure wins over pending",
-      checks: [
-        { __typename: "CheckRun", status: "IN_PROGRESS", conclusion: null },
-        { __typename: "CheckRun", status: "COMPLETED", conclusion: "FAILURE" },
-      ],
+      counts: {
+        checkRuns: [
+          { state: "IN_PROGRESS", count: 1 },
+          { state: "FAILURE", count: 1 },
+        ],
+      },
       expected: "failed",
     },
     {
       name: "error status fails",
-      checks: [{ __typename: "StatusContext", state: "ERROR" }],
+      counts: { statusContexts: [{ state: "ERROR", count: 1 }] },
       expected: "failed",
     },
     {
       name: "neutral and skipped checks are absent",
-      checks: [
-        { __typename: "CheckRun", status: "COMPLETED", conclusion: "NEUTRAL" },
-        { __typename: "CheckRun", status: "COMPLETED", conclusion: "SKIPPED" },
-      ],
+      counts: {
+        checkRuns: [
+          { state: "NEUTRAL", count: 1 },
+          { state: "SKIPPED", count: 1 },
+        ],
+      },
       expected: "none",
     },
-  ])("aggregates $name", async ({ checks, expected }) => {
-    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup(checks) }))))
+  ])("aggregates $name", async ({ counts, expected }) => {
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup(counts) }))))
 
     expect((await getOne(client)).state).toEqual({ tag: "Open", ci: expected })
   })
@@ -176,17 +176,17 @@ describe("GitHub client", () => {
     {
       state: "MERGED",
       mergedAt: "2026-08-10T12:00:00Z",
-      checks: [],
+      counts: {},
       tone: "purple",
       label: "merged",
       strike: true,
     },
-    { state: "CLOSED", mergedAt: null, checks: [], tone: "red", label: "closed", strike: true },
-    { state: "OPEN", mergedAt: null, checks: [], tone: "gray", label: "no checks", strike: false },
+    { state: "CLOSED", mergedAt: null, counts: {}, tone: "red", label: "closed", strike: true },
+    { state: "OPEN", mergedAt: null, counts: {}, tone: "gray", label: "no checks", strike: false },
     {
       state: "OPEN",
       mergedAt: null,
-      checks: successChecks,
+      counts: successCounts,
       tone: "green",
       label: "checks passed",
       strike: false,
@@ -194,7 +194,7 @@ describe("GitHub client", () => {
     {
       state: "OPEN",
       mergedAt: null,
-      checks: pendingChecks,
+      counts: pendingCounts,
       tone: "yellow",
       label: "checks pending",
       strike: false,
@@ -202,14 +202,14 @@ describe("GitHub client", () => {
     {
       state: "OPEN",
       mergedAt: null,
-      checks: failedChecks,
+      counts: failedCounts,
       tone: "red",
       label: "checks failed",
       strike: false,
     },
-  ])("projects $state status with $label appearance", async ({ state, mergedAt, checks, tone, label, strike }) => {
+  ])("projects $state status with $label appearance", async ({ state, mergedAt, counts, tone, label, strike }) => {
     const client = createGitHubClient(
-      runnerFor(batchResponse(response({ state, mergedAt, statusCheckRollup: rollup(checks) }))),
+      runnerFor(batchResponse(response({ state, mergedAt, statusCheckRollup: rollup(counts) }))),
     )
 
     expect(statusAppearance(await getOne(client))).toEqual({ tone, label, strikethrough: strike })
@@ -220,7 +220,7 @@ describe("GitHub client", () => {
     { state: "CLOSED", mergedAt: null, expected: { tag: "Closed" } },
   ])("accepts valid checks without retaining CI for $state pull requests", async ({ state, mergedAt, expected }) => {
     const client = createGitHubClient(
-      runnerFor(batchResponse(response({ state, mergedAt, statusCheckRollup: rollup(failedChecks) }))),
+      runnerFor(batchResponse(response({ state, mergedAt, statusCheckRollup: rollup(failedCounts) }))),
     )
 
     expect((await getOne(client)).state).toEqual(expected)
@@ -262,18 +262,18 @@ describe("GitHub client", () => {
   test.each([
     response({ state: "UNKNOWN" }),
     response({ state: "CLOSED", mergedAt: "2026-08-10T12:00:00Z" }),
-    response({ statusCheckRollup: rollup([{ __typename: "CheckRun", status: "COMPLETED", conclusion: "UNKNOWN" }]) }),
+    response({ statusCheckRollup: rollup({ checkRuns: [{ state: "UNKNOWN", count: 1 }] }) }),
     response({
       state: "MERGED",
       mergedAt: "2026-08-10T12:00:00Z",
-      statusCheckRollup: rollup([{ __typename: "CheckRun", status: "COMPLETED", conclusion: "UNKNOWN" }]),
+      statusCheckRollup: rollup({ checkRuns: [{ state: "UNKNOWN", count: 1 }] }),
     }),
     response({
       state: "CLOSED",
-      statusCheckRollup: rollup([{ __typename: "CheckRun", status: "COMPLETED", conclusion: "UNKNOWN" }]),
+      statusCheckRollup: rollup({ checkRuns: [{ state: "UNKNOWN", count: 1 }] }),
     }),
     response({ url: "https://example.com/owner/repository/pull/42" }),
-    response({ statusCheckRollup: rollup([], { checkRunCount: 1 }) }),
+    response({ statusCheckRollup: rollup({ overrides: { checkRunCount: 1 } }) }),
     response({ __typename: "Issue" }),
   ])("isolates malformed pull request data to its batch item", async (item) => {
     const client = createGitHubClient(runnerFor(batchResponse(item)))

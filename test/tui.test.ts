@@ -64,17 +64,16 @@ function available(
 }
 
 function githubStatuses(
-  resolve: (
-    pullRequest: PullRequestUrl,
-    index: number,
-  ) => AvailablePullRequestStatus | Promise<AvailablePullRequestStatus> = (value) => available(undefined, value),
+  resolve: (pullRequest: PullRequestUrl) => AvailablePullRequestStatus | Promise<AvailablePullRequestStatus> = (
+    value,
+  ) => available(undefined, value),
 ): GitHubClient {
   return {
     async get(pullRequests) {
       return {
         ok: true,
         value: await Promise.all(
-          pullRequests.map(async (value, index) => ({ ok: true, value: await resolve(value, index) }) as const),
+          pullRequests.map(async (value) => ({ ok: true, value: await resolve(value) }) as const),
         ),
       }
     },
