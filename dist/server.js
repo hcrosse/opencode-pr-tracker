@@ -1555,11 +1555,6 @@ var require_proper_lockfile = __commonJS((exports, module) => {
 // src/server.ts
 import { tool } from "@opencode-ai/plugin";
 
-// src/exhaustive.ts
-function casesHandled(value) {
-  throw new Error(`Unhandled case: ${String(value)}`);
-}
-
 // src/state.ts
 var import_proper_lockfile = __toESM(require_proper_lockfile(), 1);
 import { createHash, randomUUID } from "crypto";
@@ -1857,14 +1852,7 @@ function createServerHooks(store) {
           if (!result.ok)
             throw toToolError(result.error);
           const reference = formatPullRequestRef(pullRequest.value);
-          switch (result.value) {
-            case "added":
-              return `Attached ${reference} to this session.`;
-            case "already_attached":
-              return `${reference} is already attached to this session.`;
-            default:
-              return casesHandled(result.value);
-          }
+          return result.value === "added" ? `Attached ${reference} to this session.` : `${reference} is already attached to this session.`;
         }
       }),
       pr_detach: tool({
@@ -1880,14 +1868,7 @@ function createServerHooks(store) {
           if (!result.ok)
             throw toToolError(result.error);
           const reference = formatPullRequestRef(pullRequest.value);
-          switch (result.value) {
-            case "removed":
-              return `Detached ${reference} from this session.`;
-            case "absent":
-              return `${reference} is not attached to this session.`;
-            default:
-              return casesHandled(result.value);
-          }
+          return result.value === "removed" ? `Detached ${reference} from this session.` : `${reference} is not attached to this session.`;
         }
       })
     }
@@ -1904,4 +1885,4 @@ export {
   PrToolError
 };
 
-//# debugId=D1A475033D00FFAE64756E2164756E21
+//# debugId=31344578608C35B064756E2164756E21

@@ -1564,13 +1564,13 @@ import { createComponent as _$createComponent } from "@opentui/solid";
 import { TextAttributes } from "@opentui/core";
 import { createSignal, onCleanup } from "solid-js";
 
+// src/github.ts
+import { execFile } from "child_process";
+
 // src/exhaustive.ts
 function casesHandled(value) {
   throw new Error(`Unhandled case: ${String(value)}`);
 }
-
-// src/github.ts
-import { execFile } from "child_process";
 
 // src/url.ts
 var invalidPullRequestUrl = {
@@ -1731,20 +1731,19 @@ function parseResponse(input, pullRequest) {
   const ci = aggregateChecks(input.statusCheckRollup);
   if (!ci.ok)
     return ci;
-  const lifecycle = input.state === "MERGED" ? "merged" : input.state === "CLOSED" ? "closed" : "open";
   let state;
-  switch (lifecycle) {
-    case "open":
+  switch (input.state) {
+    case "OPEN":
       state = { tag: "Open", ci: ci.value };
       break;
-    case "merged":
+    case "MERGED":
       state = { tag: "Merged" };
       break;
-    case "closed":
+    case "CLOSED":
       state = { tag: "Closed" };
       break;
     default:
-      return casesHandled(lifecycle);
+      return casesHandled(input.state);
   }
   return {
     ok: true,
@@ -1808,44 +1807,29 @@ function createGitHubClient(runner = execFileRunner) {
     }
   };
 }
-function statusAppearance(status) {
-  let appearance;
-  switch (status.tag) {
-    case "Unavailable":
-      return { tone: "gray", label: "status unavailable", strikethrough: false };
-    case "Available":
-      switch (status.state.tag) {
-        case "Open":
-          switch (status.state.ci) {
-            case "passed":
-              appearance = { tone: "green", label: "checks passed", strikethrough: false };
-              break;
-            case "pending":
-              appearance = { tone: "yellow", label: "checks pending", strikethrough: false };
-              break;
-            case "failed":
-              appearance = { tone: "red", label: "checks failed", strikethrough: false };
-              break;
-            case "none":
-              appearance = { tone: "gray", label: "no checks", strikethrough: false };
-              break;
-            default:
-              return casesHandled(status.state.ci);
-          }
-          break;
-        case "Merged":
-          appearance = { tone: "purple", label: "merged", strikethrough: true };
-          break;
-        case "Closed":
-          appearance = { tone: "red", label: "closed", strikethrough: true };
-          break;
-        default:
-          return casesHandled(status.state);
-      }
-      break;
+var openAppearances = {
+  passed: { tone: "green", label: "checks passed", strikethrough: false },
+  pending: { tone: "yellow", label: "checks pending", strikethrough: false },
+  failed: { tone: "red", label: "checks failed", strikethrough: false },
+  none: { tone: "gray", label: "no checks", strikethrough: false }
+};
+function stateAppearance(state) {
+  switch (state.tag) {
+    case "Open":
+      return openAppearances[state.ci];
+    case "Merged":
+      return { tone: "purple", label: "merged", strikethrough: true };
+    case "Closed":
+      return { tone: "red", label: "closed", strikethrough: true };
     default:
-      return casesHandled(status);
+      return casesHandled(state);
   }
+}
+function statusAppearance(status) {
+  if (status.tag === "Unavailable") {
+    return { tone: "gray", label: "status unavailable", strikethrough: false };
+  }
+  const appearance = stateAppearance(status.state);
   return status.stale ? { ...appearance, label: `${appearance.label} (stale)` } : appearance;
 }
 
@@ -2295,20 +2279,14 @@ function showStateFailure(api, failure) {
   });
 }
 function toneColor(theme, tone) {
-  switch (tone) {
-    case "green":
-      return theme.success;
-    case "yellow":
-      return theme.warning;
-    case "red":
-      return theme.error;
-    case "purple":
-      return theme.secondary;
-    case "gray":
-      return theme.textMuted;
-    default:
-      return casesHandled(tone);
-  }
+  const colors = {
+    green: theme.success,
+    yellow: theme.warning,
+    red: theme.error,
+    purple: theme.secondary,
+    gray: theme.textMuted
+  };
+  return colors[tone];
 }
 function PullRequestSidebar(props) {
   const [items, setItems] = createSignal([]);
@@ -2446,17 +2424,7 @@ function registerTui(api, dependencies) {
           showStateFailure(api, result.error);
           return;
         }
-        let message;
-        switch (result.value) {
-          case "added":
-            message = `Attached ${formatPullRequestRef(pullRequest)}`;
-            break;
-          case "already_attached":
-            message = `${formatPullRequestRef(pullRequest)} is already attached`;
-            break;
-          default:
-            casesHandled(result.value);
-        }
+        const message = result.value === "added" ? `Attached ${formatPullRequestRef(pullRequest)}` : `${formatPullRequestRef(pullRequest)} is already attached`;
         api.ui.toast({
           variant: "success",
           title: "Pull request tracker",
@@ -2501,17 +2469,7 @@ function registerTui(api, dependencies) {
           showStateFailure(api, result.error);
           return;
         }
-        let message;
-        switch (result.value) {
-          case "removed":
-            message = `Detached ${formatPullRequestRef(pullRequest)}`;
-            break;
-          case "absent":
-            message = `${formatPullRequestRef(pullRequest)} was not attached`;
-            break;
-          default:
-            casesHandled(result.value);
-        }
+        const message = result.value === "removed" ? `Detached ${formatPullRequestRef(pullRequest)}` : `${formatPullRequestRef(pullRequest)} was not attached`;
         api.ui.toast({
           variant: "success",
           title: "Pull request tracker",
@@ -2559,4 +2517,4 @@ export {
   attachPullRequest
 };
 
-//# debugId=65306E2849E17F8464756E2164756E21
+//# debugId=BE152376A99BCDDC64756E2164756E21
