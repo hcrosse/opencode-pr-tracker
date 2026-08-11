@@ -21,6 +21,13 @@ const secondPullRequest = secondParsed.value
 const successCounts = { checkRuns: [{ state: "SUCCESS", count: 1 }] }
 const pendingCounts = { checkRuns: [{ state: "IN_PROGRESS", count: 1 }] }
 const failedCounts = { checkRuns: [{ state: "FAILURE", count: 1 }] }
+const strictStatusCheckRule = {
+  parameters: {
+    __typename: "RequiredStatusChecksParameters",
+    strictRequiredStatusChecksPolicy: true,
+    requiredStatusChecks: [{ context: "Build" }],
+  },
+}
 const invalidItem = {
   ok: false,
   error: {
@@ -47,8 +54,31 @@ function response(overrides: Record<string, unknown> = {}): Record<string, unkno
     url: pullRequest.url,
     mergedAt: null,
     mergeable: "MERGEABLE",
+    mergeStateStatus: "CLEAN",
+    baseRef: baseRefPolicy(),
     statusCheckRollup: rollup(),
     ...overrides,
+  }
+}
+
+function baseRefPolicy(
+  input: Readonly<{
+    branchProtectionRule?: unknown
+    refUpdateRule?: unknown
+    rules?: readonly unknown[]
+    hasNextPage?: boolean
+    totalCount?: number
+  }> = {},
+): Record<string, unknown> {
+  const rules = input.rules ?? []
+  return {
+    branchProtectionRule: input.branchProtectionRule ?? null,
+    refUpdateRule: input.refUpdateRule ?? null,
+    rules: {
+      nodes: rules,
+      totalCount: input.totalCount ?? rules.length,
+      pageInfo: { hasNextPage: input.hasNextPage ?? false },
+    },
   }
 }
 
@@ -111,8 +141,12 @@ describe("GitHub client", () => {
     expect(calls[0]?.args[5]).toContain("query BatchPullRequests($url0: URI!, $url1: URI!)")
     expect(calls[0]?.args[5]).toContain("pr0: resource(url: $url0)")
     expect(calls[0]?.args[5]).toContain("pr1: resource(url: $url1)")
-    expect(calls[0]?.args[5]).toContain("title state url mergedAt mergeable statusCheckRollup")
+    expect(calls[0]?.args[5]).toContain("title state url mergedAt mergeable mergeStateStatus")
     expect(calls[0]?.args[5]).toContain("checkRunCountsByState { state count }")
+    expect(calls[0]?.args[5]).toContain("mergeStateStatus")
+    expect(calls[0]?.args[5]).toContain("requiresStrictStatusChecks")
+    expect(calls[0]?.args[5]).toContain("requiredStatusCheckContexts")
+    expect(calls[0]?.args[5]).toContain("strictRequiredStatusChecksPolicy")
     expect(calls[0]?.args.slice(6)).toEqual(["-f", `url0=${pullRequest.url}`, "-f", `url1=${secondPullRequest.url}`])
   })
 
@@ -282,7 +316,12 @@ describe("GitHub client", () => {
   ])("aggregates $name", async ({ counts, expected }) => {
     const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup(counts) }))))
 
-    expect((await getOne(client)).state).toEqual({ tag: "Open", ci: expected, mergeability: "mergeable" })
+    expect((await getOne(client)).state).toEqual({
+      tag: "Open",
+      ci: expected,
+      mergeability: "mergeable",
+      blocker: "none",
+    })
   })
 
   test("accepts nullable state counts when their totals are zero", async () => {
@@ -301,7 +340,12 @@ describe("GitHub client", () => {
       ),
     )
 
-    expect((await getOne(client)).state).toEqual({ tag: "Open", ci: "none", mergeability: "mergeable" })
+    expect((await getOne(client)).state).toEqual({
+      tag: "Open",
+      ci: "none",
+      mergeability: "mergeable",
+      blocker: "none",
+    })
   })
 
   test.each([
@@ -311,7 +355,135 @@ describe("GitHub client", () => {
   ])("parses $raw mergeability", async ({ raw, expected }) => {
     const client = createGitHubClient(runnerFor(batchResponse(response({ mergeable: raw }))))
 
-    expect((await getOne(client)).state).toEqual({ tag: "Open", ci: "none", mergeability: expected })
+    expect((await getOne(client)).state).toEqual({ tag: "Open", ci: "none", mergeability: expected, blocker: "none" })
+  })
+
+  test.each([
+    {
+      name: "strict branch protection",
+      overrides: {
+        mergeStateStatus: "BEHIND",
+        baseRef: baseRefPolicy({
+          branchProtectionRule: { requiresStatusChecks: true, requiresStrictStatusChecks: true },
+        }),
+      },
+      expected: "behind",
+    },
+    {
+      name: "strict applicable ruleset",
+      overrides: {
+        mergeStateStatus: "BEHIND",
+        baseRef: baseRefPolicy({ rules: [strictStatusCheckRule] }),
+      },
+      expected: "behind",
+    },
+    {
+      name: "non-strict branch protection",
+      overrides: {
+        mergeStateStatus: "BEHIND",
+        baseRef: baseRefPolicy({
+          branchProtectionRule: { requiresStatusChecks: true, requiresStrictStatusChecks: false },
+        }),
+      },
+      expected: "none",
+    },
+    {
+      name: "generic blocked state",
+      overrides: {
+        mergeStateStatus: "BLOCKED",
+        baseRef: {},
+      },
+      expected: "none",
+    },
+    {
+      name: "strict ruleset without required checks",
+      overrides: {
+        mergeStateStatus: "BEHIND",
+        baseRef: baseRefPolicy({
+          rules: [
+            {
+              parameters: {
+                __typename: "RequiredStatusChecksParameters",
+                strictRequiredStatusChecksPolicy: true,
+                requiredStatusChecks: [],
+              },
+            },
+          ],
+        }),
+      },
+      expected: "none",
+    },
+    {
+      name: "strict rule found before an incomplete page",
+      overrides: {
+        mergeStateStatus: "BEHIND",
+        baseRef: baseRefPolicy({ rules: [strictStatusCheckRule], hasNextPage: true, totalCount: 101 }),
+      },
+      expected: "behind",
+    },
+  ])("classifies $name as $expected", async ({ overrides, expected }) => {
+    const client = createGitHubClient(runnerFor(batchResponse(response(overrides))))
+
+    expect((await getOne(client)).state).toEqual({
+      tag: "Open",
+      ci: "none",
+      mergeability: "mergeable",
+      blocker: expected,
+    })
+  })
+
+  test("rejects a behind pull request when applicable rules may be on another page", async () => {
+    const client = createGitHubClient(
+      runnerFor(
+        batchResponse(
+          response({
+            mergeStateStatus: "BEHIND",
+            baseRef: baseRefPolicy({ hasNextPage: true, totalCount: 101 }),
+          }),
+        ),
+      ),
+    )
+
+    const result = await client.get([pullRequest])
+
+    expect(result.ok && result.value[0]).toEqual(invalidItem)
+  })
+
+  test("rejects a behind pull request when classic strict policy is hidden from the viewer", async () => {
+    const client = createGitHubClient(
+      runnerFor(
+        batchResponse(
+          response({
+            mergeStateStatus: "BEHIND",
+            baseRef: baseRefPolicy({ refUpdateRule: { requiredStatusCheckContexts: ["Build"] } }),
+          }),
+        ),
+      ),
+    )
+
+    const result = await client.get([pullRequest])
+
+    expect(result.ok && result.value[0]).toEqual(invalidItem)
+  })
+
+  test("shows a policy-backed behind branch after successful checks", async () => {
+    const client = createGitHubClient(
+      runnerFor(
+        batchResponse(
+          response({
+            mergeStateStatus: "BEHIND",
+            baseRef: baseRefPolicy({ rules: [strictStatusCheckRule] }),
+            statusCheckRollup: rollup(successCounts),
+          }),
+        ),
+      ),
+    )
+
+    expect(statusAppearance(await getOne(client))).toEqual({
+      tone: "yellow",
+      label: "branch behind",
+      strikethrough: false,
+    })
   })
 
   test.each([
@@ -359,7 +531,16 @@ describe("GitHub client", () => {
 
   test("gives an open merge conflict precedence over CI", async () => {
     const client = createGitHubClient(
-      runnerFor(batchResponse(response({ mergeable: "CONFLICTING", statusCheckRollup: rollup(successCounts) }))),
+      runnerFor(
+        batchResponse(
+          response({
+            mergeable: "CONFLICTING",
+            mergeStateStatus: "BEHIND",
+            baseRef: baseRefPolicy({ refUpdateRule: { requiredStatusCheckContexts: ["Build"] } }),
+            statusCheckRollup: rollup(successCounts),
+          }),
+        ),
+      ),
     )
 
     expect(statusAppearance(await getOne(client))).toEqual({
@@ -367,6 +548,35 @@ describe("GitHub client", () => {
       label: "merge conflict",
       strikethrough: false,
     })
+  })
+
+  test.each([
+    {
+      counts: pendingCounts,
+      policy: baseRefPolicy({ refUpdateRule: { requiredStatusCheckContexts: ["Build"] } }),
+      tone: "yellow",
+      label: "checks pending",
+    },
+    {
+      counts: failedCounts,
+      policy: baseRefPolicy({ hasNextPage: true, totalCount: 101 }),
+      tone: "red",
+      label: "checks failed",
+    },
+  ])("gives $label precedence over inconclusive blocker policy", async ({ counts, policy, tone, label }) => {
+    const client = createGitHubClient(
+      runnerFor(
+        batchResponse(
+          response({
+            mergeStateStatus: "BEHIND",
+            baseRef: policy,
+            statusCheckRollup: rollup(counts),
+          }),
+        ),
+      ),
+    )
+
+    expect(statusAppearance(await getOne(client))).toEqual({ tone, label, strikethrough: false })
   })
 
   test("uses CI while GitHub computes mergeability", async () => {
@@ -387,6 +597,17 @@ describe("GitHub client", () => {
   ])("accepts valid checks without retaining CI for $state pull requests", async ({ state, mergedAt, expected }) => {
     const client = createGitHubClient(
       runnerFor(batchResponse(response({ state, mergedAt, statusCheckRollup: rollup(failedCounts) }))),
+    )
+
+    expect((await getOne(client)).state).toEqual(expected)
+  })
+
+  test.each([
+    { state: "MERGED", mergedAt: "2026-08-10T12:00:00Z", expected: { tag: "Merged" } },
+    { state: "CLOSED", mergedAt: null, expected: { tag: "Closed" } },
+  ])("keeps $state lifecycle authoritative over malformed blocker policy", async ({ state, mergedAt, expected }) => {
+    const client = createGitHubClient(
+      runnerFor(batchResponse(response({ state, mergedAt, mergeStateStatus: "NEW_STATE", baseRef: {} }))),
     )
 
     expect((await getOne(client)).state).toEqual(expected)
@@ -445,6 +666,37 @@ describe("GitHub client", () => {
       statusCheckRollup: rollup({ overrides: { checkRunCount: 1, checkRunCountsByState: null } }),
     }),
     response({ mergeable: "BLOCKED" }),
+    response({ mergeStateStatus: "NEW_STATE" }),
+    response({ mergeStateStatus: "BEHIND", baseRef: {} }),
+    response({
+      mergeStateStatus: "BEHIND",
+      baseRef: baseRefPolicy({ branchProtectionRule: { requiresStatusChecks: true } }),
+    }),
+    response({ mergeStateStatus: "BEHIND", baseRef: baseRefPolicy({ refUpdateRule: {} }) }),
+    response({
+      mergeStateStatus: "BEHIND",
+      baseRef: baseRefPolicy({ refUpdateRule: { requiredStatusCheckContexts: [""] } }),
+    }),
+    response({ mergeStateStatus: "BEHIND", baseRef: { branchProtectionRule: null, rules: null } }),
+    response({ mergeStateStatus: "BEHIND", baseRef: baseRefPolicy({ totalCount: 1 }) }),
+    response({
+      mergeStateStatus: "BEHIND",
+      baseRef: baseRefPolicy({ rules: [strictStatusCheckRule], hasNextPage: true }),
+    }),
+    response({
+      mergeStateStatus: "BEHIND",
+      baseRef: baseRefPolicy({
+        rules: [
+          {
+            parameters: {
+              __typename: "RequiredStatusChecksParameters",
+              strictRequiredStatusChecksPolicy: true,
+              requiredStatusChecks: [{ context: "" }],
+            },
+          },
+        ],
+      }),
+    }),
     response({ __typename: "Issue" }),
   ])("isolates malformed pull request data to its batch item", async (item) => {
     const client = createGitHubClient(runnerFor(batchResponse(item, response({ url: secondPullRequest.url }))))
@@ -531,7 +783,12 @@ describe("GitHub client", () => {
   test("treats a null status rollup as no checks", async () => {
     const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: null }))))
 
-    expect((await getOne(client)).state).toEqual({ tag: "Open", ci: "none", mergeability: "mergeable" })
+    expect((await getOne(client)).state).toEqual({
+      tag: "Open",
+      ci: "none",
+      mergeability: "mergeable",
+      blocker: "none",
+    })
   })
 
   test("renders an unavailable status without a diagnostic", () => {
@@ -572,7 +829,7 @@ describe("GitHub client", () => {
         tag: "Available",
         pullRequest,
         title: "Title",
-        state: { tag: "Open", ci: "pending", mergeability: "mergeable" },
+        state: { tag: "Open", ci: "pending", mergeability: "mergeable", blocker: "none" },
         stale: true,
         diagnostic,
       }),
@@ -585,7 +842,7 @@ describe("GitHub client", () => {
         tag: "Available",
         pullRequest,
         title: "Title",
-        state: { tag: "Open", ci: "pending", mergeability: "conflicting" },
+        state: { tag: "Open", ci: "pending", mergeability: "conflicting", blocker: "none" },
         stale: true,
         diagnostic: "GitHubUnavailable",
       }),

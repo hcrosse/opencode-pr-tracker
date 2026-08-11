@@ -5,9 +5,15 @@ import { parsePullRequestUrl, type PullRequestUrl, type Result } from "./url.js"
 
 export type PullRequestCi = "passed" | "pending" | "failed" | "none"
 export type PullRequestMergeability = "mergeable" | "conflicting" | "unknown"
+export type PullRequestBlocker = "behind" | "none"
 
 export type PullRequestState =
-  | Readonly<{ tag: "Open"; ci: PullRequestCi; mergeability: PullRequestMergeability }>
+  | Readonly<{
+      tag: "Open"
+      ci: PullRequestCi
+      mergeability: PullRequestMergeability
+      blocker: PullRequestBlocker
+    }>
   | Readonly<{ tag: "Merged" }>
   | Readonly<{ tag: "Closed" }>
 
@@ -107,7 +113,7 @@ const statusContextPending = new Set(["EXPECTED", "PENDING"])
 const statusContextPassed = new Set(["SUCCESS"])
 const statusContextFailed = new Set(["ERROR", "FAILURE"])
 const maximumPullRequestsPerBatch = 20
-const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt mergeable statusCheckRollup { contexts(first: 1) { checkRunCount statusContextCount checkRunCountsByState { state count } statusContextCountsByState { state count } } } }`
+const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt mergeable mergeStateStatus baseRef { branchProtectionRule { requiresStatusChecks requiresStrictStatusChecks } refUpdateRule { requiredStatusCheckContexts } rules(first: 100) { nodes { parameters { __typename ... on RequiredStatusChecksParameters { strictRequiredStatusChecksPolicy requiredStatusChecks { context } } } } totalCount pageInfo { hasNextPage } } } statusCheckRollup { contexts(first: 1) { checkRunCount statusContextCount checkRunCountsByState { state count } statusContextCountsByState { state count } } } }`
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -237,6 +243,123 @@ function parseMergeability(input: unknown): Result<PullRequestMergeability, Inva
   }
 }
 
+function parseMergeStateStatus(input: unknown): Result<"behind" | "other", InvalidGitHubResponse> {
+  switch (input) {
+    case "BEHIND":
+      return { ok: true, value: "behind" }
+    case "BLOCKED":
+    case "CLEAN":
+    case "DIRTY":
+    case "HAS_HOOKS":
+    case "UNKNOWN":
+    case "UNSTABLE":
+      return { ok: true, value: "other" }
+    default:
+      return invalidGitHubResponse
+  }
+}
+
+function parseRequiredStatusChecks(input: unknown): Result<boolean, InvalidGitHubResponse> {
+  if (!Array.isArray(input)) return invalidGitHubResponse
+  for (const check of input) {
+    if (!isRecord(check) || typeof check.context !== "string" || check.context.trim() === "") {
+      return invalidGitHubResponse
+    }
+  }
+  return { ok: true, value: input.length > 0 }
+}
+
+function parseRules(input: unknown): Result<Readonly<{ strict: boolean; incomplete: boolean }>, InvalidGitHubResponse> {
+  if (
+    !isRecord(input) ||
+    !Number.isInteger(input.totalCount) ||
+    Number(input.totalCount) < 0 ||
+    !isRecord(input.pageInfo) ||
+    typeof input.pageInfo.hasNextPage !== "boolean"
+  ) {
+    return invalidGitHubResponse
+  }
+
+  const nodes = input.nodes === null && input.totalCount === 0 ? [] : input.nodes
+  if (!Array.isArray(nodes) || nodes.length > Number(input.totalCount)) return invalidGitHubResponse
+  if (input.pageInfo.hasNextPage ? nodes.length >= Number(input.totalCount) : nodes.length !== input.totalCount) {
+    return invalidGitHubResponse
+  }
+
+  let strict = false
+  for (const node of nodes) {
+    if (!isRecord(node) || !(node.parameters === null || isRecord(node.parameters))) {
+      return invalidGitHubResponse
+    }
+    if (node.parameters === null) continue
+    if (typeof node.parameters.__typename !== "string") return invalidGitHubResponse
+    if (node.parameters.__typename !== "RequiredStatusChecksParameters") continue
+    if (typeof node.parameters.strictRequiredStatusChecksPolicy !== "boolean") return invalidGitHubResponse
+    const requiredChecks = parseRequiredStatusChecks(node.parameters.requiredStatusChecks)
+    if (!requiredChecks.ok) return requiredChecks
+    if (node.parameters.strictRequiredStatusChecksPolicy && requiredChecks.value) strict = true
+  }
+
+  return { ok: true, value: { strict, incomplete: input.pageInfo.hasNextPage } }
+}
+
+function parseRefUpdateRule(input: unknown): Result<boolean, InvalidGitHubResponse> {
+  if (input === null) return { ok: true, value: false }
+  if (!isRecord(input)) return invalidGitHubResponse
+  if (input.requiredStatusCheckContexts === null) return { ok: true, value: false }
+  if (!Array.isArray(input.requiredStatusCheckContexts)) return invalidGitHubResponse
+  for (const context of input.requiredStatusCheckContexts) {
+    if (typeof context !== "string" || context.trim() === "") return invalidGitHubResponse
+  }
+  return { ok: true, value: input.requiredStatusCheckContexts.length > 0 }
+}
+
+function parseUpdatePolicy(
+  input: unknown,
+): Result<Readonly<{ strict: boolean; incomplete: boolean }>, InvalidGitHubResponse> {
+  if (input === null) return { ok: true, value: { strict: false, incomplete: false } }
+  if (!isRecord(input)) return invalidGitHubResponse
+
+  const refUpdateHasRequiredChecks = parseRefUpdateRule(input.refUpdateRule)
+  if (!refUpdateHasRequiredChecks.ok) return refUpdateHasRequiredChecks
+
+  let branchProtectionIsStrict = false
+  if (input.branchProtectionRule !== null) {
+    if (
+      !isRecord(input.branchProtectionRule) ||
+      typeof input.branchProtectionRule.requiresStatusChecks !== "boolean" ||
+      typeof input.branchProtectionRule.requiresStrictStatusChecks !== "boolean"
+    ) {
+      return invalidGitHubResponse
+    }
+    branchProtectionIsStrict =
+      input.branchProtectionRule.requiresStatusChecks && input.branchProtectionRule.requiresStrictStatusChecks
+  }
+
+  const rules = parseRules(input.rules)
+  if (!rules.ok) return rules
+  return {
+    ok: true,
+    value: {
+      strict: branchProtectionIsStrict || rules.value.strict,
+      incomplete: rules.value.incomplete || (input.branchProtectionRule === null && refUpdateHasRequiredChecks.value),
+    },
+  }
+}
+
+function parseBlocker(
+  mergeStateStatusInput: unknown,
+  baseRefInput: unknown,
+): Result<PullRequestBlocker, InvalidGitHubResponse> {
+  const mergeStateStatus = parseMergeStateStatus(mergeStateStatusInput)
+  if (!mergeStateStatus.ok) return mergeStateStatus
+  if (mergeStateStatus.value !== "behind") return { ok: true, value: "none" }
+  const updatePolicy = parseUpdatePolicy(baseRefInput)
+  if (!updatePolicy.ok) return updatePolicy
+  if (updatePolicy.value.strict) return { ok: true, value: "behind" }
+  return updatePolicy.value.incomplete ? invalidGitHubResponse : { ok: true, value: "none" }
+}
+
 function parseResponse(
   input: unknown,
   pullRequest: PullRequestUrl,
@@ -270,9 +393,16 @@ function parseResponse(
 
   let state: PullRequestState
   switch (input.state) {
-    case "OPEN":
-      state = { tag: "Open", ci: ci.value, mergeability: mergeability.value }
+    case "OPEN": {
+      let blocker: PullRequestBlocker = "none"
+      if (mergeability.value !== "conflicting" && (ci.value === "none" || ci.value === "passed")) {
+        const parsedBlocker = parseBlocker(input.mergeStateStatus, input.baseRef)
+        if (!parsedBlocker.ok) return parsedBlocker
+        blocker = parsedBlocker.value
+      }
+      state = { tag: "Open", ci: ci.value, mergeability: mergeability.value, blocker }
       break
+    }
     case "MERGED":
       state = { tag: "Merged" }
       break
@@ -474,7 +604,23 @@ function stateAppearance(state: PullRequestState): StatusAppearance {
           return { tone: "red", label: "merge conflict", strikethrough: false }
         case "mergeable":
         case "unknown":
-          return openAppearances[state.ci]
+          switch (state.ci) {
+            case "failed":
+            case "pending":
+              return openAppearances[state.ci]
+            case "none":
+            case "passed":
+              switch (state.blocker) {
+                case "behind":
+                  return { tone: "yellow", label: "branch behind", strikethrough: false }
+                case "none":
+                  return openAppearances[state.ci]
+                default:
+                  return casesHandled(state.blocker)
+              }
+            default:
+              return casesHandled(state.ci)
+          }
         default:
           return casesHandled(state.mergeability)
       }
