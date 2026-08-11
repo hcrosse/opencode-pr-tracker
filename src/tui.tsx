@@ -106,23 +106,28 @@ export function startSessionPolling(
     }
     input.publish(project(attachments.value))
 
-    await Promise.all(
-      attachments.value.map(async (attachment) => {
-        const previous = statuses.get(attachment.pullRequest.url)
-        if (previous?.tag === "Available" && previous.state.tag !== "Open") return
-
-        const result = await input.github.get(attachment.pullRequest, { signal: controller.signal })
-        if (stopped || (!result.ok && result.error.tag === "GitHubCancelled")) return
-        if (result.ok) {
-          statuses.set(attachment.pullRequest.url, result.value)
-          return
-        }
-        statuses.set(
-          attachment.pullRequest.url,
-          previous?.tag === "Available" ? { ...previous, stale: true } : { tag: "Unavailable" },
-        )
-      }),
+    const refreshable = attachments.value.filter((attachment) => {
+      const previous = statuses.get(attachment.pullRequest.url)
+      return previous?.tag !== "Available" || previous.state.tag !== "Merged"
+    })
+    const batch = await input.github.get(
+      refreshable.map((attachment) => attachment.pullRequest),
+      { signal: controller.signal },
     )
+    if (stopped || (!batch.ok && batch.error.tag === "GitHubCancelled")) return
+
+    for (const [index, attachment] of refreshable.entries()) {
+      const previous = statuses.get(attachment.pullRequest.url)
+      const result = batch.ok ? batch.value[index] : undefined
+      if (result?.ok) {
+        statuses.set(attachment.pullRequest.url, result.value)
+        continue
+      }
+      statuses.set(
+        attachment.pullRequest.url,
+        previous?.tag === "Available" ? { ...previous, stale: true } : { tag: "Unavailable" },
+      )
+    }
 
     if (!stopped) input.publish(project(attachments.value))
   }
@@ -284,6 +289,7 @@ function promptForPullRequest(api: TuiPluginApi): Promise<PullRequestUrl | undef
 
 function selectPullRequest(
   api: TuiPluginApi,
+  title: "Open pull request" | "Detach pull request",
   attachments: readonly PullRequestAttachment[],
 ): Promise<PullRequestUrl | undefined> {
   return new Promise((resolve) => {
@@ -301,7 +307,7 @@ function selectPullRequest(
         const DialogSelect = api.ui.DialogSelect<PullRequestUrl>
         return (
           <DialogSelect
-            title="Detach pull request"
+            title={title}
             options={attachments.map((attachment) => ({
               title: formatPullRequestRef(attachment.pullRequest),
               value: attachment.pullRequest,
@@ -465,6 +471,39 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): v
         },
       },
       {
+        name: "pr.open",
+        title: "Open pull request",
+        category: "Plugin",
+        namespace: "palette",
+        slashName: "pr-open",
+        async run() {
+          const sessionID = currentSessionID(api)
+          if (sessionID === undefined) {
+            api.ui.toast({ variant: "warning", title: "Pull request tracker", message: "Open a session first" })
+            return
+          }
+          const attachments = await dependencies.store.list(sessionID)
+          if (!attachments.ok) {
+            showStateFailure(api, attachments.error)
+            return
+          }
+          if (attachments.value.length === 0) {
+            api.ui.toast({ variant: "info", title: "Pull request tracker", message: "No pull requests are attached" })
+            return
+          }
+
+          const pullRequest = await selectPullRequest(api, "Open pull request", attachments.value)
+          if (pullRequest === undefined) return
+          const result = await openPullRequest(pullRequest, {
+            ...(dependencies.runner ? { runner: dependencies.runner } : {}),
+            signal: api.lifecycle.signal,
+          })
+          if (!result.ok) {
+            api.ui.toast({ variant: "error", title: "Pull request tracker", message: result.error.message })
+          }
+        },
+      },
+      {
         name: "pr.detach",
         title: "Detach pull request",
         category: "Plugin",
@@ -486,7 +525,7 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): v
             return
           }
 
-          const pullRequest = await selectPullRequest(api, attachments.value)
+          const pullRequest = await selectPullRequest(api, "Detach pull request", attachments.value)
           if (pullRequest === undefined) return
           const result = await dependencies.store.detach(sessionID, pullRequest)
           if (!result.ok) {

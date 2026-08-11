@@ -8,6 +8,7 @@ import {
   registerTui,
   startSessionPolling,
   type PollScheduler,
+  type SidebarPullRequest,
 } from "../src/tui.jsx"
 import {
   createGitHubClient,
@@ -22,10 +23,17 @@ import { parsePullRequestUrl, type CanonicalPullRequestUrl, type PullRequestUrl 
 const parsed = parsePullRequestUrl("https://github.com/owner/repository/pull/42")
 if (!parsed.ok) throw new Error("test fixture URL is invalid")
 const pullRequest = parsed.value
+const secondParsed = parsePullRequestUrl("https://github.com/another/project/pull/7")
+if (!secondParsed.ok) throw new Error("second test fixture URL is invalid")
+const secondPullRequest = secondParsed.value
 const canonicalPullRequestUrl: CanonicalPullRequestUrl = pullRequest.url
 const attachment: PullRequestAttachment = {
   pullRequest,
   attachedAt: "2026-08-10T12:00:00.000Z",
+}
+const secondAttachment: PullRequestAttachment = {
+  pullRequest: secondPullRequest,
+  attachedAt: "2026-08-10T12:01:00.000Z",
 }
 
 function stateStore(items: readonly PullRequestAttachment[] = [attachment]): StateStore {
@@ -39,16 +47,39 @@ function stateStore(items: readonly PullRequestAttachment[] = [attachment]): Sta
     async detach() {
       return { ok: true, value: "removed" }
     },
+    async detachByNumber() {
+      return { ok: true, value: { tag: "absent" } }
+    },
   }
 }
 
-function available(state: PullRequestState = { tag: "Open", ci: "passed" }): AvailablePullRequestStatus {
+function available(
+  state: PullRequestState = { tag: "Open", ci: "passed", mergeability: "mergeable" },
+  value: PullRequestUrl = pullRequest,
+): AvailablePullRequestStatus {
   return {
     tag: "Available",
-    pullRequest,
+    pullRequest: value,
     title: "Track pull requests",
     state,
     stale: false,
+  }
+}
+
+function githubStatuses(
+  resolve: (pullRequest: PullRequestUrl) => AvailablePullRequestStatus | Promise<AvailablePullRequestStatus> = (
+    value,
+  ) => available(undefined, value),
+): GitHubClient {
+  return {
+    async get(pullRequests) {
+      return {
+        ok: true,
+        value: await Promise.all(
+          pullRequests.map(async (value) => ({ ok: true, value: await resolve(value) }) as const),
+        ),
+      }
+    },
   }
 }
 
@@ -116,10 +147,11 @@ describe("TUI orchestration", () => {
       },
     } as unknown as TuiPluginApi
 
-    registerTui(api, { store: stateStore(), github: { get: async () => ({ ok: true, value: available() }) } })
+    registerTui(api, { store: stateStore(), github: githubStatuses() })
 
     expect(layer?.commands.map(({ name, slashName }) => ({ name, slashName }))).toEqual([
       { name: "pr.attach", slashName: "pr-attach" },
+      { name: "pr.open", slashName: "pr-open" },
       { name: "pr.detach", slashName: "pr-detach" },
     ])
     expect(slots).toHaveProperty("sidebar_content")
@@ -145,10 +177,12 @@ describe("TUI orchestration", () => {
     expect(attached).toEqual([`session:${canonicalPullRequestUrl}`])
   })
 
-  test("preserves attach and detach command toast messages", async () => {
+  test("runs attach, open, and detach commands through shared seams", async () => {
     type Command = Readonly<{ name: string; run(): Promise<void> }>
     const commands = new Map<string, Command>()
     const toasts: string[] = []
+    const dialogTitles: string[] = []
+    const processCalls: Array<{ file: string; args: readonly string[]; signal: AbortSignal | undefined }> = []
     let attachCalls = 0
     let detachCalls = 0
     const store: StateStore = {
@@ -162,6 +196,9 @@ describe("TUI orchestration", () => {
       async detach() {
         detachCalls += 1
         return { ok: true, value: detachCalls === 1 ? "removed" : "absent" }
+      },
+      async detachByNumber() {
+        return { ok: true, value: { tag: "absent" } }
       },
     }
     const api = {
@@ -184,6 +221,129 @@ describe("TUI orchestration", () => {
           return null
         },
         DialogSelect(props: {
+          title: string
+          options: readonly { value: PullRequestUrl }[]
+          onSelect(value: { value: PullRequestUrl }): void
+        }) {
+          dialogTitles.push(props.title)
+          props.onSelect(props.options[0]!)
+          return null
+        },
+        dialog: {
+          clear() {},
+          setSize() {},
+          replace(render: () => unknown) {
+            render()
+          },
+        },
+        toast(input: { message: string }) {
+          toasts.push(input.message)
+        },
+      },
+    } as unknown as TuiPluginApi
+    const runner: ProcessRunner = async (file, args, options) => {
+      processCalls.push({ file, args, signal: options.signal })
+      return { stdout: "" }
+    }
+
+    registerTui(api, { store, github: githubStatuses(), runner })
+
+    await commands.get("pr.attach")!.run()
+    await commands.get("pr.attach")!.run()
+    await commands.get("pr.open")!.run()
+    await commands.get("pr.detach")!.run()
+    await commands.get("pr.detach")!.run()
+
+    expect(dialogTitles).toEqual(["Open pull request", "Detach pull request", "Detach pull request"])
+    expect(processCalls).toEqual([
+      {
+        file: process.platform === "darwin" ? "open" : "xdg-open",
+        args: [pullRequest.url],
+        signal: api.lifecycle.signal,
+      },
+    ])
+    expect(toasts).toEqual([
+      "Attached owner/repository#42",
+      "owner/repository#42 is already attached",
+      "Detached owner/repository#42",
+      "owner/repository#42 was not attached",
+    ])
+  })
+
+  test("warns when the open command has no session or attachments", async () => {
+    type Command = Readonly<{ name: string; run(): Promise<void> }>
+    const commands = new Map<string, Command>()
+    const toasts: string[] = []
+    let currentRoute: unknown = { name: "home" }
+    const api = {
+      route: {
+        get current() {
+          return currentRoute
+        },
+      },
+      keymap: {
+        registerLayer(layer: { commands: Command[] }) {
+          for (const command of layer.commands) commands.set(command.name, command)
+          return () => undefined
+        },
+      },
+      slots: { register: () => "pr-tracker" },
+      lifecycle: {
+        signal: new AbortController().signal,
+        onDispose: () => () => undefined,
+      },
+      event: { on: () => () => undefined },
+      ui: {
+        toast(input: { message: string }) {
+          toasts.push(input.message)
+        },
+      },
+    } as unknown as TuiPluginApi
+
+    registerTui(api, { store: stateStore([]), github: githubStatuses() })
+
+    await commands.get("pr.open")!.run()
+    currentRoute = { name: "session", params: { sessionID: "session" } }
+    await commands.get("pr.open")!.run()
+
+    expect(toasts).toEqual(["Open a session first", "No pull requests are attached"])
+  })
+
+  test("reports state and browser failures from the open command", async () => {
+    type Command = Readonly<{ name: string; run(): Promise<void> }>
+    const commands = new Map<string, Command>()
+    const toasts: string[] = []
+    let readable = false
+    const store: StateStore = {
+      ...stateStore(),
+      async list() {
+        return readable
+          ? { ok: true, value: [attachment] }
+          : {
+              ok: false,
+              error: {
+                tag: "InvalidStateFile",
+                message: "The session pull request state file is invalid",
+              },
+            }
+      },
+    }
+    const api = {
+      route: { current: { name: "session", params: { sessionID: "session" } } },
+      keymap: {
+        registerLayer(layer: { commands: Command[] }) {
+          for (const command of layer.commands) commands.set(command.name, command)
+          return () => undefined
+        },
+      },
+      slots: { register: () => "pr-tracker" },
+      lifecycle: {
+        signal: new AbortController().signal,
+        onDispose: () => () => undefined,
+      },
+      event: { on: () => () => undefined },
+      ui: {
+        DialogSelect(props: {
           options: readonly { value: PullRequestUrl }[]
           onSelect(value: { value: PullRequestUrl }): void
         }) {
@@ -202,32 +362,28 @@ describe("TUI orchestration", () => {
         },
       },
     } as unknown as TuiPluginApi
+    const cause = new Error("process failed")
+    const runner: ProcessRunner = async () => {
+      throw cause
+    }
 
-    registerTui(api, { store, github: { get: async () => ({ ok: true, value: available() }) } })
+    registerTui(api, { store, github: githubStatuses(), runner })
 
-    await commands.get("pr.attach")!.run()
-    await commands.get("pr.attach")!.run()
-    await commands.get("pr.detach")!.run()
-    await commands.get("pr.detach")!.run()
+    await commands.get("pr.open")!.run()
+    readable = true
+    await commands.get("pr.open")!.run()
 
-    expect(toasts).toEqual([
-      "Attached owner/repository#42",
-      "owner/repository#42 is already attached",
-      "Detached owner/repository#42",
-      "owner/repository#42 was not attached",
-    ])
+    expect(toasts).toEqual(["The session pull request state file is invalid", "Unable to open the pull request"])
   })
 
   test("polls immediately every sixty seconds and stops cleanly", async () => {
     const scheduler = new RecordingScheduler()
     const published: unknown[] = []
     let calls = 0
-    const github: GitHubClient = {
-      async get() {
-        calls += 1
-        return { ok: true, value: available() }
-      },
-    }
+    const github = githubStatuses(() => {
+      calls += 1
+      return available()
+    })
     const polling = startSessionPolling({
       sessionID: "session",
       store: stateStore(),
@@ -247,6 +403,86 @@ describe("TUI orchestration", () => {
     expect(published).toHaveLength(2)
     polling.stop()
     expect(scheduler.cleared).toBe(true)
+  })
+
+  test("refreshes multiple attachments in one GitHub batch", async () => {
+    const batches: PullRequestUrl[][] = []
+    const polling = startSessionPolling({
+      sessionID: "session",
+      store: stateStore([attachment, secondAttachment]),
+      github: {
+        async get(pullRequests) {
+          batches.push([...pullRequests])
+          return {
+            ok: true,
+            value: pullRequests.map((value) => ({ ok: true, value: available(undefined, value) })),
+          }
+        },
+      },
+      scheduler: new RecordingScheduler(),
+      publish: () => undefined,
+      onStateFailure: () => undefined,
+      onError: (error) => {
+        throw error
+      },
+    })
+
+    await polling.start()
+
+    expect(batches).toEqual([[pullRequest, secondPullRequest]])
+  })
+
+  test("applies successful batch items while retaining failed items as stale", async () => {
+    let calls = 0
+    let latest: readonly SidebarPullRequest[] = []
+    const github: GitHubClient = {
+      async get(pullRequests) {
+        calls += 1
+        if (calls === 1) {
+          return {
+            ok: true,
+            value: pullRequests.map((value) => ({ ok: true, value: available(undefined, value) })),
+          }
+        }
+        return {
+          ok: true,
+          value: [
+            {
+              ok: true,
+              value: available({ tag: "Open", ci: "failed", mergeability: "mergeable" }, pullRequests[0]),
+            },
+            {
+              ok: false,
+              error: {
+                tag: "InvalidGitHubResponse",
+                message: "GitHub returned an invalid pull request response",
+              },
+            },
+          ],
+        }
+      },
+    }
+    const polling = startSessionPolling({
+      sessionID: "session",
+      store: stateStore([attachment, secondAttachment]),
+      github,
+      scheduler: new RecordingScheduler(),
+      publish: (items) => {
+        latest = items
+      },
+      onStateFailure: () => undefined,
+      onError: (error) => {
+        throw error
+      },
+    })
+
+    await polling.start()
+    await polling.refresh()
+
+    expect(latest.map((item) => item.status)).toMatchObject([
+      { tag: "Available", state: { tag: "Open", ci: "failed", mergeability: "mergeable" }, stale: false },
+      { tag: "Available", state: { tag: "Open", ci: "passed", mergeability: "mergeable" }, stale: true },
+    ])
   })
 
   test("stop aborts an in-flight GitHub request without publishing its result", async () => {
@@ -291,7 +527,7 @@ describe("TUI orchestration", () => {
     const polling = startSessionPolling({
       sessionID: "session",
       store: stateStore([]),
-      github: { get: async () => ({ ok: true, value: available() }) },
+      github: githubStatuses(),
       scheduler,
       publish: () => undefined,
       onStateFailure: () => undefined,
@@ -314,7 +550,7 @@ describe("TUI orchestration", () => {
     const polling = startSessionPolling({
       sessionID: "session",
       store: stateStore([]),
-      github: { get: async () => ({ ok: true, value: available() }) },
+      github: githubStatuses(),
       scheduler,
       publish: () => undefined,
       onStateFailure: () => undefined,
@@ -329,17 +565,15 @@ describe("TUI orchestration", () => {
     expect(scheduler.intervals).toBe(0)
   })
 
-  test("does not repoll terminal pull requests", async () => {
+  test("does not repoll merged pull requests", async () => {
     let calls = 0
     const polling = startSessionPolling({
       sessionID: "session",
       store: stateStore(),
-      github: {
-        async get() {
-          calls += 1
-          return { ok: true, value: available({ tag: "Merged" }) }
-        },
-      },
+      github: githubStatuses(() => {
+        calls += 1
+        return available({ tag: "Merged" })
+      }),
       scheduler: new RecordingScheduler(),
       publish: () => undefined,
       onStateFailure: () => undefined,
@@ -354,6 +588,34 @@ describe("TUI orchestration", () => {
     expect(calls).toBe(1)
   })
 
+  test("rechecks closed pull requests and observes reopening", async () => {
+    let calls = 0
+    let latestState: PullRequestState | undefined
+    const polling = startSessionPolling({
+      sessionID: "session",
+      store: stateStore(),
+      github: githubStatuses(() => {
+        calls += 1
+        return available(calls === 1 ? { tag: "Closed" } : { tag: "Open", ci: "pending", mergeability: "mergeable" })
+      }),
+      scheduler: new RecordingScheduler(),
+      publish: (items) => {
+        const status = items[0]?.status
+        if (status?.tag === "Available") latestState = status.state
+      },
+      onStateFailure: () => undefined,
+      onError: (error) => {
+        throw error
+      },
+    })
+
+    await polling.start()
+    await polling.refresh()
+
+    expect(calls).toBe(2)
+    expect(latestState).toEqual({ tag: "Open", ci: "pending", mergeability: "mergeable" })
+  })
+
   test("queues one trailing refresh requested during an active poll", async () => {
     let calls = 0
     let resolveFirst: ((value: ReturnType<typeof available>) => void) | undefined
@@ -363,12 +625,10 @@ describe("TUI orchestration", () => {
     const polling = startSessionPolling({
       sessionID: "session",
       store: stateStore(),
-      github: {
-        async get() {
-          calls += 1
-          return { ok: true, value: calls === 1 ? await first : available() }
-        },
-      },
+      github: githubStatuses(async () => {
+        calls += 1
+        return calls === 1 ? await first : available()
+      }),
       scheduler: new RecordingScheduler(),
       publish: () => undefined,
       onStateFailure: () => undefined,
@@ -392,9 +652,12 @@ describe("TUI orchestration", () => {
       sessionID: "session",
       store: stateStore(),
       github: {
-        async get() {
+        async get(pullRequests) {
           return availableResponse
-            ? { ok: true, value: available() }
+            ? {
+                ok: true,
+                value: pullRequests.map((value) => ({ ok: true, value: available(undefined, value) })),
+              }
             : {
                 ok: false,
                 error: { tag: "GitHubUnavailable", message: "GitHub status unavailable", cause: new Error() },
@@ -437,11 +700,7 @@ describe("TUI orchestration", () => {
               }
         },
       },
-      github: {
-        async get() {
-          return { ok: true, value: available() }
-        },
-      },
+      github: githubStatuses(),
       scheduler: new RecordingScheduler(),
       publish: (items) => {
         latest = items

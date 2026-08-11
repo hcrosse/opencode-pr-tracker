@@ -1,8 +1,8 @@
 # OpenCode PR Tracker
 
 Track GitHub pull requests from an OpenCode session. The plugin adds tools and
-slash commands for attaching pull requests, then shows their lifecycle and CI
-status in the TUI sidebar.
+slash commands for attaching pull requests, then shows their lifecycle,
+mergeability, and CI status in the TUI sidebar.
 
 ## Requirements
 
@@ -47,8 +47,13 @@ Restart OpenCode after changing either file.
 ## Commands
 
 - `/pr-attach` prompts for a pull request URL and attaches it to the current session.
+- `/pr-open` lets you select and open an attached pull request on macOS or Linux.
 - `/pr-detach` lets you select and remove an attached pull request.
 - Agents can use the `pr_attach` and `pr_detach` tools when the server plugin is enabled.
+
+The `pr_detach` tool also accepts a positive pull request number when exactly
+one session attachment has that number. Use a canonical URL when repositories
+have attached pull requests with the same number.
 
 The plugin accepts canonical URLs in the form
 `https://github.com/<owner>/<repository>/pull/<number>`.
@@ -56,17 +61,22 @@ The plugin accepts canonical URLs in the form
 ## Sidebar
 
 Each attached pull request appears with its repository, number, title, and
-current state. Open pull requests refresh once per minute. Click a row to open
-the pull request on macOS or Linux.
+current state. Open and closed pull requests refresh at least once per minute
+and when session activity changes. Click a row to open the pull request on
+macOS or Linux.
 
 | State                    | Appearance            |
 | ------------------------ | --------------------- |
 | Merged                   | Purple, strikethrough |
 | Closed                   | Red, strikethrough    |
+| Merge conflict           | Red                   |
 | Checks passed            | Green                 |
 | Checks pending           | Yellow                |
 | Checks failed            | Red                   |
 | No checks or unavailable | Gray                  |
 
+Merged and closed states take precedence. For open pull requests, merge
+conflicts take precedence over CI status.
+
 If a refresh fails, the sidebar keeps the last successful status and marks it
-as stale. Merged and closed pull requests remain attached but stop refreshing.
+as stale. Merged pull requests remain attached but stop refreshing.
