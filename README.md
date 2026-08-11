@@ -51,6 +51,10 @@ Restart OpenCode after changing either file.
 - `/pr-detach` lets you select and remove an attached pull request.
 - Agents can use the `pr_attach` and `pr_detach` tools when the server plugin is enabled.
 
+The `pr_detach` tool also accepts a positive pull request number when exactly
+one session attachment has that number. Use a canonical URL when repositories
+have attached pull requests with the same number.
+
 The plugin accepts canonical URLs in the form
 `https://github.com/<owner>/<repository>/pull/<number>`.
 
