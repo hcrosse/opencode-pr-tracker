@@ -2139,6 +2139,30 @@ function createStateStore(options = {}) {
           return written;
         return { ok: true, value: "removed" };
       });
+    },
+    async detachByNumber(sessionID, number) {
+      return withLock(sessionID, async () => {
+        const current = await read(sessionID);
+        if (!current.ok)
+          return current;
+        const matches = current.value.filter((attachment) => attachment.pullRequest.number === number);
+        if (matches.length === 0)
+          return { ok: true, value: { tag: "absent" } };
+        if (matches.length > 1) {
+          return {
+            ok: true,
+            value: { tag: "ambiguous", pullRequests: matches.map((attachment) => attachment.pullRequest) }
+          };
+        }
+        const match = matches[0];
+        if (match === undefined)
+          return { ok: true, value: { tag: "absent" } };
+        const next = current.value.filter((attachment) => attachment.pullRequest.url !== match.pullRequest.url);
+        const written = await write(sessionID, next);
+        if (!written.ok)
+          return written;
+        return { ok: true, value: { tag: "removed", pullRequest: match.pullRequest } };
+      });
     }
   };
 }
@@ -2672,4 +2696,4 @@ export {
   attachPullRequest
 };
 
-//# debugId=4FC9790D7FF9F7F764756E2164756E21
+//# debugId=75A3ADD6F7B7E13A64756E2164756E21

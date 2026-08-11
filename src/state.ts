@@ -33,11 +33,16 @@ export type AttachmentLimitReached = Readonly<{
 
 export type StateFailure = InvalidStateFile | StateUnavailable
 export type AttachFailure = StateFailure | AttachmentLimitReached
+export type DetachByNumberOutcome =
+  | Readonly<{ tag: "removed"; pullRequest: PullRequestUrl }>
+  | Readonly<{ tag: "absent" }>
+  | Readonly<{ tag: "ambiguous"; pullRequests: readonly PullRequestUrl[] }>
 
 export type StateStore = Readonly<{
   list(sessionID: string): Promise<Result<readonly PullRequestAttachment[], StateFailure>>
   attach(sessionID: string, pullRequest: PullRequestUrl): Promise<Result<"added" | "already_attached", AttachFailure>>
   detach(sessionID: string, pullRequest: PullRequestUrl): Promise<Result<"removed" | "absent", StateFailure>>
+  detachByNumber(sessionID: string, number: number): Promise<Result<DetachByNumberOutcome, StateFailure>>
 }>
 
 type PersistedState = Readonly<{
@@ -262,6 +267,27 @@ export function createStateStore(options: Readonly<{ directory?: string; now?: (
         const written = await write(sessionID, next)
         if (!written.ok) return written
         return { ok: true, value: "removed" } as const
+      })
+    },
+    async detachByNumber(sessionID, number) {
+      return withLock<DetachByNumberOutcome, StateFailure>(sessionID, async () => {
+        const current = await read(sessionID)
+        if (!current.ok) return current
+        const matches = current.value.filter((attachment) => attachment.pullRequest.number === number)
+        if (matches.length === 0) return { ok: true, value: { tag: "absent" } } as const
+        if (matches.length > 1) {
+          return {
+            ok: true,
+            value: { tag: "ambiguous", pullRequests: matches.map((attachment) => attachment.pullRequest) },
+          } as const
+        }
+
+        const match = matches[0]
+        if (match === undefined) return { ok: true, value: { tag: "absent" } } as const
+        const next = current.value.filter((attachment) => attachment.pullRequest.url !== match.pullRequest.url)
+        const written = await write(sessionID, next)
+        if (!written.ok) return written
+        return { ok: true, value: { tag: "removed", pullRequest: match.pullRequest } } as const
       })
     },
   }

@@ -1820,6 +1820,30 @@ function createStateStore(options = {}) {
           return written;
         return { ok: true, value: "removed" };
       });
+    },
+    async detachByNumber(sessionID, number) {
+      return withLock(sessionID, async () => {
+        const current = await read(sessionID);
+        if (!current.ok)
+          return current;
+        const matches = current.value.filter((attachment) => attachment.pullRequest.number === number);
+        if (matches.length === 0)
+          return { ok: true, value: { tag: "absent" } };
+        if (matches.length > 1) {
+          return {
+            ok: true,
+            value: { tag: "ambiguous", pullRequests: matches.map((attachment) => attachment.pullRequest) }
+          };
+        }
+        const match = matches[0];
+        if (match === undefined)
+          return { ok: true, value: { tag: "absent" } };
+        const next = current.value.filter((attachment) => attachment.pullRequest.url !== match.pullRequest.url);
+        const written = await write(sessionID, next);
+        if (!written.ok)
+          return written;
+        return { ok: true, value: { tag: "removed", pullRequest: match.pullRequest } };
+      });
     }
   };
 }
@@ -1835,6 +1859,13 @@ class PrToolError extends Error {
 }
 function toToolError(failure) {
   return new PrToolError(failure.tag, failure.message);
+}
+function formatReferenceList(references) {
+  if (references.length < 2)
+    return references.join("");
+  if (references.length === 2)
+    return references.join(" and ");
+  return `${references.slice(0, -1).join(", ")}, and ${references.at(-1)}`;
 }
 function createServerHooks(store) {
   return {
@@ -1856,12 +1887,28 @@ function createServerHooks(store) {
         }
       }),
       pr_detach: tool({
-        description: "Detach a canonical GitHub pull request URL from the current OpenCode session.",
+        description: "Detach a pull request from the current OpenCode session by positive number or canonical URL.",
         args: {
-          url: tool.schema.string().describe("A https://github.com/<owner>/<repository>/pull/<number> URL")
+          pull_request: tool.schema.union([tool.schema.number().int().positive().max(Number.MAX_SAFE_INTEGER), tool.schema.string()]).describe("A positive pull request number or https://github.com/<owner>/<repository>/pull/<number> URL")
         },
         async execute(args, context) {
-          const pullRequest = parsePullRequestUrl(args.url);
+          if (typeof args.pull_request === "number") {
+            if (!Number.isSafeInteger(args.pull_request) || args.pull_request <= 0) {
+              throw new PrToolError("InvalidPullRequestNumber", "Expected a positive pull request number or canonical GitHub URL");
+            }
+            const result2 = await store.detachByNumber(context.sessionID, args.pull_request);
+            if (!result2.ok)
+              throw toToolError(result2.error);
+            if (result2.value.tag === "absent") {
+              return `Pull request #${args.pull_request} is not attached to this session.`;
+            }
+            if (result2.value.tag === "ambiguous") {
+              const references = result2.value.pullRequests.map(formatPullRequestRef);
+              throw new PrToolError("AmbiguousPullRequestNumber", `Pull request #${args.pull_request} matches ${formatReferenceList(references)}. Use a canonical GitHub pull request URL.`);
+            }
+            return `Detached ${formatPullRequestRef(result2.value.pullRequest)} from this session.`;
+          }
+          const pullRequest = parsePullRequestUrl(args.pull_request);
           if (!pullRequest.ok)
             throw new PrToolError(pullRequest.error.tag, pullRequest.error.message);
           const result = await store.detach(context.sessionID, pullRequest.value);
@@ -1885,4 +1932,4 @@ export {
   PrToolError
 };
 
-//# debugId=31344578608C35B064756E2164756E21
+//# debugId=68087306BC851F9C64756E2164756E21
