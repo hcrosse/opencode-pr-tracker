@@ -167,6 +167,7 @@ if (typeof slots?.sidebar_content !== "function" || disposers.length !== 1) {
 `
 
 const repositoryRoot = resolve(import.meta.dir, "..")
+const { SMOKE_OPENCODE_VERSION: opencodeRelease = "1.x", ...processEnvironment } = process.env
 const temporaryRoot = await mkdtemp(join(tmpdir(), "opencode-pr-tracker-smoke-"))
 
 try {
@@ -211,14 +212,14 @@ try {
     "--no-fund",
     "--prefix",
     opencodeDirectory,
-    "opencode-ai@1.x",
+    `opencode-ai@${opencodeRelease}`,
   ])
   await run("node", [join(opencodeDirectory, "node_modules", "opencode-ai", "postinstall.mjs")])
 
   const opencodeBinary = join(opencodeDirectory, "node_modules", ".bin", "opencode")
   const pluginRoot = join(installDirectory, "node_modules", "opencode-pr-tracker")
   const isolatedEnvironment = {
-    ...process.env,
+    ...processEnvironment,
     HOME: homeDirectory,
     XDG_CONFIG_HOME: configDirectory,
     XDG_DATA_HOME: dataDirectory,
@@ -234,8 +235,8 @@ try {
   )
   const opencodePackage: unknown = JSON.parse(opencodePackageSource)
   const installedVersion = packageVersion(opencodePackage)
-  const opencodeVersion = await run(opencodeBinary, ["--version"], { env: isolatedEnvironment })
-  console.log(`Testing opencode-ai ${installedVersion} (CLI ${opencodeVersion})`)
+  const opencodeCliVersion = await run(opencodeBinary, ["--version"], { env: isolatedEnvironment })
+  console.log(`Testing opencode-ai ${installedVersion} (CLI ${opencodeCliVersion})`)
   const pluginUrl = pathToFileURL(pluginRoot).href
   await run(opencodeBinary, ["plugin", pluginUrl], {
     cwd: projectDirectory,
