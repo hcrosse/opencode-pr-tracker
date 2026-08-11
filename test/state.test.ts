@@ -239,6 +239,52 @@ describe("state store", () => {
     expect(await firstStore.list("session")).toEqual({ ok: true, value: [] })
   })
 
+  test("treats cleanup of missing session state as absent", async () => {
+    const directory = await temporaryDirectory()
+    const store = createStateStore({ directory })
+
+    expect(await store.removeSession("missing")).toEqual({ ok: true, value: "absent" })
+    expect(await readdir(directory)).toEqual([])
+  })
+
+  test("preserves corrupt session state during cleanup", async () => {
+    const directory = await temporaryDirectory()
+    const store = createStateStore({ directory })
+    await store.attach("session", pullRequest(1))
+    const [stateFile] = await readdir(directory)
+    const path = join(directory, stateFile!)
+    const content = `${JSON.stringify({ version: 2, pullRequests: [] })}\n`
+    await writeFile(path, content)
+
+    expect(await store.removeSession("session")).toEqual({
+      ok: false,
+      error: {
+        tag: "InvalidStateFile",
+        message: "The session pull request state file is invalid",
+      },
+    })
+    expect(await readFile(path, "utf8")).toBe(content)
+  })
+
+  test("serializes session cleanup with concurrent writes", async () => {
+    const directory = await temporaryDirectory()
+    const firstStore = createStateStore({ directory })
+    const secondStore = createStateStore({ directory })
+    await firstStore.attach("session", pullRequest(1))
+
+    const [removed, attached] = await Promise.all([
+      firstStore.removeSession("session"),
+      secondStore.attach("session", pullRequest(2)),
+    ])
+
+    expect(removed).toEqual({ ok: true, value: "removed" })
+    expect(attached).toEqual({ ok: true, value: "added" })
+    const current = await firstStore.list("session")
+    if (!current.ok) throw new Error("expected state to be readable")
+    expect(current.value.map((item) => item.pullRequest.number)).not.toContain(1)
+    expect([[], [2]]).toContainEqual(current.value.map((item) => item.pullRequest.number))
+  })
+
   test("recovers a stale lock left by a terminated process", async () => {
     const directory = await temporaryDirectory()
     const store = createStateStore({ directory })

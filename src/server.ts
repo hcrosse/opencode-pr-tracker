@@ -32,6 +32,11 @@ function formatReferenceList(references: readonly string[]): string {
 
 export function createServerHooks(store: StateStore): Hooks {
   return {
+    async event({ event }) {
+      if (event.type !== "session.deleted") return
+      const result = await store.removeSession(event.properties.info.id)
+      if (!result.ok) throw toToolError(result.error)
+    },
     tool: {
       pr_attach: tool({
         description: "Attach a canonical GitHub pull request URL to the current OpenCode session.",
