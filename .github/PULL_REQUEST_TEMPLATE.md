@@ -11,6 +11,6 @@ Closes #
 ## Verification
 
 - [ ] `bun run check`
-- [ ] Built `dist/` files are up to date when `src/` changed.
+- [ ] The title follows `<type>[optional scope][!]: <description>`.
 
 <!-- List any additional focused checks, or explain why a check was not run. -->

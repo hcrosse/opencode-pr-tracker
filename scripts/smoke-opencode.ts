@@ -232,7 +232,7 @@ try {
   })
 
   const opencodeBinary = join(opencodeDirectory, "node_modules", ".bin", "opencode")
-  const pluginRoot = join(installDirectory, "node_modules", "opencode-pr-tracker")
+  const pluginRoot = join(installDirectory, "node_modules", "@hcrosse", "opencode-pr-tracker")
   const isolatedEnvironment = {
     ...processEnvironment,
     HOME: homeDirectory,

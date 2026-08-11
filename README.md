@@ -6,43 +6,26 @@ mergeability, and CI status in the TUI sidebar.
 
 ## Requirements
 
-- OpenCode 1.18.15 or a compatible newer release
+- OpenCode `>=1.18.15 <2`
 - [GitHub CLI](https://cli.github.com/) installed and authenticated (`gh auth status`)
 - macOS or Linux to open pull requests by clicking their sidebar rows
 
 ## Install
 
-Clone the repository somewhere it can remain on your machine:
+Install the server and TUI plugins:
 
 ```sh
-git clone https://github.com/hcrosse/opencode-pr-tracker.git
+opencode plugin @hcrosse/opencode-pr-tracker
 ```
 
-The built plugin files are committed in `dist/`, so installation does not
-require a build step.
+OpenCode adds the package to both `opencode.json` and `tui.json`. To pin a
+specific release, include its exact version:
 
-## Configure
-
-Add the server plugin to `~/.config/opencode/opencode.json` or a project's
-`opencode.json`. Replace `/absolute/path/to` with the clone's absolute path.
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": ["file:///absolute/path/to/opencode-pr-tracker/dist/server.js"]
-}
+```sh
+opencode plugin @hcrosse/opencode-pr-tracker@0.1.0
 ```
 
-Add the TUI plugin to `~/.config/opencode/tui.json` or a project's `tui.json`:
-
-```json
-{
-  "$schema": "https://opencode.ai/tui.json",
-  "plugin": ["file:///absolute/path/to/opencode-pr-tracker/dist/tui.js"]
-}
-```
-
-Restart OpenCode after changing either file.
+Restart OpenCode after installation.
 
 ## Commands
 

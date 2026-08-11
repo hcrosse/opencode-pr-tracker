@@ -1,8 +1,12 @@
 import solidPlugin from "@opentui/solid/bun-plugin"
+import { rm } from "node:fs/promises"
+
+const outdir = "./dist"
+await rm(outdir, { recursive: true, force: true })
 
 const result = await Bun.build({
   entrypoints: ["./src/server.ts", "./src/tui.tsx"],
-  outdir: "./dist",
+  outdir,
   target: "bun",
   format: "esm",
   sourcemap: "external",
