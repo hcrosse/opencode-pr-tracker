@@ -323,13 +323,21 @@ function promptForPullRequest(
     const controller = new AbortController()
     const signal = AbortSignal.any([options.signal, controller.signal])
     let finished = false
-    const finish = (value: PullRequestUrl | undefined) => {
+    const onAbort = () => finish(undefined)
+    const finish = (value: PullRequestUrl | undefined, clearDialog = true) => {
       if (finished) return
       finished = true
+      options.signal.removeEventListener("abort", onAbort)
       controller.abort()
-      api.ui.dialog.clear()
+      if (clearDialog) api.ui.dialog.clear()
       resolve(value)
     }
+
+    if (options.signal.aborted) {
+      finish(undefined, false)
+      return
+    }
+    options.signal.addEventListener("abort", onAbort, { once: true })
 
     api.ui.dialog.setSize("medium")
     api.ui.dialog.replace(
@@ -369,12 +377,7 @@ function promptForPullRequest(
           />
         )
       },
-      () => {
-        if (finished) return
-        finished = true
-        controller.abort()
-        resolve(undefined)
-      },
+      () => finish(undefined, false),
     )
   })
 }
@@ -383,15 +386,24 @@ function selectPullRequest(
   api: TuiPluginApi,
   title: "Open pull request" | "Detach pull request",
   attachments: readonly PullRequestAttachment[],
+  signal: AbortSignal,
 ): Promise<PullRequestUrl | undefined> {
   return new Promise((resolve) => {
     let finished = false
-    const finish = (value: PullRequestUrl | undefined) => {
+    const onAbort = () => finish(undefined)
+    const finish = (value: PullRequestUrl | undefined, clearDialog = true) => {
       if (finished) return
       finished = true
-      api.ui.dialog.clear()
+      signal.removeEventListener("abort", onAbort)
+      if (clearDialog) api.ui.dialog.clear()
       resolve(value)
     }
+
+    if (signal.aborted) {
+      finish(undefined, false)
+      return
+    }
+    signal.addEventListener("abort", onAbort, { once: true })
 
     api.ui.dialog.setSize("medium")
     api.ui.dialog.replace(
@@ -409,9 +421,7 @@ function selectPullRequest(
           />
         )
       },
-      () => {
-        if (!finished) resolve(undefined)
-      },
+      () => finish(undefined, false),
     )
   })
 }
@@ -601,7 +611,7 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): v
             return
           }
 
-          const pullRequest = await selectPullRequest(api, "Open pull request", attachments.value)
+          const pullRequest = await selectPullRequest(api, "Open pull request", attachments.value, api.lifecycle.signal)
           if (pullRequest === undefined) return
           const result = await openPullRequest(pullRequest, {
             ...(dependencies.runner ? { runner: dependencies.runner } : {}),
@@ -634,7 +644,12 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): v
             return
           }
 
-          const pullRequest = await selectPullRequest(api, "Detach pull request", attachments.value)
+          const pullRequest = await selectPullRequest(
+            api,
+            "Detach pull request",
+            attachments.value,
+            api.lifecycle.signal,
+          )
           if (pullRequest === undefined) return
           const result = await dependencies.store.detach(sessionID, pullRequest)
           if (!result.ok) {
