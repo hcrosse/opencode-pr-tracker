@@ -353,7 +353,7 @@ function promptForPullRequest(
             busy={busy()}
             busyText="Resolving repository"
             onConfirm={(value) => {
-              if (busy()) return
+              if (finished || busy()) return
               setBusy(true)
               void resolvePullRequestInput(value, {
                 directory: options.directory,

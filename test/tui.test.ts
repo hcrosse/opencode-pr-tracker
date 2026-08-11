@@ -326,6 +326,7 @@ describe("TUI orchestration", () => {
     let dismiss: (() => void) | undefined
     let clearCalls = 0
     let attachCalls = 0
+    let runnerCalls = 0
     const store: StateStore = {
       ...stateStore([]),
       async attach() {
@@ -367,7 +368,12 @@ describe("TUI orchestration", () => {
       },
     } as unknown as TuiPluginApi
 
-    registerTui(api, { store, github: githubStatuses() })
+    const runner: ProcessRunner = async () => {
+      runnerCalls += 1
+      return { stdout: '{"url":"https://github.com/owner/repository"}' }
+    }
+
+    registerTui(api, { store, github: githubStatuses(), runner })
 
     const run = commands.get("pr.attach")!.run()
     controller.abort()
@@ -379,11 +385,12 @@ describe("TUI orchestration", () => {
       dismiss?.()
       await run
     }
-    confirm?.(pullRequest.url)
+    confirm?.("42")
     await Bun.sleep(0)
 
     expect(outcome).toBe("resolved")
     expect(clearCalls).toBe(1)
+    expect(runnerCalls).toBe(0)
     expect(attachCalls).toBe(0)
   })
 
