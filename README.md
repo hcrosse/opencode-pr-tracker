@@ -39,12 +39,18 @@ opencode plugin @hcrosse/opencode-pr-tracker@0.2.0 --global --force
 Replace `0.2.0` with the version you want. Omit `--global` for a plugin installed
 in the current project.
 
+The plugin checks for compatible stable releases at most once every 24 hours.
+When an update is available, the sidebar shows its version. Run
+`/pr-tracker-plugin-update` to see the exact command for the current installation
+scope. The plugin never installs updates automatically.
+
 ## Commands
 
 - `/pr-attach` accepts a canonical pull request URL or a positive pull request number for the current GitHub repository.
 - `/pr-open` lets you select and open an attached pull request on macOS or Linux.
 - `/pr-detach` lets you select and remove an attached pull request.
 - `/pr-sync` immediately refreshes attached pull request status.
+- `/pr-tracker-plugin-update` checks for a compatible plugin release and shows the update command.
 - Agents can use the `pr_attach` and `pr_detach` tools when the server plugin is enabled.
 
 The `pr_detach` tool also accepts a positive pull request number when exactly
