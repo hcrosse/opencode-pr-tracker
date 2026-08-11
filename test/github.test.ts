@@ -274,10 +274,34 @@ describe("GitHub client", () => {
       },
       expected: "none",
     },
+    {
+      name: "completed check without a conclusion is absent",
+      counts: { checkRuns: [{ state: "COMPLETED", count: 1 }] },
+      expected: "none",
+    },
   ])("aggregates $name", async ({ counts, expected }) => {
     const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup(counts) }))))
 
     expect((await getOne(client)).state).toEqual({ tag: "Open", ci: expected, mergeability: "mergeable" })
+  })
+
+  test("accepts nullable state counts when their totals are zero", async () => {
+    const client = createGitHubClient(
+      runnerFor(
+        batchResponse(
+          response({
+            statusCheckRollup: rollup({
+              overrides: {
+                checkRunCountsByState: null,
+                statusContextCountsByState: null,
+              },
+            }),
+          }),
+        ),
+      ),
+    )
+
+    expect((await getOne(client)).state).toEqual({ tag: "Open", ci: "none", mergeability: "mergeable" })
   })
 
   test.each([
@@ -405,6 +429,7 @@ describe("GitHub client", () => {
     response({ state: "UNKNOWN" }),
     response({ state: "CLOSED", mergedAt: "2026-08-10T12:00:00Z" }),
     response({ statusCheckRollup: rollup({ checkRuns: [{ state: "UNKNOWN", count: 1 }] }) }),
+    response({ statusCheckRollup: rollup({ checkRuns: [{ state: "UNKNOWN", count: 0 }] }) }),
     response({
       state: "MERGED",
       mergedAt: "2026-08-10T12:00:00Z",
@@ -416,6 +441,9 @@ describe("GitHub client", () => {
     }),
     response({ url: "https://example.com/owner/repository/pull/42" }),
     response({ statusCheckRollup: rollup({ overrides: { checkRunCount: 1 } }) }),
+    response({
+      statusCheckRollup: rollup({ overrides: { checkRunCount: 1, checkRunCountsByState: null } }),
+    }),
     response({ mergeable: "BLOCKED" }),
     response({ __typename: "Issue" }),
   ])("isolates malformed pull request data to its batch item", async (item) => {

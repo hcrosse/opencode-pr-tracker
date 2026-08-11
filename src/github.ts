@@ -102,7 +102,7 @@ const githubBatchLimitExceeded: Result<never, GitHubBatchLimitExceeded> = {
 const checkRunPending = new Set(["QUEUED", "IN_PROGRESS", "WAITING", "PENDING"])
 const checkRunPassed = new Set(["SUCCESS"])
 const checkRunFailed = new Set(["FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE"])
-const checkRunIgnored = new Set(["NEUTRAL", "SKIPPED"])
+const checkRunIgnored = new Set(["NEUTRAL", "SKIPPED", "COMPLETED"])
 const statusContextPending = new Set(["EXPECTED", "PENDING"])
 const statusContextPassed = new Set(["SUCCESS"])
 const statusContextFailed = new Set(["ERROR", "FAILURE"])
@@ -165,10 +165,12 @@ function aggregateCounts(
   expectedTotal: unknown,
   states: Parameters<typeof classifyCountState>[1],
 ): Result<ReadonlySet<CheckBucket>, InvalidGitHubResponse> {
-  if (!Array.isArray(input) || !Number.isInteger(expectedTotal) || Number(expectedTotal) < 0) {
+  if (!Number.isInteger(expectedTotal) || Number(expectedTotal) < 0) {
     return invalidGitHubResponse
   }
   const buckets = new Set<CheckBucket>()
+  if (input === null) return expectedTotal === 0 ? { ok: true, value: buckets } : invalidGitHubResponse
+  if (!Array.isArray(input)) return invalidGitHubResponse
   const seenStates = new Set<string>()
   let total = 0
   for (const item of input) {
@@ -182,7 +184,7 @@ function aggregateCounts(
       return invalidGitHubResponse
     }
     const bucket = classifyCountState(item.state, states)
-    if (bucket === undefined && Number(item.count) > 0) return invalidGitHubResponse
+    if (bucket === undefined) return invalidGitHubResponse
     seenStates.add(item.state)
     total += Number(item.count)
     if (bucket !== undefined && Number(item.count) > 0) buckets.add(bucket)
