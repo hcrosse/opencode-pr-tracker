@@ -8,6 +8,10 @@ export type RunCommandOptions = Readonly<{
 const defaultTimeoutMs = 60_000
 const terminationGraceMs = 5_000
 
+function isMissingProcess(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ESRCH"
+}
+
 export async function runCommand(
   command: string,
   args: readonly string[],
@@ -17,35 +21,63 @@ export async function runCommand(
   const timeoutMs = options.timeoutMs ?? defaultTimeoutMs
   const startedAt = performance.now()
   console.log(`[smoke] ${label} started`)
+  const useProcessGroup = process.platform !== "win32"
   const child = Bun.spawn([command, ...args], {
     ...(options.cwd ? { cwd: options.cwd } : {}),
     ...(options.env ? { env: options.env } : {}),
+    detached: useProcessGroup,
     stdout: "pipe",
     stderr: "pipe",
   })
 
-  let timedOut = false
-  let forceKill: ReturnType<typeof setTimeout> | undefined
-  const timeout = setTimeout(() => {
-    timedOut = true
-    child.kill("SIGTERM")
-    forceKill = setTimeout(() => child.kill("SIGKILL"), terminationGraceMs)
-  }, timeoutMs)
-
-  let exitCode: number
-  let stdout: string
-  let stderr: string
-  try {
-    ;[exitCode, stdout, stderr] = await Promise.all([
-      child.exited,
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ])
-  } finally {
-    clearTimeout(timeout)
-    if (forceKill !== undefined) clearTimeout(forceKill)
+  function terminate(signal: NodeJS.Signals): void {
+    if (!useProcessGroup) {
+      child.kill(signal)
+      return
+    }
+    try {
+      process.kill(-child.pid, signal)
+    } catch (error) {
+      if (!isMissingProcess(error)) throw error
+    }
   }
 
+  const completion: Promise<[number, string, string]> = Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ])
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  const timeoutReached = new Promise<"timed-out">((resolveTimeout) => {
+    timeout = setTimeout(() => resolveTimeout("timed-out"), timeoutMs)
+  })
+
+  let outcome: Awaited<typeof completion> | "timed-out"
+  try {
+    outcome = await Promise.race([completion, timeoutReached])
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout)
+  }
+
+  let timedOut = false
+  if (outcome === "timed-out") {
+    timedOut = true
+    terminate("SIGTERM")
+    let forceKill: ReturnType<typeof setTimeout> | undefined
+    const graceElapsed = new Promise<false>((resolveGrace) => {
+      forceKill = setTimeout(() => resolveGrace(false), terminationGraceMs)
+    })
+    let stopped: Awaited<typeof completion> | false
+    try {
+      stopped = await Promise.race([completion, graceElapsed])
+    } finally {
+      if (forceKill !== undefined) clearTimeout(forceKill)
+    }
+    if (stopped === false) terminate("SIGKILL")
+    outcome = await completion
+  }
+
+  const [exitCode, stdout, stderr] = outcome
   if (timedOut) {
     throw new Error(
       [
