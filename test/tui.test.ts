@@ -11,7 +11,7 @@ import {
 } from "../src/tui.jsx"
 import type { AvailablePullRequestStatus, GitHubClient, ProcessRunner, PullRequestState } from "../src/github.js"
 import type { PullRequestAttachment, StateStore } from "../src/state.js"
-import { parsePullRequestUrl, type CanonicalPullRequestUrl } from "../src/url.js"
+import { parsePullRequestUrl, type CanonicalPullRequestUrl, type PullRequestUrl } from "../src/url.js"
 
 const parsed = parsePullRequestUrl("https://github.com/owner/repository/pull/42")
 if (!parsed.ok) throw new Error("test fixture URL is invalid")
@@ -123,6 +123,79 @@ describe("TUI orchestration", () => {
     })
     expect(await attachPullRequest(store, "session", canonicalPullRequestUrl)).toEqual({ ok: true, value: "added" })
     expect(attached).toEqual([`session:${canonicalPullRequestUrl}`])
+  })
+
+  test("preserves attach and detach command toast messages", async () => {
+    type Command = Readonly<{ name: string; run(): Promise<void> }>
+    const commands = new Map<string, Command>()
+    const toasts: string[] = []
+    let attachCalls = 0
+    let detachCalls = 0
+    const store: StateStore = {
+      async list() {
+        return { ok: true, value: [attachment] }
+      },
+      async attach() {
+        attachCalls += 1
+        return { ok: true, value: attachCalls === 1 ? "added" : "already_attached" }
+      },
+      async detach() {
+        detachCalls += 1
+        return { ok: true, value: detachCalls === 1 ? "removed" : "absent" }
+      },
+    }
+    const api = {
+      route: { current: { name: "session", params: { sessionID: "session" } } },
+      keymap: {
+        registerLayer(layer: { commands: Command[] }) {
+          for (const command of layer.commands) commands.set(command.name, command)
+          return () => undefined
+        },
+      },
+      slots: { register: () => "pr-tracker" },
+      lifecycle: {
+        signal: new AbortController().signal,
+        onDispose: () => () => undefined,
+      },
+      event: { on: () => () => undefined },
+      ui: {
+        DialogPrompt(props: { onConfirm(value: string): void }) {
+          props.onConfirm(pullRequest.url)
+          return null
+        },
+        DialogSelect(props: {
+          options: readonly { value: PullRequestUrl }[]
+          onSelect(value: { value: PullRequestUrl }): void
+        }) {
+          props.onSelect(props.options[0]!)
+          return null
+        },
+        dialog: {
+          clear() {},
+          setSize() {},
+          replace(render: () => unknown) {
+            render()
+          },
+        },
+        toast(input: { message: string }) {
+          toasts.push(input.message)
+        },
+      },
+    } as unknown as TuiPluginApi
+
+    registerTui(api, { store, github: { get: async () => ({ ok: true, value: available() }) } })
+
+    await commands.get("pr.attach")!.run()
+    await commands.get("pr.attach")!.run()
+    await commands.get("pr.detach")!.run()
+    await commands.get("pr.detach")!.run()
+
+    expect(toasts).toEqual([
+      "Attached owner/repository#42",
+      "owner/repository#42 is already attached",
+      "Detached owner/repository#42",
+      "owner/repository#42 was not attached",
+    ])
   })
 
   test("polls immediately every sixty seconds and stops cleanly", async () => {
@@ -298,5 +371,34 @@ describe("TUI orchestration", () => {
 
     expect(await openPullRequest(pullRequest, { platform, runner })).toEqual({ ok: true, value: undefined })
     expect(calls).toEqual([{ file: executable, args: [pullRequest.url] }])
+  })
+
+  test("preserves the unsupported-platform message", async () => {
+    const result = await openPullRequest(pullRequest, { platform: "win32" })
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        tag: "UnsupportedPlatform",
+        message: "Opening pull requests is unsupported on win32",
+        platform: "win32",
+      },
+    })
+  })
+
+  test("preserves the browser process failure message", async () => {
+    const cause = new Error("process failed")
+    const runner: ProcessRunner = async () => {
+      throw cause
+    }
+
+    expect(await openPullRequest(pullRequest, { platform: "darwin", runner })).toEqual({
+      ok: false,
+      error: {
+        tag: "OpenPullRequestFailed",
+        message: "Unable to open the pull request",
+        cause,
+      },
+    })
   })
 })

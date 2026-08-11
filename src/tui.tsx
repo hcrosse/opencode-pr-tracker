@@ -3,6 +3,7 @@ import { TextAttributes } from "@opentui/core"
 import type { TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { createSignal, onCleanup } from "solid-js"
 
+import { casesHandled } from "./exhaustive.js"
 import {
   createGitHubClient,
   execFileRunner,
@@ -163,11 +164,17 @@ export function startSessionPolling(
   }
 }
 
-export type OpenPullRequestFailure = Readonly<{
-  tag: "OpenPullRequestFailed" | "UnsupportedPlatform"
-  message: string
-  cause?: unknown
-}>
+export type OpenPullRequestFailure =
+  | Readonly<{
+      tag: "UnsupportedPlatform"
+      message: string
+      platform: string
+    }>
+  | Readonly<{
+      tag: "OpenPullRequestFailed"
+      message: "Unable to open the pull request"
+      cause: unknown
+    }>
 
 export async function openPullRequest(
   pullRequest: PullRequestUrl,
@@ -182,7 +189,11 @@ export async function openPullRequest(
   if (executable === undefined) {
     return {
       ok: false,
-      error: { tag: "UnsupportedPlatform", message: `Opening pull requests is unsupported on ${platform}` },
+      error: {
+        tag: "UnsupportedPlatform",
+        message: `Opening pull requests is unsupported on ${platform}`,
+        platform,
+      },
     }
   }
 
@@ -435,13 +446,21 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): v
             showStateFailure(api, result.error)
             return
           }
+          let message: string
+          switch (result.value) {
+            case "added":
+              message = `Attached ${formatPullRequestRef(pullRequest)}`
+              break
+            case "already_attached":
+              message = `${formatPullRequestRef(pullRequest)} is already attached`
+              break
+            default:
+              casesHandled(result.value)
+          }
           api.ui.toast({
             variant: "success",
             title: "Pull request tracker",
-            message:
-              result.value === "added"
-                ? `Attached ${formatPullRequestRef(pullRequest)}`
-                : `${formatPullRequestRef(pullRequest)} is already attached`,
+            message,
           })
           refreshBus.emit(sessionID)
         },
@@ -475,13 +494,21 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): v
             showStateFailure(api, result.error)
             return
           }
+          let message: string
+          switch (result.value) {
+            case "removed":
+              message = `Detached ${formatPullRequestRef(pullRequest)}`
+              break
+            case "absent":
+              message = `${formatPullRequestRef(pullRequest)} was not attached`
+              break
+            default:
+              casesHandled(result.value)
+          }
           api.ui.toast({
             variant: "success",
             title: "Pull request tracker",
-            message:
-              result.value === "removed"
-                ? `Detached ${formatPullRequestRef(pullRequest)}`
-                : `${formatPullRequestRef(pullRequest)} was not attached`,
+            message,
           })
           refreshBus.emit(sessionID)
         },

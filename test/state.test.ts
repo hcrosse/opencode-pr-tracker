@@ -68,10 +68,37 @@ describe("state store", () => {
     expect(files).toHaveLength(2)
     expect(files.every((file) => /^[a-f0-9]{64}\.json$/.test(file))).toBe(true)
 
-    const persisted = JSON.parse(await readFile(join(directory, files[0]!), "utf8"))
-    expect(persisted).toMatchObject({ version: 1 })
-    expect(persisted.pullRequests[0]).toHaveProperty("attachedAt", "2026-08-10T12:00:00.000Z")
-    expect(new Set(Object.keys(persisted.pullRequests[0]))).toEqual(new Set(["attachedAt", "url"]))
+    const persisted = await Promise.all(files.map((file) => readFile(join(directory, file), "utf8")))
+    expect(new Set(persisted)).toEqual(
+      new Set([
+        `${JSON.stringify(
+          {
+            version: 1,
+            pullRequests: [
+              {
+                url: "https://github.com/owner/repository/pull/1",
+                attachedAt: "2026-08-10T12:00:00.000Z",
+              },
+            ],
+          },
+          null,
+          2,
+        )}\n`,
+        `${JSON.stringify(
+          {
+            version: 1,
+            pullRequests: [
+              {
+                url: "https://github.com/owner/repository/pull/2",
+                attachedAt: "2026-08-10T12:00:00.000Z",
+              },
+            ],
+          },
+          null,
+          2,
+        )}\n`,
+      ]),
+    )
   })
 
   test("keeps opaque session IDs inside the configured directory", async () => {
