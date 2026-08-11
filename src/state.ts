@@ -43,6 +43,7 @@ export type StateStore = Readonly<{
   attach(sessionID: string, pullRequest: PullRequestUrl): Promise<Result<"added" | "already_attached", AttachFailure>>
   detach(sessionID: string, pullRequest: PullRequestUrl): Promise<Result<"removed" | "absent", StateFailure>>
   detachByNumber(sessionID: string, number: number): Promise<Result<DetachByNumberOutcome, StateFailure>>
+  removeSession(sessionID: string): Promise<Result<"removed" | "absent", StateFailure>>
 }>
 
 type PersistedState = Readonly<{
@@ -182,13 +183,15 @@ export function createStateStore(options: Readonly<{ directory?: string; now?: (
     return result
   }
 
-  async function read(sessionID: string): Promise<Result<readonly PullRequestAttachment[], StateFailure>> {
+  async function readExisting(
+    sessionID: string,
+  ): Promise<Result<readonly PullRequestAttachment[] | undefined, StateFailure>> {
     const path = join(directory, fileName(sessionID))
     let content: string
     try {
       content = await readFile(path, "utf8")
     } catch (cause) {
-      if (isMissingFile(cause)) return { ok: true, value: [] }
+      if (isMissingFile(cause)) return { ok: true, value: undefined }
       return {
         ok: false,
         error: stateUnavailable("read", "Unable to read the session pull request state", cause),
@@ -202,6 +205,12 @@ export function createStateStore(options: Readonly<{ directory?: string; now?: (
       return invalidStateFile
     }
     return parseState(decoded)
+  }
+
+  async function read(sessionID: string): Promise<Result<readonly PullRequestAttachment[], StateFailure>> {
+    const result = await readExisting(sessionID)
+    if (!result.ok) return result
+    return { ok: true, value: result.value ?? [] }
   }
 
   async function write(
@@ -288,6 +297,22 @@ export function createStateStore(options: Readonly<{ directory?: string; now?: (
         const written = await write(sessionID, next)
         if (!written.ok) return written
         return { ok: true, value: { tag: "removed", pullRequest: match.pullRequest } } as const
+      })
+    },
+    async removeSession(sessionID) {
+      return withLock<"removed" | "absent", StateFailure>(sessionID, async () => {
+        const current = await readExisting(sessionID)
+        if (!current.ok) return current
+        if (current.value === undefined) return { ok: true, value: "absent" } as const
+        try {
+          await rm(join(directory, fileName(sessionID)), { force: true })
+          return { ok: true, value: "removed" } as const
+        } catch (cause) {
+          return {
+            ok: false,
+            error: stateUnavailable("write", "Unable to remove the session pull request state", cause),
+          } as const
+        }
       })
     },
   }
