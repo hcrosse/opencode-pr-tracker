@@ -14,16 +14,13 @@ import {
   execFileRunner,
   statusAppearance,
   type GitHubClient,
-  type GitHubFailure,
   type ProcessRunner,
-  type PullRequestDiagnostic,
-  type PullRequestStatus,
 } from "./github.js"
-import { createStateStore, type PullRequestAttachment, type StateFailure, type StateStore } from "./state.js"
+import { startSessionPolling, type SessionRefreshResult, type SidebarPullRequest } from "./polling.js"
+import { createStateStore, type PullRequestAttachment, type StateStore } from "./state.js"
 import {
   formatPullRequestRef,
   parsePullRequestUrl,
-  type CanonicalPullRequestUrl,
   type InvalidPullRequestUrl,
   type PullRequestUrl,
   type Result,
@@ -38,33 +35,13 @@ import {
   type UpdateCache,
 } from "./update.js"
 
-export type SidebarPullRequest = Readonly<{
-  attachment: PullRequestAttachment
-  status: PullRequestStatus
-}>
-
-export type PollScheduler = Readonly<{
-  setInterval(task: () => void, delay: number): unknown
-  clearInterval(handle: unknown): void
-}>
-
-export type SessionPolling = Readonly<{
-  start(): Promise<void>
-  refresh(): Promise<void>
-  forceRefresh(): Promise<SessionRefreshResult>
-  stop(): void
-}>
-
-export type SessionRefreshResult = Result<"refreshed" | "no_attachments" | "stopped", StateFailure | GitHubFailure>
-
-const pollIntervalMilliseconds = 60_000
-
-const defaultScheduler: PollScheduler = {
-  setInterval: (task, delay) => globalThis.setInterval(task, delay),
-  // SAFETY: this scheduler only receives handles returned by setInterval above.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- PollScheduler erases the host-specific handle type
-  clearInterval: (handle) => globalThis.clearInterval(handle as ReturnType<typeof setInterval>),
-}
+export {
+  startSessionPolling,
+  type PollScheduler,
+  type SessionPolling,
+  type SessionRefreshResult,
+  type SidebarPullRequest,
+} from "./polling.js"
 
 export function attachPullRequest(
   store: StateStore,
@@ -80,153 +57,6 @@ export function attachPullRequest(
     pullRequest.value,
     options.signal ? { signal: options.signal } : {},
   )
-}
-
-export function startSessionPolling(
-  input: Readonly<{
-    sessionID: string
-    store: StateStore
-    github: GitHubClient
-    scheduler?: PollScheduler
-    publish(items: readonly SidebarPullRequest[]): void
-    onStateFailure(failure: StateFailure): void
-    onError(error: unknown): void
-  }>,
-): SessionPolling {
-  const scheduler = input.scheduler ?? defaultScheduler
-  const statuses = new Map<CanonicalPullRequestUrl, PullRequestStatus>()
-  const controller = new AbortController()
-  let timer: unknown
-  let timerRegistered = false
-  let stopped = false
-  let inFlight: Promise<SessionRefreshResult> | undefined
-  let queued:
-    | {
-        promise: Promise<SessionRefreshResult>
-        resolve(result: SessionRefreshResult): void
-        reject(error: unknown): void
-      }
-    | undefined
-
-  function project(attachments: readonly PullRequestAttachment[]): SidebarPullRequest[] {
-    return attachments.map((attachment) => ({
-      attachment,
-      status: statuses.get(attachment.pullRequest.url) ?? { tag: "Unavailable" },
-    }))
-  }
-
-  async function poll(): Promise<SessionRefreshResult> {
-    const attachments = await input.store.list(input.sessionID)
-    if (stopped) return { ok: true, value: "stopped" }
-    if (!attachments.ok) {
-      input.publish([])
-      input.onStateFailure(attachments.error)
-      return attachments
-    }
-
-    const attachedUrls = new Set<CanonicalPullRequestUrl>(
-      attachments.value.map((attachment) => attachment.pullRequest.url),
-    )
-    for (const url of statuses.keys()) {
-      if (!attachedUrls.has(url)) statuses.delete(url)
-    }
-    input.publish(project(attachments.value))
-    if (attachments.value.length === 0) return { ok: true, value: "no_attachments" }
-
-    const refreshable = attachments.value.filter((attachment) => {
-      const previous = statuses.get(attachment.pullRequest.url)
-      return previous?.tag !== "Available" || previous.state.tag !== "Merged"
-    })
-    const batch = await input.github.get(
-      refreshable.map((attachment) => attachment.pullRequest),
-      { signal: controller.signal },
-    )
-    if (stopped) return { ok: true, value: "stopped" }
-    let batchDiagnostic: PullRequestDiagnostic | undefined
-    let failure: GitHubFailure | undefined
-    if (!batch.ok) {
-      if (batch.error.tag === "GitHubCancelled") return batch
-      batchDiagnostic = batch.error.tag === "GitHubBatchLimitExceeded" ? "GitHubUnavailable" : batch.error.tag
-      failure = batch.error
-    }
-
-    for (const [index, attachment] of refreshable.entries()) {
-      const previous = statuses.get(attachment.pullRequest.url)
-      const result = batch.ok ? batch.value[index] : undefined
-      if (result?.ok) {
-        statuses.set(attachment.pullRequest.url, result.value)
-        continue
-      }
-      const diagnostic = result === undefined ? (batchDiagnostic ?? "GitHubUnavailable") : result.error.tag
-      if (result !== undefined && !result.ok) failure ??= result.error
-      statuses.set(
-        attachment.pullRequest.url,
-        previous?.tag === "Available" ? { ...previous, stale: true, diagnostic } : { tag: "Unavailable", diagnostic },
-      )
-    }
-
-    if (!stopped) input.publish(project(attachments.value))
-    return failure === undefined ? { ok: true, value: "refreshed" } : { ok: false, error: failure }
-  }
-
-  function startQueuedRefresh(): void {
-    inFlight = undefined
-    const next = queued
-    queued = undefined
-    if (next === undefined) return
-    if (stopped) {
-      next.resolve({ ok: true, value: "stopped" })
-      return
-    }
-    void requestRefresh().then(
-      (result) => next.resolve(result),
-      (error: unknown) => next.reject(error),
-    )
-  }
-
-  function requestRefresh(): Promise<SessionRefreshResult> {
-    if (stopped) return Promise.resolve({ ok: true, value: "stopped" })
-    if (inFlight) {
-      if (queued !== undefined) return queued.promise
-      let resolve!: (result: SessionRefreshResult) => void
-      let reject!: (error: unknown) => void
-      const promise = new Promise<SessionRefreshResult>((resolvePromise, rejectPromise) => {
-        resolve = resolvePromise
-        reject = rejectPromise
-      })
-      queued = { promise, resolve, reject }
-      return promise
-    }
-    const current = poll()
-    inFlight = current
-    void current.then(startQueuedRefresh, startQueuedRefresh)
-    return current
-  }
-
-  function scheduledRefresh(): Promise<void> {
-    return requestRefresh().then(() => undefined)
-  }
-
-  return {
-    start() {
-      if (stopped) return Promise.resolve()
-      if (!timerRegistered) {
-        timer = scheduler.setInterval(() => {
-          scheduledRefresh().catch(input.onError)
-        }, pollIntervalMilliseconds)
-        timerRegistered = true
-      }
-      return scheduledRefresh()
-    },
-    refresh: scheduledRefresh,
-    forceRefresh: requestRefresh,
-    stop() {
-      if (stopped) return
-      stopped = true
-      controller.abort()
-      if (timerRegistered) scheduler.clearInterval(timer)
-    },
-  }
 }
 
 export type OpenPullRequestFailure =
