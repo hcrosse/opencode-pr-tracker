@@ -260,9 +260,9 @@ describe("createFeedbackIssueUrl", () => {
     expect(url.origin + url.pathname).toBe("https://github.com/hcrosse/opencode-pr-tracker/issues/new")
     expect(url.searchParams.get("title")).toBe(draft.title)
     expect(url.searchParams.get("body")).toBe(draft.body)
-    expect(url.searchParams.get("labels")).toBe(draft.label)
+    expect(url.searchParams.has("labels")).toBe(false)
     expect(url.searchParams.get("template")).toBe(draft.template)
-    expect([...url.searchParams.keys()]).toEqual(["title", "body", "labels", "template"])
+    expect([...url.searchParams.keys()]).toEqual(["title", "body", "template"])
   })
 
   test("omits label and template parameters when the draft has neither", () => {
@@ -343,6 +343,30 @@ describe("openFeedbackDraft", () => {
       },
     })
   })
+
+  test("rejects a generated browser URL longer than 8000 characters before opening it", async () => {
+    const calls: string[] = []
+    const runner: ProcessRunner = async (file) => {
+      calls.push(file)
+      return { stdout: "" }
+    }
+    const oversized: FeedbackDraft = {
+      title: "Long feedback",
+      body: "x".repeat(8_000),
+      template: "bug_report.md",
+      label: "bug",
+    }
+    expect(createFeedbackIssueUrl(oversized).length).toBeGreaterThan(8_000)
+
+    expect(await openFeedbackDraft(oversized, { platform: "darwin", runner })).toEqual({
+      ok: false,
+      error: {
+        tag: "FeedbackUrlTooLong",
+        message: "Feedback is too long for browser delivery; choose GitHub CLI delivery",
+      },
+    })
+    expect(calls).toEqual([])
+  })
 })
 
 describe("submitFeedbackDraft", () => {
@@ -353,7 +377,7 @@ describe("submitFeedbackDraft", () => {
     template: "bug_report.md",
   }
 
-  test("submits the draft with exact gh arguments and returns its trimmed URL", async () => {
+  test("submits a labeled draft without explicit label arguments and returns its trimmed URL", async () => {
     const calls: Array<{
       file: string
       args: readonly string[]
@@ -381,8 +405,6 @@ describe("submitFeedbackDraft", () => {
           draft.title,
           "--body",
           draft.body,
-          "--label",
-          "bug",
         ],
         options: { signal },
       },

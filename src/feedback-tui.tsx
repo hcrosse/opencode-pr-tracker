@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import type { JSX } from "@opentui/solid"
+import { useKeyboard, type JSX } from "@opentui/solid"
 import type { TuiPluginApi, TuiPluginMeta } from "@opencode-ai/plugin/tui"
 import { createSignal } from "solid-js"
 
@@ -18,6 +18,7 @@ import type { ProcessRunner } from "./github.js"
 export type FeedbackTuiDependencies = Readonly<{
   runner?: ProcessRunner
   platform?: string
+  confirmationRenderer?: FeedbackConfirmationRenderer
 }>
 
 export type FeedbackReleaseContext = Pick<TuiPluginMeta, "source" | "version">
@@ -32,6 +33,45 @@ export type FeedbackCommand = Readonly<{
 }>
 
 type Delivery = "browser" | "gh"
+
+export type FeedbackConfirmationProps = Readonly<{
+  preview: string
+  onConfirm(): void
+  onCancel(): void
+}>
+
+export type FeedbackConfirmationRenderer = (props: FeedbackConfirmationProps) => JSX.Element
+
+export function FeedbackConfirmation(props: FeedbackConfirmationProps): JSX.Element {
+  useKeyboard((key) => {
+    if (key.name === "return") {
+      key.preventDefault()
+      key.stopPropagation()
+      props.onConfirm()
+      return
+    }
+    if (key.name === "escape" || (key.ctrl && key.name === "c")) {
+      key.preventDefault()
+      key.stopPropagation()
+      props.onCancel()
+    }
+  })
+
+  return (
+    <box flexDirection="column" gap={1}>
+      <text>
+        <b>Send PR tracker feedback?</b>
+      </text>
+      <scrollbox focused scrollY height={10}>
+        <text>{props.preview}</text>
+      </scrollbox>
+      <box flexDirection="row" gap={2}>
+        <text onMouseUp={props.onCancel}>[Esc] Cancel</text>
+        <text onMouseUp={props.onConfirm}>[Enter] Send</text>
+      </box>
+    </box>
+  )
+}
 
 function showDialog<Value>(
   api: TuiPluginApi,
@@ -150,26 +190,42 @@ function deliveryAction(delivery: Delivery): string {
 }
 
 function feedbackPreview(draft: FeedbackDraft, delivery: Delivery): string {
+  const label =
+    delivery === "gh"
+      ? "none"
+      : draft.template === "bug_report.md"
+        ? "bug"
+        : draft.template === "feature_request.md"
+          ? "enhancement"
+          : "none"
   return [
     "Repository: hcrosse/opencode-pr-tracker",
     `Action: ${deliveryAction(delivery)}`,
     `Title: ${draft.title}`,
-    `Label: ${draft.label ?? "none"}`,
+    `Label: ${label}`,
     "",
     "Body:",
     draft.body,
   ].join("\n")
 }
 
-function confirmFeedback(api: TuiPluginApi, signal: AbortSignal, draft: FeedbackDraft, delivery: Delivery) {
-  return showDialog(api, signal, (finish) => (
-    <api.ui.DialogConfirm
-      title="Send PR tracker feedback?"
-      message={feedbackPreview(draft, delivery)}
-      onConfirm={() => finish(true)}
-      onCancel={() => finish(false)}
-    />
-  ))
+function confirmFeedback(
+  api: TuiPluginApi,
+  signal: AbortSignal,
+  draft: FeedbackDraft,
+  delivery: Delivery,
+  confirmationRenderer: FeedbackConfirmationRenderer,
+) {
+  return showDialog(api, signal, (finish) => {
+    const Confirmation = confirmationRenderer
+    return (
+      <Confirmation
+        preview={feedbackPreview(draft, delivery)}
+        onConfirm={() => finish(true)}
+        onCancel={() => finish(false)}
+      />
+    )
+  })
 }
 
 async function collectFeedbackInput(
@@ -243,7 +299,14 @@ export function createFeedbackCommand(
 
       const delivery = await selectDelivery(api, signal)
       if (delivery === undefined) return
-      if (!(await confirmFeedback(api, signal, draft.value, delivery)) || signal.aborted) return
+      const confirmed = await confirmFeedback(
+        api,
+        signal,
+        draft.value,
+        delivery,
+        dependencies.confirmationRenderer ?? FeedbackConfirmation,
+      )
+      if (!confirmed || signal.aborted) return
 
       if (delivery === "browser") {
         const result = await openFeedbackDraft(draft.value, {

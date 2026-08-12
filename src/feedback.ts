@@ -44,6 +44,10 @@ export type FeedbackFailure = Readonly<{
 export type OpenFeedbackFailure =
   | Readonly<{ tag: "UnsupportedPlatform"; message: string; platform: string }>
   | Readonly<{
+      tag: "FeedbackUrlTooLong"
+      message: "Feedback is too long for browser delivery; choose GitHub CLI delivery"
+    }>
+  | Readonly<{
       tag: "OpenFeedbackFailed"
       message: "Unable to open feedback; choose GitHub CLI delivery or retry"
       cause: unknown
@@ -239,7 +243,6 @@ export function createFeedbackIssueUrl(draft: FeedbackDraft): string {
   const url = new URL("https://github.com/hcrosse/opencode-pr-tracker/issues/new")
   url.searchParams.set("title", draft.title)
   url.searchParams.set("body", draft.body)
-  if (draft.label !== undefined) url.searchParams.set("labels", draft.label)
   if (draft.template !== undefined) url.searchParams.set("template", draft.template)
   return url.toString()
 }
@@ -248,7 +251,17 @@ export async function openFeedbackDraft(
   draft: FeedbackDraft,
   options: Readonly<{ platform?: string; runner?: ProcessRunner; signal?: AbortSignal }> = {},
 ): Promise<Result<void, OpenFeedbackFailure>> {
-  const result = await openExternalUrl(createFeedbackIssueUrl(draft), "feedback", options)
+  const url = createFeedbackIssueUrl(draft)
+  if (url.length > 8_000) {
+    return {
+      ok: false,
+      error: {
+        tag: "FeedbackUrlTooLong",
+        message: "Feedback is too long for browser delivery; choose GitHub CLI delivery",
+      },
+    }
+  }
+  const result = await openExternalUrl(url, "feedback", options)
   if (result.ok) return result
   if (result.error.tag === "UnsupportedPlatform") {
     return {
@@ -279,7 +292,6 @@ export async function submitFeedbackDraft(
     draft.title,
     "--body",
     draft.body,
-    ...(draft.label === undefined ? [] : ["--label", draft.label]),
   ]
 
   let stdout: string

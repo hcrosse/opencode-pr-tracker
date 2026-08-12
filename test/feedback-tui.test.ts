@@ -6,14 +6,16 @@ import type {
   TuiDialogSelectProps,
   TuiPluginApi,
 } from "@opencode-ai/plugin/tui"
+import { testRender, type JSX } from "@opentui/solid"
 
-import { createFeedbackCommand } from "../src/feedback-tui.jsx"
+import { createFeedbackCommand, FeedbackConfirmation, type FeedbackConfirmationProps } from "../src/feedback-tui.jsx"
 import type { ProcessRunner } from "../src/github.js"
 
 type DialogView =
   | Readonly<{ kind: "select"; props: TuiDialogSelectProps }>
   | Readonly<{ kind: "prompt"; props: TuiDialogPromptProps }>
   | Readonly<{ kind: "confirm"; props: TuiDialogConfirmProps }>
+  | Readonly<{ kind: "feedback-confirmation"; props: FeedbackConfirmationProps }>
 
 type ProcessCall = Readonly<{
   file: string
@@ -45,6 +47,10 @@ function createHarness(
   const runner: ProcessRunner = async (file, args, runnerOptions) => {
     processCalls.push({ file, args, options: runnerOptions })
     return options.runner?.(file, args, runnerOptions) ?? { stdout: "" }
+  }
+  const confirmationRenderer = (props: FeedbackConfirmationProps): JSX.Element => {
+    present({ kind: "feedback-confirmation", props })
+    return null
   }
   const baseApi = {
     app: { version: "1.18.15" },
@@ -91,7 +97,11 @@ function createHarness(
     api,
     command: createFeedbackCommand(
       api,
-      { runner, ...(options.platform === undefined ? {} : { platform: options.platform }) },
+      {
+        runner,
+        confirmationRenderer,
+        ...(options.platform === undefined ? {} : { platform: options.platform }),
+      },
       options.release,
     ),
     controller,
@@ -138,6 +148,18 @@ async function confirm(harness: ReturnType<typeof createHarness>, accepted: bool
   return dialog.props
 }
 
+async function confirmFeedback(
+  harness: ReturnType<typeof createHarness>,
+  accepted: boolean,
+): Promise<FeedbackConfirmationProps> {
+  const dialog = await harness.next()
+  expect(dialog.kind).toBe("feedback-confirmation")
+  if (dialog.kind !== "feedback-confirmation") throw new Error("expected feedback confirmation")
+  if (accepted) dialog.props.onConfirm()
+  else dialog.props.onCancel()
+  return dialog.props
+}
+
 async function fillOtherFeedback(harness: ReturnType<typeof createHarness>, includeDiagnostics = false): Promise<void> {
   await select(harness, "other")
   await prompt(harness, "Documentation feedback")
@@ -152,6 +174,15 @@ async function fillBugFeedback(harness: ReturnType<typeof createHarness>, includ
   await prompt(harness, "Attach a pull request, then open the sidebar.")
   await prompt(harness, "The current status appears.")
   await confirm(harness, includeDiagnostics)
+}
+
+async function fillFeatureFeedback(harness: ReturnType<typeof createHarness>): Promise<void> {
+  await select(harness, "feature")
+  await prompt(harness, "Filter attached pull requests")
+  await prompt(harness, "Large sessions are difficult to scan.")
+  await prompt(harness, "Users can filter by repository.")
+  await prompt(harness, "")
+  await confirm(harness, false)
 }
 
 function processExecutionFailed(code: string | number | null, stderr: string): Readonly<Record<string, unknown>> {
@@ -175,10 +206,10 @@ describe("createFeedbackCommand", () => {
     expect(delivery.current).toBe("browser")
 
     const final = await harness.next()
-    expect(final.kind).toBe("confirm")
+    expect(final.kind).toBe("feedback-confirmation")
     expect(harness.processCalls).toEqual([])
-    if (final.kind !== "confirm") throw new Error("expected final confirmation")
-    final.props.onConfirm?.()
+    if (final.kind !== "feedback-confirmation") throw new Error("expected final confirmation")
+    final.props.onConfirm()
     await run
 
     expect(harness.processCalls).toHaveLength(1)
@@ -194,11 +225,12 @@ describe("createFeedbackCommand", () => {
       runner: async () => ({ stdout: `${issueUrl}\n` }),
     })
     const run = harness.command.run()
-    await fillOtherFeedback(harness)
+    await fillBugFeedback(harness, false)
     await select(harness, "gh")
-    await confirm(harness, true)
+    const final = await confirmFeedback(harness, true)
     await run
 
+    expect(final.preview).toContain("Label: none")
     expect(harness.processCalls[0]).toMatchObject({
       file: "gh",
       args: [
@@ -207,11 +239,24 @@ describe("createFeedbackCommand", () => {
         "--repo",
         "hcrosse/opencode-pr-tracker",
         "--title",
-        "Documentation feedback",
+        "Sidebar status is stale",
         "--body",
-        "## Details\n\nThe installation guide is clear.",
+        [
+          "## Problem",
+          "",
+          "The sidebar does not update.",
+          "",
+          "## Reproduction",
+          "",
+          "Attach a pull request, then open the sidebar.",
+          "",
+          "## Expected Behavior",
+          "",
+          "The current status appears.",
+        ].join("\n"),
       ],
     })
+    expect(harness.processCalls[0]?.args).not.toContain("--label")
     expect(harness.toasts).toEqual([{ variant: "success", title: "Pull request tracker", message: issueUrl }])
   })
 
@@ -281,9 +326,9 @@ describe("createFeedbackCommand", () => {
     )
     await select(included, "browser")
     const includedFinal = await included.next()
-    expect(includedFinal.kind).toBe("confirm")
-    if (includedFinal.kind !== "confirm") throw new Error("expected final confirmation")
-    expect(includedFinal.props.message).toContain(
+    expect(includedFinal.kind).toBe("feedback-confirmation")
+    if (includedFinal.kind !== "feedback-confirmation") throw new Error("expected final confirmation")
+    expect(includedFinal.props.preview).toContain(
       [
         "## Diagnostics",
         "",
@@ -301,9 +346,9 @@ describe("createFeedbackCommand", () => {
     await fillOtherFeedback(declined, false)
     await select(declined, "browser")
     const declinedFinal = await declined.next()
-    expect(declinedFinal.kind).toBe("confirm")
-    if (declinedFinal.kind !== "confirm") throw new Error("expected final confirmation")
-    expect(declinedFinal.props.message).not.toContain("## Diagnostics")
+    expect(declinedFinal.kind).toBe("feedback-confirmation")
+    if (declinedFinal.kind !== "feedback-confirmation") throw new Error("expected final confirmation")
+    expect(declinedFinal.props.preview).not.toContain("## Diagnostics")
     declined.dismiss()
     await declinedRun
   })
@@ -314,10 +359,10 @@ describe("createFeedbackCommand", () => {
     await fillBugFeedback(harness, false)
     await select(harness, "browser")
     const final = await harness.next()
-    expect(final.kind).toBe("confirm")
-    if (final.kind !== "confirm") throw new Error("expected final confirmation")
+    expect(final.kind).toBe("feedback-confirmation")
+    if (final.kind !== "feedback-confirmation") throw new Error("expected final confirmation")
 
-    expect(final.props.message).toBe(
+    expect(final.props.preview).toBe(
       [
         "Repository: hcrosse/opencode-pr-tracker",
         "Action: Open a prefilled issue in your browser",
@@ -338,8 +383,46 @@ describe("createFeedbackCommand", () => {
         "The current status appears.",
       ].join("\n"),
     )
+    final.props.onConfirm()
+    await run
+    const issueUrl = new URL(harness.processCalls[0]?.args[0] ?? "")
+    expect(issueUrl.searchParams.get("template")).toBe("bug_report.md")
+    expect(issueUrl.searchParams.has("labels")).toBe(false)
+  })
+
+  test("previews the feature template label for browser delivery", async () => {
+    const harness = createHarness()
+    const run = harness.command.run()
+    await fillFeatureFeedback(harness)
+    await select(harness, "browser")
+    const final = await harness.next()
+    expect(final.kind).toBe("feedback-confirmation")
+    if (final.kind !== "feedback-confirmation") throw new Error("expected final confirmation")
+
+    expect(final.props.preview).toContain("Label: enhancement")
     harness.dismiss()
     await run
+  })
+
+  test("shows the browser length failure without executing a process", async () => {
+    const harness = createHarness({ platform: "darwin" })
+    const run = harness.command.run()
+    await select(harness, "other")
+    await prompt(harness, "Long feedback")
+    await prompt(harness, "x".repeat(8_000))
+    await confirm(harness, false)
+    await select(harness, "browser")
+    await confirmFeedback(harness, true)
+    await run
+
+    expect(harness.processCalls).toEqual([])
+    expect(harness.toasts).toEqual([
+      {
+        variant: "error",
+        title: "Pull request tracker",
+        message: "Feedback is too long for browser delivery; choose GitHub CLI delivery",
+      },
+    ])
   })
 
   test("dismisses every wizard dialog without running a process", async () => {
@@ -351,7 +434,7 @@ describe("createFeedbackCommand", () => {
       (harness) => prompt(harness, "Expected"),
       (harness) => confirm(harness, false),
       (harness) => select(harness, "browser"),
-      (harness) => confirm(harness, true),
+      (harness) => confirmFeedback(harness, true),
     ]
 
     for (let dismissAt = 0; dismissAt < actions.length; dismissAt += 1) {
@@ -376,13 +459,13 @@ describe("createFeedbackCommand", () => {
     await fillOtherFeedback(harness)
     await select(harness, "browser")
     const final = await harness.next()
-    expect(final.kind).toBe("confirm")
-    if (final.kind !== "confirm") throw new Error("expected final confirmation")
+    expect(final.kind).toBe("feedback-confirmation")
+    if (final.kind !== "feedback-confirmation") throw new Error("expected final confirmation")
     const clearsBeforeAbort = harness.clearCalls()
 
     harness.controller.abort()
     await run
-    final.props.onConfirm?.()
+    final.props.onConfirm()
     await Bun.sleep(0)
 
     expect(harness.clearCalls()).toBe(clearsBeforeAbort + 1)
@@ -444,7 +527,7 @@ describe("createFeedbackCommand", () => {
     const run = harness.command.run()
     await fillOtherFeedback(harness)
     await select(harness, delivery)
-    await confirm(harness, true)
+    await confirmFeedback(harness, true)
     await run
 
     expect(harness.toasts).toEqual([{ variant: "error", title: "Pull request tracker", message }])
@@ -460,12 +543,69 @@ describe("createFeedbackCommand", () => {
     await fillOtherFeedback(harness, true)
     await select(harness, "browser")
     const final = await harness.next()
-    expect(final.kind).toBe("confirm")
-    if (final.kind !== "confirm") throw new Error("expected final confirmation")
+    expect(final.kind).toBe("feedback-confirmation")
+    if (final.kind !== "feedback-confirmation") throw new Error("expected final confirmation")
 
-    expect(final.props.message).toContain("- Plugin version: 0.3.0")
-    expect(final.props.message).toContain("- Installation source: npm")
+    expect(final.props.preview).toContain("- Plugin version: 0.3.0")
+    expect(final.props.preview).toContain("- Installation source: npm")
     harness.dismiss()
     await run
+  })
+
+  test("renders a bounded scrollable preview with persistent controls", async () => {
+    const preview = [
+      "Repository: hcrosse/opencode-pr-tracker",
+      "Action: Open a prefilled issue in your browser",
+      "Title: Long feedback",
+      "Label: bug",
+      "",
+      "Body:",
+      ...Array.from({ length: 30 }, (_, index) => `Body line ${index + 1}`),
+      "Complete preview tail",
+    ].join("\n")
+    let confirms = 0
+    let cancels = 0
+    const view = await testRender(
+      () =>
+        FeedbackConfirmation({
+          preview,
+          onConfirm: () => {
+            confirms += 1
+          },
+          onCancel: () => {
+            cancels += 1
+          },
+        }),
+      { width: 72, height: 18 },
+    )
+
+    try {
+      const initial = await view.waitForFrame(
+        (frame) => frame.includes("Send PR tracker feedback?") && frame.includes("[Enter] Send"),
+      )
+      expect(initial).toContain("Repository: hcrosse/opencode-pr-tracker")
+      expect(initial).toContain("[Esc] Cancel")
+      expect(initial).not.toContain("Complete preview tail")
+
+      view.mockInput.pressKey("END")
+      await view.flush()
+      const scrolled = view.captureCharFrame()
+      expect(scrolled).toContain("Complete preview tail")
+      expect(scrolled).toContain("[Esc] Cancel")
+      expect(scrolled).toContain("[Enter] Send")
+
+      view.mockInput.pressEnter()
+      await view.flush()
+      view.mockInput.pressEscape()
+      await Bun.sleep(30)
+      await view.flush()
+      expect(confirms).toBe(1)
+      expect(cancels).toBe(1)
+      view.mockInput.pressCtrlC()
+      await view.flush()
+      expect(cancels).toBe(2)
+    } finally {
+      view.renderer.destroy()
+    }
   })
 })
