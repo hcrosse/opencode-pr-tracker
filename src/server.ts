@@ -1,11 +1,13 @@
 import { tool, type Hooks, type PluginModule } from "@opencode-ai/plugin"
 
-import { createStateStore, type AttachFailure, type StateStore } from "./state.js"
+import { attachPullRequest, type AttachPullRequestFailure } from "./attach.js"
+import { createGitHubClient, type GitHubClient } from "./github.js"
+import { createStateStore, type StateStore } from "./state.js"
 import { formatPullRequestRef, parsePullRequestUrl, type InvalidPullRequestUrl } from "./url.js"
 
 export type PrToolErrorCode =
   | InvalidPullRequestUrl["tag"]
-  | AttachFailure["tag"]
+  | AttachPullRequestFailure["tag"]
   | "InvalidPullRequestNumber"
   | "AmbiguousPullRequestNumber"
 
@@ -20,7 +22,7 @@ export class PrToolError extends Error {
   }
 }
 
-function toToolError(failure: AttachFailure): PrToolError {
+function toToolError(failure: AttachPullRequestFailure): PrToolError {
   return new PrToolError(failure.tag, failure.message)
 }
 
@@ -30,7 +32,7 @@ function formatReferenceList(references: readonly string[]): string {
   return `${references.slice(0, -1).join(", ")}, and ${references.at(-1)}`
 }
 
-export function createServerHooks(store: StateStore): Hooks {
+export function createServerHooks(store: StateStore, github: GitHubClient): Hooks {
   return {
     async event({ event }) {
       if (event.type !== "session.deleted") return
@@ -47,7 +49,9 @@ export function createServerHooks(store: StateStore): Hooks {
           const pullRequest = parsePullRequestUrl(args.url)
           if (!pullRequest.ok) throw new PrToolError(pullRequest.error.tag, pullRequest.error.message)
 
-          const result = await store.attach(context.sessionID, pullRequest.value)
+          const result = await attachPullRequest({ store, github }, context.sessionID, pullRequest.value, {
+            signal: context.abort,
+          })
           if (!result.ok) throw toToolError(result.error)
 
           const reference = formatPullRequestRef(pullRequest.value)
@@ -104,7 +108,7 @@ export function createServerHooks(store: StateStore): Hooks {
 
 const plugin: PluginModule & { id: string } = {
   id: "opencode-pr-tracker",
-  server: async () => createServerHooks(createStateStore()),
+  server: async () => createServerHooks(createStateStore(), createGitHubClient()),
 }
 
 export default plugin

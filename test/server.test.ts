@@ -6,6 +6,7 @@ import { join } from "node:path"
 import { tool, type Hooks, type ToolContext } from "@opencode-ai/plugin"
 
 import serverModule, { createServerHooks, PrToolError } from "../src/server.js"
+import type { GitHubClient } from "../src/github.js"
 import { createStateStore } from "../src/state.js"
 
 const directories: string[] = []
@@ -14,11 +15,31 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
 })
 
-async function setup() {
+function availableGitHub(): GitHubClient {
+  return {
+    async get(pullRequests) {
+      return {
+        ok: true,
+        value: pullRequests.map((pullRequest) => ({
+          ok: true,
+          value: {
+            tag: "Available",
+            pullRequest,
+            title: "Pull request",
+            state: { tag: "Open", ci: "none", mergeability: "unknown" },
+            stale: false,
+          },
+        })),
+      }
+    },
+  }
+}
+
+async function setup(github: GitHubClient = availableGitHub()) {
   const directory = await mkdtemp(join(tmpdir(), "opencode-pr-tracker-server-"))
   directories.push(directory)
   const store = createStateStore({ directory, now: () => new Date("2026-08-10T12:00:00.000Z") })
-  const hooks = createServerHooks(store)
+  const hooks = createServerHooks(store, github)
   return { directory, hooks, store, tools: hooks.tool! }
 }
 
@@ -75,6 +96,35 @@ describe("server tools", () => {
     const second = await store.list("session-two")
     expect(first.ok && first.value.map((item) => item.pullRequest.number)).toEqual([1])
     expect(second).toEqual({ ok: true, value: [] })
+  })
+
+  test("surfaces a missing pull request without mutating session state", async () => {
+    let requestSignal: AbortSignal | undefined
+    const github: GitHubClient = {
+      async get(_pullRequests, options) {
+        requestSignal = options?.signal
+        return {
+          ok: true,
+          value: [
+            {
+              ok: false,
+              error: {
+                tag: "PullRequestNotFound",
+                message: "Pull request does not exist or is not accessible",
+              },
+            },
+          ],
+        }
+      },
+    }
+    const { store, tools } = await setup(github)
+    const toolContext = context("session")
+
+    expect(
+      tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/404" }, toolContext),
+    ).rejects.toEqual(new PrToolError("PullRequestNotFound", "Pull request does not exist or is not accessible"))
+    expect(requestSignal).toBe(toolContext.abort)
+    expect(await store.list("session")).toEqual({ ok: true, value: [] })
   })
 
   test("removes only the deleted session state", async () => {

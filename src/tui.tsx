@@ -3,7 +3,7 @@ import { TextAttributes } from "@opentui/core"
 import type { TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { createSignal, onCleanup } from "solid-js"
 
-import { resolvePullRequestInput } from "./attach.js"
+import { attachPullRequest, resolvePullRequestInput, type AttachPullRequestFailure } from "./attach.js"
 import {
   createGitHubClient,
   execFileRunner,
@@ -14,21 +14,8 @@ import {
   type PullRequestDiagnostic,
   type PullRequestStatus,
 } from "./github.js"
-import {
-  createStateStore,
-  type AttachFailure,
-  type PullRequestAttachment,
-  type StateFailure,
-  type StateStore,
-} from "./state.js"
-import {
-  formatPullRequestRef,
-  parsePullRequestUrl,
-  type CanonicalPullRequestUrl,
-  type InvalidPullRequestUrl,
-  type PullRequestUrl,
-  type Result,
-} from "./url.js"
+import { createStateStore, type PullRequestAttachment, type StateFailure, type StateStore } from "./state.js"
+import { formatPullRequestRef, type CanonicalPullRequestUrl, type PullRequestUrl, type Result } from "./url.js"
 
 export type SidebarPullRequest = Readonly<{
   attachment: PullRequestAttachment
@@ -56,16 +43,6 @@ const defaultScheduler: PollScheduler = {
   // SAFETY: this scheduler only receives handles returned by setInterval above.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- PollScheduler erases the host-specific handle type
   clearInterval: (handle) => globalThis.clearInterval(handle as ReturnType<typeof setInterval>),
-}
-
-export function attachPullRequest(
-  store: StateStore,
-  sessionID: string,
-  input: string,
-): Promise<Result<"added" | "already_attached", InvalidPullRequestUrl | AttachFailure>> {
-  const pullRequest = parsePullRequestUrl(input)
-  if (!pullRequest.ok) return Promise.resolve(pullRequest)
-  return store.attach(sessionID, pullRequest.value)
 }
 
 export function startSessionPolling(
@@ -426,7 +403,7 @@ function selectPullRequest(
   })
 }
 
-function showStateFailure(api: TuiPluginApi, failure: AttachFailure): void {
+function showStateFailure(api: TuiPluginApi, failure: AttachPullRequestFailure): void {
   api.ui.toast({ variant: "error", title: "Pull request tracker", message: failure.message })
 }
 
@@ -572,7 +549,9 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies): v
           })
           if (pullRequest === undefined) return
 
-          const result = await dependencies.store.attach(sessionID, pullRequest)
+          const result = await attachPullRequest(dependencies, sessionID, pullRequest, {
+            signal: api.lifecycle.signal,
+          })
           if (!result.ok) {
             showStateFailure(api, result.error)
             return

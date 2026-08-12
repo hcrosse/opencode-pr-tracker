@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
 
-import { resolvePullRequestInput } from "../src/attach.js"
-import type { ProcessRunner } from "../src/github.js"
+import { attachPullRequest, resolvePullRequestInput } from "../src/attach.js"
+import type { GitHubClient, ProcessRunner } from "../src/github.js"
+import type { PullRequestAttachment, StateStore } from "../src/state.js"
+import { parsePullRequestUrl } from "../src/url.js"
 
 type ProcessCall = Readonly<{
   file: string
@@ -15,6 +17,61 @@ function recordingRunner(stdout: string, calls: ProcessCall[]): ProcessRunner {
     return { stdout }
   }
 }
+
+describe("attachPullRequest", () => {
+  test("returns a missing pull request failure without mutating state", async () => {
+    const parsed = parsePullRequestUrl("https://github.com/owner/repository/pull/404")
+    if (!parsed.ok) throw new Error("test fixture URL is invalid")
+    const attachments: PullRequestAttachment[] = []
+    const store: StateStore = {
+      async list() {
+        return { ok: true, value: attachments }
+      },
+      async attach(_sessionID, pullRequest) {
+        attachments.push({ pullRequest, attachedAt: "2026-08-10T12:00:00.000Z" })
+        return { ok: true, value: "added" }
+      },
+      async detach() {
+        return { ok: true, value: "absent" }
+      },
+      async detachByNumber() {
+        return { ok: true, value: { tag: "absent" } }
+      },
+      async removeSession() {
+        return { ok: true, value: "absent" }
+      },
+    }
+    let requestSignal: AbortSignal | undefined
+    const github: GitHubClient = {
+      async get(_pullRequests, options) {
+        requestSignal = options?.signal
+        return {
+          ok: true,
+          value: [
+            {
+              ok: false,
+              error: {
+                tag: "PullRequestNotFound",
+                message: "Pull request does not exist or is not accessible",
+              },
+            },
+          ],
+        }
+      },
+    }
+    const signal = new AbortController().signal
+
+    expect(await attachPullRequest({ store, github }, "session", parsed.value, { signal })).toEqual({
+      ok: false,
+      error: {
+        tag: "PullRequestNotFound",
+        message: "Pull request does not exist or is not accessible",
+      },
+    })
+    expect(requestSignal).toBe(signal)
+    expect(await store.list("session")).toEqual({ ok: true, value: [] })
+  })
+})
 
 describe("resolvePullRequestInput", () => {
   test("returns a canonical URL without repository discovery", async () => {
