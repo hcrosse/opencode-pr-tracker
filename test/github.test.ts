@@ -138,6 +138,7 @@ function checkRun(
           workflowRun: workflowRunValue,
         }
   return {
+    __typename: "CheckRun",
     id: input.id ?? "check-run-1",
     name: input.name ?? "Build",
     status: input.status ?? "COMPLETED",
@@ -155,6 +156,7 @@ function statusContext(
   }> = {},
 ): Record<string, unknown> {
   return {
+    __typename: "StatusContext",
     id: input.id ?? "status-context-1",
     context: input.context ?? "Build",
     state: input.state ?? "SUCCESS",
@@ -255,7 +257,7 @@ describe("GitHub client", () => {
     expect(calls[0]?.args[5]).toContain("pr1: resource(url: $url1)")
     expect(calls[0]?.args[5]).toContain("title state url mergedAt mergeable mergeStateStatus")
     expect(calls[0]?.args[5]).toContain("statusCheckRollup { contexts(first: 100)")
-    expect(calls[0]?.args[5]).toContain("... on StatusContext { id context state createdAt }")
+    expect(calls[0]?.args[5]).toContain("nodes { __typename ... on StatusContext { id context state createdAt }")
     expect(calls[0]?.args[5]).toContain("... on CheckRun { id name status conclusion")
     expect(calls[0]?.args[5]).toContain("checkSuite { id createdAt app { id }")
     expect(calls[0]?.args[5]).toContain("workflowRun { event runNumber runAttempt workflow { id } }")
@@ -720,6 +722,7 @@ describe("GitHub client", () => {
     expect(calls).toHaveLength(2)
     expect(calls[1]?.args[5]).toContain("query PullRequestContexts($url: URI!, $cursor: String!)")
     expect(calls[1]?.args[5]).toContain("contexts(first: 100, after: $cursor)")
+    expect(calls[1]?.args[5]).toContain("nodes { __typename ... on StatusContext")
     expect(fieldValue(calls[1]?.args ?? [], "cursor")).toBe("page-1")
     expect(calls.map((call) => call.signal)).toEqual([controller.signal, controller.signal])
   })
@@ -1073,10 +1076,20 @@ describe("GitHub client", () => {
       first: rollup({ nodes: [checkRun()], totalCount: 2, hasNextPage: true, endCursor: "page-1" }),
       next: rollup({ nodes: [], totalCount: 2, hasNextPage: true, endCursor: "page-2" }),
     },
+    {
+      name: "more than 100 nodes",
+      first: rollup({ nodes: [checkRun()], totalCount: 102, hasNextPage: true, endCursor: "page-1" }),
+      next: rollup({
+        nodes: Array.from({ length: 101 }, (_, index) =>
+          statusContext({ id: `status-${index}`, context: `Check ${index}` }),
+        ),
+        totalCount: 102,
+      }),
+    },
   ])("rejects continuation pages with $name", async ({ first, next }) => {
     const outputs = [
-      batchResponse(response({ statusCheckRollup: first })),
-      continuationResponse(pullRequest.url, next.contexts),
+      batchResponse(response(), response({ url: secondPullRequest.url, statusCheckRollup: first })),
+      continuationResponse(secondPullRequest.url, next.contexts),
     ]
     const client = createGitHubClient(async () => {
       const output = outputs.shift()
@@ -1084,9 +1097,59 @@ describe("GitHub client", () => {
       return { stdout: JSON.stringify(output) }
     })
 
-    const result = await client.get([pullRequest])
+    const result = await client.get([pullRequest, secondPullRequest])
 
-    expect(result.ok && result.value[0]).toEqual(invalidItem)
+    expect(result.ok && result.value[0]).toMatchObject({ ok: true, value: { pullRequest } })
+    expect(result.ok && result.value[1]).toEqual(invalidItem)
+  })
+
+  test.each([
+    { name: "a malformed envelope", output: { data: [] } },
+    {
+      name: "the wrong pull request URL",
+      output: continuationResponse(
+        pullRequest.url,
+        rollup({ nodes: [checkRun({ id: "next", name: "Lint" })], totalCount: 2 }).contexts,
+      ),
+    },
+    {
+      name: "a null status rollup",
+      output: {
+        data: {
+          resource: {
+            __typename: "PullRequest",
+            url: secondPullRequest.url,
+            statusCheckRollup: null,
+          },
+        },
+      },
+    },
+  ])("isolates continuation responses with $name", async ({ output }) => {
+    const outputs = [
+      batchResponse(
+        response(),
+        response({
+          url: secondPullRequest.url,
+          statusCheckRollup: rollup({
+            nodes: [checkRun()],
+            totalCount: 2,
+            hasNextPage: true,
+            endCursor: "page-1",
+          }),
+        }),
+      ),
+      output,
+    ]
+    const client = createGitHubClient(async () => {
+      const next = outputs.shift()
+      if (next === undefined) throw new Error("unexpected runner call")
+      return { stdout: JSON.stringify(next) }
+    })
+
+    const result = await client.get([pullRequest, secondPullRequest])
+
+    expect(result.ok && result.value[0]).toMatchObject({ ok: true, value: { pullRequest } })
+    expect(result.ok && result.value[1]).toEqual(invalidItem)
   })
 
   test("rejects complete context pages above 100 nodes", async () => {
@@ -1440,11 +1503,23 @@ describe("GitHub client", () => {
     }),
     response({ statusCheckRollup: rollup({ overrides: { nodes: "invalid" } }) }),
     response({ statusCheckRollup: rollup({ overrides: { totalCount: -1 } }) }),
+    response({ statusCheckRollup: rollup({ overrides: { totalCount: 1.5 } }) }),
     response({ statusCheckRollup: rollup({ overrides: { pageInfo: null } }) }),
     response({
       statusCheckRollup: rollup({ overrides: { pageInfo: { hasNextPage: false, endCursor: 42 } } }),
     }),
     response({ statusCheckRollup: rollup({ nodes: [checkRun()], totalCount: 2 }) }),
+    response({
+      statusCheckRollup: rollup({
+        nodes: [checkRun()],
+        totalCount: 2,
+        hasNextPage: true,
+        endCursor: " ",
+      }),
+    }),
+    response({
+      statusCheckRollup: rollup({ nodes: [], totalCount: 1, hasNextPage: true, endCursor: "page-1" }),
+    }),
     response({
       statusCheckRollup: rollup({ nodes: [checkRun(), checkRun()], totalCount: 2 }),
     }),
@@ -1493,6 +1568,42 @@ describe("GitHub client", () => {
     response({ __typename: "Issue" }),
   ])("isolates malformed pull request data to its batch item", async (item) => {
     const client = createGitHubClient(runnerFor(batchResponse(item, response({ url: secondPullRequest.url }))))
+
+    const result = await client.get([pullRequest, secondPullRequest])
+
+    expect(result.ok && result.value[0]).toEqual(invalidItem)
+    expect(result.ok && result.value[1]).toMatchObject({ ok: true, value: { pullRequest: secondPullRequest } })
+  })
+
+  test.each([
+    {
+      name: "a missing typename",
+      node: {
+        id: "status-context-1",
+        context: "Build",
+        state: "SUCCESS",
+        createdAt: "2026-08-10T10:00:00Z",
+      },
+    },
+    { name: "an unknown typename", node: { ...statusContext(), __typename: "DeploymentStatus" } },
+    {
+      name: "a CheckRun typename with StatusContext evidence",
+      node: {
+        ...checkRun(),
+        context: "Build",
+        state: "SUCCESS",
+        createdAt: "2026-08-10T10:00:00Z",
+      },
+    },
+  ])("rejects context nodes with $name", async ({ node }) => {
+    const client = createGitHubClient(
+      runnerFor(
+        batchResponse(
+          response({ statusCheckRollup: rollup({ nodes: [node] }) }),
+          response({ url: secondPullRequest.url }),
+        ),
+      ),
+    )
 
     const result = await client.get([pullRequest, secondPullRequest])
 

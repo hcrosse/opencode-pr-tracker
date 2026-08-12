@@ -109,7 +109,7 @@ const githubBatchLimitExceeded: Result<never, GitHubBatchLimitExceeded> = {
 
 const maximumPullRequestsPerBatch = 20
 const maximumCheckContextsPerPage = 100
-const checkContextSelection = `nodes { ... on StatusContext { id context state createdAt } ... on CheckRun { id name status conclusion checkSuite { id createdAt app { id } workflowRun { event runNumber runAttempt workflow { id } } } } } totalCount pageInfo { hasNextPage endCursor }`
+const checkContextSelection = `nodes { __typename ... on StatusContext { id context state createdAt } ... on CheckRun { id name status conclusion checkSuite { id createdAt app { id } workflowRun { event runNumber runAttempt workflow { id } } } } } totalCount pageInfo { hasNextPage endCursor }`
 const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt mergeable mergeStateStatus baseRef { branchProtectionRule { requiresStatusChecks requiresStrictStatusChecks } refUpdateRule { requiredStatusCheckContexts } rules(first: 100) { nodes { parameters { __typename ... on RequiredStatusChecksParameters { strictRequiredStatusChecksPolicy requiredStatusChecks { context } } } } totalCount pageInfo { hasNextPage } } } statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}) { ${checkContextSelection} } } }`
 const continuationQuery = `query PullRequestContexts($url: URI!, $cursor: String!) { resource(url: $url) { __typename ... on PullRequest { url statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}, after: $cursor) { ${checkContextSelection} } } } } }`
 
@@ -390,7 +390,18 @@ function parseCheckContexts(input: unknown): Result<ParsedCheckContextPage, Inva
   const ids = new Set<string>()
   for (const node of nodes) {
     if (!isRecord(node)) return invalidGitHubResponse
-    const parsed = "context" in node ? parseStatusContext(node) : parseCheckRun(node)
+    let parsed: Result<ParsedCheckContext, InvalidGitHubResponse>
+    switch (node.__typename) {
+      case "StatusContext":
+        parsed = parseStatusContext(node)
+        break
+      case "CheckRun":
+        if ("context" in node) return invalidGitHubResponse
+        parsed = parseCheckRun(node)
+        break
+      default:
+        return invalidGitHubResponse
+    }
     if (!parsed.ok || ids.has(parsed.value.id)) return invalidGitHubResponse
     ids.add(parsed.value.id)
     contexts.push(parsed.value)
