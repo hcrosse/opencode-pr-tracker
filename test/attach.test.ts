@@ -95,21 +95,20 @@ describe("attachPullRequest", () => {
     expect(await store.list("session")).toEqual({ ok: true, value: [] })
   })
 
-  test("preserves invocation order when later validation completes first", async () => {
+  test("serializes validation and attachment in same-session FIFO order", async () => {
     const store = await temporaryStateStore()
     const firstValidationStarted = deferred()
-    const validationReleases = new Map([
-      [1, deferred()],
-      [2, deferred()],
-    ])
+    const releaseFirstValidation = deferred()
+    const validationStarts: number[] = []
     const github: GitHubClient = {
       async get(pullRequests, _options) {
         const requested = pullRequests[0]
         if (requested === undefined) throw new Error("expected one pull request")
-        if (requested.number === 1) firstValidationStarted.resolve()
-        const release = validationReleases.get(requested.number)
-        if (release === undefined) throw new Error("unexpected pull request")
-        await release.promise
+        validationStarts.push(requested.number)
+        if (requested.number === 1) {
+          firstValidationStarted.resolve()
+          await releaseFirstValidation.promise
+        }
         return { ok: true, value: [availableGitHubItem(requested)] }
       },
     }
@@ -117,14 +116,21 @@ describe("attachPullRequest", () => {
     const first = attachPullRequest({ store, github }, "session", pullRequest(1))
     await firstValidationStarted.promise
     const second = attachPullRequest({ store, github }, "session", pullRequest(2))
-    validationReleases.get(2)?.resolve()
+    let secondSettled = false
+    void second.then(() => {
+      secondSettled = true
+    })
     await Promise.resolve()
-    validationReleases.get(1)?.resolve()
+
+    expect(validationStarts).toEqual([1])
+    expect(secondSettled).toBe(false)
+    releaseFirstValidation.resolve()
 
     expect(await Promise.all([first, second])).toEqual([
       { ok: true, value: "added" },
       { ok: true, value: "added" },
     ])
+    expect(validationStarts).toEqual([1, 2])
     const attachments = await store.list("session")
     expect(attachments.ok && attachments.value.map((item) => item.pullRequest.number)).toEqual([1, 2])
   })
