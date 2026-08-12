@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@hcrosse/opencode-pr-tracker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Track GitHub pull requests in the OpenCode sidebar.",
   "homepage": "https://github.com/hcrosse/opencode-pr-tracker#readme",
   "bugs": {
