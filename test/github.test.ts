@@ -18,9 +18,9 @@ const pullRequest = parsed.value
 const secondParsed = parsePullRequestUrl("https://github.com/another/project/pull/7")
 if (!secondParsed.ok) throw new Error("second test fixture URL is invalid")
 const secondPullRequest = secondParsed.value
-const successCounts = { checkRuns: [{ state: "SUCCESS", count: 1 }] }
-const pendingCounts = { checkRuns: [{ state: "IN_PROGRESS", count: 1 }] }
-const failedCounts = { checkRuns: [{ state: "FAILURE", count: 1 }] }
+const successChecks = { nodes: [checkRun()] }
+const pendingChecks = { nodes: [checkRun({ status: "IN_PROGRESS", conclusion: null })] }
+const failedChecks = { nodes: [checkRun({ conclusion: "FAILURE" })] }
 const strictStatusCheckRule = {
   parameters: {
     __typename: "RequiredStatusChecksParameters",
@@ -84,21 +84,98 @@ function baseRefPolicy(
 
 function rollup(
   input: Readonly<{
-    checkRuns?: readonly Readonly<{ state: string; count: number }>[]
-    statusContexts?: readonly Readonly<{ state: string; count: number }>[]
+    nodes?: readonly unknown[] | null
+    totalCount?: number
+    hasNextPage?: boolean
+    endCursor?: unknown
     overrides?: Record<string, unknown>
   }> = {},
 ): Record<string, unknown> {
-  const checkRuns = input.checkRuns ?? []
-  const statusContexts = input.statusContexts ?? []
+  const nodes = "nodes" in input ? input.nodes : []
+  const nodeCount = Array.isArray(nodes) ? nodes.length : 0
   return {
     contexts: {
-      checkRunCount: checkRuns.reduce((total, item) => total + item.count, 0),
-      statusContextCount: statusContexts.reduce((total, item) => total + item.count, 0),
-      checkRunCountsByState: checkRuns,
-      statusContextCountsByState: statusContexts,
+      nodes,
+      totalCount: input.totalCount ?? nodeCount,
+      pageInfo: {
+        hasNextPage: input.hasNextPage ?? false,
+        endCursor: "endCursor" in input ? input.endCursor : nodeCount === 0 ? null : "cursor-1",
+      },
       ...input.overrides,
     },
+  }
+}
+
+function checkRun(
+  input: Readonly<{
+    id?: unknown
+    name?: unknown
+    status?: unknown
+    conclusion?: unknown
+    suiteId?: unknown
+    suiteCreatedAt?: unknown
+    app?: unknown
+    workflowRun?: unknown
+    checkSuite?: unknown
+  }> = {},
+): Record<string, unknown> {
+  const workflowRunValue =
+    "workflowRun" in input
+      ? input.workflowRun
+      : {
+          event: "pull_request",
+          runNumber: 1,
+          runAttempt: 1,
+          workflow: { id: "workflow-1" },
+        }
+  const checkSuite =
+    "checkSuite" in input
+      ? input.checkSuite
+      : {
+          id: input.suiteId ?? "suite-1",
+          createdAt: input.suiteCreatedAt ?? "2026-08-10T10:00:00Z",
+          app: "app" in input ? input.app : { id: "app-1" },
+          workflowRun: workflowRunValue,
+        }
+  return {
+    id: input.id ?? "check-run-1",
+    name: input.name ?? "Build",
+    status: input.status ?? "COMPLETED",
+    conclusion: "conclusion" in input ? input.conclusion : "SUCCESS",
+    checkSuite,
+  }
+}
+
+function statusContext(
+  input: Readonly<{
+    id?: unknown
+    context?: unknown
+    state?: unknown
+    createdAt?: unknown
+  }> = {},
+): Record<string, unknown> {
+  return {
+    id: input.id ?? "status-context-1",
+    context: input.context ?? "Build",
+    state: input.state ?? "SUCCESS",
+    createdAt: input.createdAt ?? "2026-08-10T10:00:00Z",
+  }
+}
+
+function workflowRun(
+  input: Readonly<{
+    event?: unknown
+    runNumber?: unknown
+    runAttempt?: unknown
+    workflowId?: unknown
+    workflow?: unknown
+  }> = {},
+): Record<string, unknown> {
+  return {
+    event: input.event ?? "pull_request",
+    runNumber: input.runNumber ?? 1,
+    runAttempt: input.runAttempt ?? 1,
+    workflow: "workflow" in input ? input.workflow : { id: input.workflowId ?? "workflow-1" },
   }
 }
 
@@ -142,7 +219,14 @@ describe("GitHub client", () => {
     expect(calls[0]?.args[5]).toContain("pr0: resource(url: $url0)")
     expect(calls[0]?.args[5]).toContain("pr1: resource(url: $url1)")
     expect(calls[0]?.args[5]).toContain("title state url mergedAt mergeable mergeStateStatus")
-    expect(calls[0]?.args[5]).toContain("checkRunCountsByState { state count }")
+    expect(calls[0]?.args[5]).toContain("statusCheckRollup { contexts(first: 100)")
+    expect(calls[0]?.args[5]).toContain("... on StatusContext { id context state createdAt }")
+    expect(calls[0]?.args[5]).toContain("... on CheckRun { id name status conclusion")
+    expect(calls[0]?.args[5]).toContain("checkSuite { id createdAt app { id }")
+    expect(calls[0]?.args[5]).toContain("workflowRun { event runNumber runAttempt workflow { id } }")
+    expect(calls[0]?.args[5]).toContain("totalCount pageInfo { hasNextPage endCursor }")
+    expect(calls[0]?.args[5]).not.toContain("checkRunCountsByState")
+    expect(calls[0]?.args[5]).not.toContain("statusContextCountsByState")
     expect(calls[0]?.args[5]).toContain("mergeStateStatus")
     expect(calls[0]?.args[5]).toContain("requiresStrictStatusChecks")
     expect(calls[0]?.args[5]).toContain("requiredStatusCheckContexts")
@@ -262,59 +346,59 @@ describe("GitHub client", () => {
   })
 
   test.each([
-    { name: "no checks", counts: {}, expected: "none" },
+    { name: "no checks", contexts: {}, expected: "none" },
     {
       name: "successful check run",
-      counts: successCounts,
+      contexts: successChecks,
       expected: "passed",
     },
     {
       name: "successful status context",
-      counts: { statusContexts: [{ state: "SUCCESS", count: 1 }] },
+      contexts: { nodes: [statusContext()] },
       expected: "passed",
     },
     {
       name: "pending check",
-      counts: pendingCounts,
+      contexts: pendingChecks,
       expected: "pending",
     },
     {
       name: "pending status context",
-      counts: { statusContexts: [{ state: "PENDING", count: 1 }] },
+      contexts: { nodes: [statusContext({ state: "PENDING" })] },
       expected: "pending",
     },
     {
       name: "failure wins over pending",
-      counts: {
-        checkRuns: [
-          { state: "IN_PROGRESS", count: 1 },
-          { state: "FAILURE", count: 1 },
+      contexts: {
+        nodes: [
+          checkRun({ id: "pending", name: "Lint", status: "IN_PROGRESS", conclusion: null }),
+          checkRun({ id: "failed", conclusion: "FAILURE" }),
         ],
       },
       expected: "failed",
     },
     {
       name: "error status fails",
-      counts: { statusContexts: [{ state: "ERROR", count: 1 }] },
+      contexts: { nodes: [statusContext({ state: "ERROR" })] },
       expected: "failed",
     },
     {
       name: "neutral and skipped checks are absent",
-      counts: {
-        checkRuns: [
-          { state: "NEUTRAL", count: 1 },
-          { state: "SKIPPED", count: 1 },
+      contexts: {
+        nodes: [
+          checkRun({ id: "neutral", name: "Neutral", conclusion: "NEUTRAL" }),
+          checkRun({ id: "skipped", name: "Skipped", conclusion: "SKIPPED" }),
         ],
       },
       expected: "none",
     },
     {
       name: "completed check without a conclusion is absent",
-      counts: { checkRuns: [{ state: "COMPLETED", count: 1 }] },
+      contexts: { nodes: [checkRun({ conclusion: null })] },
       expected: "none",
     },
-  ])("aggregates $name", async ({ counts, expected }) => {
-    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup(counts) }))))
+  ])("classifies $name", async ({ contexts, expected }) => {
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup(contexts) }))))
 
     expect((await getOne(client)).state).toEqual({
       tag: "Open",
@@ -324,28 +408,219 @@ describe("GitHub client", () => {
     })
   })
 
-  test("accepts nullable state counts when their totals are zero", async () => {
+  test("classifies every current non-completed check status as pending", async () => {
+    const nodes = ["REQUESTED", "QUEUED", "IN_PROGRESS", "WAITING", "PENDING"].map((status, index) =>
+      checkRun({ id: `pending-${index}`, name: `Check ${index}`, status, conclusion: null }),
+    )
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup({ nodes }) }))))
+
+    expect((await getOne(client)).state).toEqual({
+      tag: "Open",
+      ci: "pending",
+      mergeability: "mergeable",
+      blocker: "none",
+    })
+  })
+
+  test.each([
+    {
+      name: "a successful newer run",
+      nodes: [
+        checkRun({
+          id: "old-cancelled",
+          suiteId: "suite-10",
+          conclusion: "CANCELLED",
+          workflowRun: workflowRun({ runNumber: 10 }),
+        }),
+        checkRun({ id: "new-success", suiteId: "suite-11", workflowRun: workflowRun({ runNumber: 11 }) }),
+      ],
+      expected: "passed",
+    },
+    {
+      name: "a cancelled newer run",
+      nodes: [
+        checkRun({ id: "old-success", suiteId: "suite-10", workflowRun: workflowRun({ runNumber: 10 }) }),
+        checkRun({
+          id: "new-cancelled",
+          suiteId: "suite-11",
+          conclusion: "CANCELLED",
+          workflowRun: workflowRun({ runNumber: 11 }),
+        }),
+      ],
+      expected: "failed",
+    },
+    {
+      name: "an in-progress newer run",
+      nodes: [
+        checkRun({
+          id: "old-cancelled",
+          suiteId: "suite-10",
+          conclusion: "CANCELLED",
+          workflowRun: workflowRun({ runNumber: 10 }),
+        }),
+        checkRun({
+          id: "new-pending",
+          suiteId: "suite-11",
+          status: "IN_PROGRESS",
+          conclusion: null,
+          workflowRun: workflowRun({ runNumber: 11 }),
+        }),
+      ],
+      expected: "pending",
+    },
+    {
+      name: "a successful newer attempt",
+      nodes: [
+        checkRun({
+          id: "old-attempt",
+          suiteId: "suite-11-1",
+          conclusion: "CANCELLED",
+          workflowRun: workflowRun({ runNumber: 11, runAttempt: 1 }),
+        }),
+        checkRun({
+          id: "new-attempt",
+          suiteId: "suite-11-2",
+          workflowRun: workflowRun({ runNumber: 11, runAttempt: 2 }),
+        }),
+      ],
+      expected: "passed",
+    },
+  ])("classifies $name as $expected", async ({ nodes, expected }) => {
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup({ nodes }) }))))
+
+    expect((await getOne(client)).state).toMatchObject({ tag: "Open", ci: expected })
+  })
+
+  test.each([
+    {
+      name: "app",
+      old: { app: { id: "app-1" }, workflowRun: workflowRun({ runNumber: 10 }) },
+      replacement: { app: { id: "app-2" }, workflowRun: workflowRun({ runNumber: 11 }) },
+    },
+    {
+      name: "workflow",
+      old: { workflowRun: workflowRun({ runNumber: 10, workflowId: "workflow-1" }) },
+      replacement: { workflowRun: workflowRun({ runNumber: 11, workflowId: "workflow-2" }) },
+    },
+    {
+      name: "event",
+      old: { workflowRun: workflowRun({ event: "pull_request", runNumber: 10 }) },
+      replacement: { workflowRun: workflowRun({ event: "push", runNumber: 11 }) },
+    },
+  ])("keeps same-named workflow checks from different $name identities independent", async ({ old, replacement }) => {
+    const nodes = [
+      checkRun({ id: "old", suiteId: "old-suite", conclusion: "CANCELLED", ...old }),
+      checkRun({ id: "replacement", suiteId: "replacement-suite", ...replacement }),
+    ]
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup({ nodes }) }))))
+
+    expect((await getOne(client)).state).toMatchObject({ tag: "Open", ci: "failed" })
+  })
+
+  test("retains every duplicate workflow check in the newest generation", async () => {
+    const generation = workflowRun({ runNumber: 11, runAttempt: 2 })
+    const nodes = [
+      checkRun({ id: "success", suiteId: "suite-success", workflowRun: generation }),
+      checkRun({ id: "failure", suiteId: "suite-failure", conclusion: "FAILURE", workflowRun: generation }),
+    ]
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup({ nodes }) }))))
+
+    expect((await getOne(client)).state).toMatchObject({ tag: "Open", ci: "failed" })
+  })
+
+  test("uses the newest check suite for non-workflow checks", async () => {
+    const nodes = [
+      checkRun({
+        id: "old",
+        suiteId: "old-suite",
+        suiteCreatedAt: "2026-08-10T09:00:00Z",
+        conclusion: "CANCELLED",
+        workflowRun: null,
+      }),
+      checkRun({
+        id: "new",
+        suiteId: "new-suite",
+        suiteCreatedAt: "2026-08-10T10:00:00Z",
+        workflowRun: null,
+      }),
+    ]
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup({ nodes }) }))))
+
+    expect((await getOne(client)).state).toMatchObject({ tag: "Open", ci: "passed" })
+  })
+
+  test("retains non-workflow checks from every tied newest suite", async () => {
+    const nodes = [
+      checkRun({ id: "success", suiteId: "suite-a", workflowRun: null }),
+      checkRun({ id: "failure", suiteId: "suite-b", conclusion: "FAILURE", workflowRun: null }),
+    ]
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup({ nodes }) }))))
+
+    expect((await getOne(client)).state).toMatchObject({ tag: "Open", ci: "failed" })
+  })
+
+  test("uses suite identity for non-workflow checks without an app", async () => {
+    const nodes = [
+      checkRun({
+        id: "old",
+        suiteId: "anonymous-suite-a",
+        suiteCreatedAt: "2026-08-10T09:00:00Z",
+        app: null,
+        conclusion: "CANCELLED",
+        workflowRun: null,
+      }),
+      checkRun({
+        id: "new",
+        suiteId: "anonymous-suite-b",
+        suiteCreatedAt: "2026-08-10T10:00:00Z",
+        app: null,
+        workflowRun: null,
+      }),
+    ]
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup({ nodes }) }))))
+
+    expect((await getOne(client)).state).toMatchObject({ tag: "Open", ci: "failed" })
+  })
+
+  test("uses the newest status context case-insensitively", async () => {
+    const nodes = [
+      statusContext({ id: "old", context: "BUILD", state: "FAILURE", createdAt: "2026-08-10T09:00:00Z" }),
+      statusContext({ id: "new", context: "build", createdAt: "2026-08-10T10:00:00Z" }),
+    ]
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup({ nodes }) }))))
+
+    expect((await getOne(client)).state).toMatchObject({ tag: "Open", ci: "passed" })
+  })
+
+  test("retains every status context tied for newest", async () => {
+    const nodes = [
+      statusContext({ id: "success", context: "Build" }),
+      statusContext({ id: "failure", context: "BUILD", state: "FAILURE" }),
+    ]
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup({ nodes }) }))))
+
+    expect((await getOne(client)).state).toMatchObject({ tag: "Open", ci: "failed" })
+  })
+
+  test("fails an incomplete check-context connection closed", async () => {
     const client = createGitHubClient(
       runnerFor(
         batchResponse(
           response({
             statusCheckRollup: rollup({
-              overrides: {
-                checkRunCountsByState: null,
-                statusContextCountsByState: null,
-              },
+              nodes: [checkRun()],
+              totalCount: 101,
+              hasNextPage: true,
+              endCursor: "cursor-1",
             }),
           }),
         ),
       ),
     )
 
-    expect((await getOne(client)).state).toEqual({
-      tag: "Open",
-      ci: "none",
-      mergeability: "mergeable",
-      blocker: "none",
-    })
+    const result = await client.get([pullRequest])
+
+    expect(result.ok && result.value[0]).toEqual(invalidItem)
   })
 
   test.each([
@@ -481,7 +756,7 @@ describe("GitHub client", () => {
           response({
             mergeStateStatus: "BEHIND",
             baseRef: baseRefPolicy({ rules: [strictStatusCheckRule] }),
-            statusCheckRollup: rollup(successCounts),
+            statusCheckRollup: rollup(successChecks),
           }),
         ),
       ),
@@ -498,17 +773,17 @@ describe("GitHub client", () => {
     {
       state: "MERGED",
       mergedAt: "2026-08-10T12:00:00Z",
-      counts: {},
+      contexts: {},
       tone: "purple",
       label: "merged",
       strike: true,
     },
-    { state: "CLOSED", mergedAt: null, counts: {}, tone: "red", label: "closed", strike: true },
-    { state: "OPEN", mergedAt: null, counts: {}, tone: "gray", label: "no checks", strike: false },
+    { state: "CLOSED", mergedAt: null, contexts: {}, tone: "red", label: "closed", strike: true },
+    { state: "OPEN", mergedAt: null, contexts: {}, tone: "gray", label: "no checks", strike: false },
     {
       state: "OPEN",
       mergedAt: null,
-      counts: successCounts,
+      contexts: successChecks,
       tone: "green",
       label: "checks passed",
       strike: false,
@@ -516,7 +791,7 @@ describe("GitHub client", () => {
     {
       state: "OPEN",
       mergedAt: null,
-      counts: pendingCounts,
+      contexts: pendingChecks,
       tone: "yellow",
       label: "checks pending",
       strike: false,
@@ -524,14 +799,14 @@ describe("GitHub client", () => {
     {
       state: "OPEN",
       mergedAt: null,
-      counts: failedCounts,
+      contexts: failedChecks,
       tone: "red",
       label: "checks failed",
       strike: false,
     },
-  ])("projects $state status with $label appearance", async ({ state, mergedAt, counts, tone, label, strike }) => {
+  ])("projects $state status with $label appearance", async ({ state, mergedAt, contexts, tone, label, strike }) => {
     const client = createGitHubClient(
-      runnerFor(batchResponse(response({ state, mergedAt, statusCheckRollup: rollup(counts) }))),
+      runnerFor(batchResponse(response({ state, mergedAt, statusCheckRollup: rollup(contexts) }))),
     )
 
     expect(statusAppearance(await getOne(client))).toEqual({ tone, label, strikethrough: strike })
@@ -545,7 +820,7 @@ describe("GitHub client", () => {
             mergeable: "CONFLICTING",
             mergeStateStatus: "BEHIND",
             baseRef: baseRefPolicy({ refUpdateRule: { requiredStatusCheckContexts: ["Build"] } }),
-            statusCheckRollup: rollup(successCounts),
+            statusCheckRollup: rollup(successChecks),
           }),
         ),
       ),
@@ -560,25 +835,25 @@ describe("GitHub client", () => {
 
   test.each([
     {
-      counts: pendingCounts,
+      contexts: pendingChecks,
       policy: baseRefPolicy({ refUpdateRule: { requiredStatusCheckContexts: ["Build"] } }),
       tone: "yellow",
       label: "checks pending",
     },
     {
-      counts: failedCounts,
+      contexts: failedChecks,
       policy: baseRefPolicy({ hasNextPage: true, totalCount: 101 }),
       tone: "red",
       label: "checks failed",
     },
-  ])("gives $label precedence over inconclusive blocker policy", async ({ counts, policy, tone, label }) => {
+  ])("gives $label precedence over inconclusive blocker policy", async ({ contexts, policy, tone, label }) => {
     const client = createGitHubClient(
       runnerFor(
         batchResponse(
           response({
             mergeStateStatus: "BEHIND",
             baseRef: policy,
-            statusCheckRollup: rollup(counts),
+            statusCheckRollup: rollup(contexts),
           }),
         ),
       ),
@@ -589,7 +864,7 @@ describe("GitHub client", () => {
 
   test("uses CI while GitHub computes mergeability", async () => {
     const client = createGitHubClient(
-      runnerFor(batchResponse(response({ mergeable: "UNKNOWN", statusCheckRollup: rollup(pendingCounts) }))),
+      runnerFor(batchResponse(response({ mergeable: "UNKNOWN", statusCheckRollup: rollup(pendingChecks) }))),
     )
 
     expect(statusAppearance(await getOne(client))).toEqual({
@@ -604,7 +879,7 @@ describe("GitHub client", () => {
     { state: "CLOSED", mergedAt: null, expected: { tag: "Closed" } },
   ])("accepts valid checks without retaining CI for $state pull requests", async ({ state, mergedAt, expected }) => {
     const client = createGitHubClient(
-      runnerFor(batchResponse(response({ state, mergedAt, statusCheckRollup: rollup(failedCounts) }))),
+      runnerFor(batchResponse(response({ state, mergedAt, statusCheckRollup: rollup(failedChecks) }))),
     )
 
     expect((await getOne(client)).state).toEqual(expected)
@@ -657,22 +932,55 @@ describe("GitHub client", () => {
   test.each([
     response({ state: "UNKNOWN" }),
     response({ state: "CLOSED", mergedAt: "2026-08-10T12:00:00Z" }),
-    response({ statusCheckRollup: rollup({ checkRuns: [{ state: "UNKNOWN", count: 1 }] }) }),
-    response({ statusCheckRollup: rollup({ checkRuns: [{ state: "UNKNOWN", count: 0 }] }) }),
+    response({ statusCheckRollup: rollup({ nodes: [statusContext({ state: "UNKNOWN" })] }) }),
+    response({ statusCheckRollup: rollup({ nodes: [checkRun({ status: "UNKNOWN" })] }) }),
+    response({ statusCheckRollup: rollup({ nodes: [checkRun({ conclusion: "UNKNOWN" })] }) }),
+    response({ statusCheckRollup: rollup({ nodes: [statusContext({ createdAt: "not-a-date" })] }) }),
+    response({ statusCheckRollup: rollup({ nodes: [statusContext({ createdAt: "2026-02-30T10:00:00Z" })] }) }),
+    response({ statusCheckRollup: rollup({ nodes: [checkRun({ suiteCreatedAt: "not-a-date" })] }) }),
+    response({ statusCheckRollup: rollup({ nodes: [statusContext({ id: "" })] }) }),
+    response({ statusCheckRollup: rollup({ nodes: [statusContext({ context: " " })] }) }),
+    response({ statusCheckRollup: rollup({ nodes: [checkRun({ id: "" })] }) }),
+    response({ statusCheckRollup: rollup({ nodes: [checkRun({ name: " " })] }) }),
+    response({ statusCheckRollup: rollup({ nodes: [checkRun({ suiteId: "" })] }) }),
+    response({ statusCheckRollup: rollup({ nodes: [checkRun({ app: { id: "" } })] }) }),
+    response({
+      statusCheckRollup: rollup({ nodes: [checkRun({ workflowRun: workflowRun({ workflowId: "" }) })] }),
+    }),
+    response({
+      statusCheckRollup: rollup({ nodes: [checkRun({ workflowRun: workflowRun({ event: "" }) })] }),
+    }),
+    response({
+      statusCheckRollup: rollup({ nodes: [checkRun({ workflowRun: workflowRun({ runNumber: 0 }) })] }),
+    }),
+    response({
+      statusCheckRollup: rollup({ nodes: [checkRun({ workflowRun: workflowRun({ runAttempt: 0 }) })] }),
+    }),
+    response({
+      statusCheckRollup: rollup({
+        nodes: [checkRun({ status: "IN_PROGRESS", conclusion: "SUCCESS" })],
+      }),
+    }),
+    response({ statusCheckRollup: rollup({ overrides: { nodes: "invalid" } }) }),
+    response({ statusCheckRollup: rollup({ overrides: { totalCount: -1 } }) }),
+    response({ statusCheckRollup: rollup({ overrides: { pageInfo: null } }) }),
+    response({
+      statusCheckRollup: rollup({ overrides: { pageInfo: { hasNextPage: false, endCursor: 42 } } }),
+    }),
+    response({ statusCheckRollup: rollup({ nodes: [checkRun()], totalCount: 2 }) }),
+    response({
+      statusCheckRollup: rollup({ nodes: [checkRun(), checkRun()], totalCount: 2 }),
+    }),
     response({
       state: "MERGED",
       mergedAt: "2026-08-10T12:00:00Z",
-      statusCheckRollup: rollup({ checkRuns: [{ state: "UNKNOWN", count: 1 }] }),
+      statusCheckRollup: rollup({ nodes: [checkRun({ status: "UNKNOWN" })] }),
     }),
     response({
       state: "CLOSED",
-      statusCheckRollup: rollup({ checkRuns: [{ state: "UNKNOWN", count: 1 }] }),
+      statusCheckRollup: rollup({ nodes: [checkRun({ status: "UNKNOWN" })] }),
     }),
     response({ url: "https://example.com/owner/repository/pull/42" }),
-    response({ statusCheckRollup: rollup({ overrides: { checkRunCount: 1 } }) }),
-    response({
-      statusCheckRollup: rollup({ overrides: { checkRunCount: 1, checkRunCountsByState: null } }),
-    }),
     response({ mergeable: "BLOCKED" }),
     response({ mergeStateStatus: "NEW_STATE" }),
     response({ mergeStateStatus: "BEHIND", baseRef: {} }),
