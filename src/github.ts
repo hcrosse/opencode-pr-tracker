@@ -72,7 +72,9 @@ export type GitHubFailure =
   | InvalidGitHubResponse
   | GitHubBatchLimitExceeded
 
-export type GitHubBatch = readonly Result<AvailablePullRequestStatus, InvalidGitHubResponse>[]
+export type PullRequestItemFailure = Exclude<GitHubFailure, GitHubCancelled | GitHubBatchLimitExceeded>
+
+export type GitHubBatch = readonly Result<AvailablePullRequestStatus, PullRequestItemFailure>[]
 
 export type PullRequestDiagnostic = Exclude<GitHubFailure, GitHubCancelled | GitHubBatchLimitExceeded>["tag"]
 
@@ -107,7 +109,9 @@ const githubBatchLimitExceeded: Result<never, GitHubBatchLimitExceeded> = {
 
 const maximumPullRequestsPerBatch = 20
 const maximumCheckContextsPerPage = 100
-const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt mergeable mergeStateStatus baseRef { branchProtectionRule { requiresStatusChecks requiresStrictStatusChecks } refUpdateRule { requiredStatusCheckContexts } rules(first: 100) { nodes { parameters { __typename ... on RequiredStatusChecksParameters { strictRequiredStatusChecksPolicy requiredStatusChecks { context } } } } totalCount pageInfo { hasNextPage } } } statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}) { nodes { ... on StatusContext { id context state createdAt } ... on CheckRun { id name status conclusion checkSuite { id createdAt app { id } workflowRun { event runNumber runAttempt workflow { id } } } } } totalCount pageInfo { hasNextPage endCursor } } } }`
+const checkContextSelection = `nodes { ... on StatusContext { id context state createdAt } ... on CheckRun { id name status conclusion checkSuite { id createdAt app { id } workflowRun { event runNumber runAttempt workflow { id } } } } } totalCount pageInfo { hasNextPage endCursor }`
+const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt mergeable mergeStateStatus baseRef { branchProtectionRule { requiresStatusChecks requiresStrictStatusChecks } refUpdateRule { requiredStatusCheckContexts } rules(first: 100) { nodes { parameters { __typename ... on RequiredStatusChecksParameters { strictRequiredStatusChecksPolicy requiredStatusChecks { context } } } } totalCount pageInfo { hasNextPage } } } statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}) { ${checkContextSelection} } } }`
+const continuationQuery = `query PullRequestContexts($url: URI!, $cursor: String!) { resource(url: $url) { __typename ... on PullRequest { url statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}, after: $cursor) { ${checkContextSelection} } } } } }`
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -161,6 +165,12 @@ type ParsedCheckRun = Readonly<{
 }>
 
 type ParsedCheckContext = ParsedStatusContext | ParsedCheckRun
+
+type ParsedCheckContextPage = Readonly<{
+  contexts: readonly ParsedCheckContext[]
+  totalCount: number
+  nextCursor?: string
+}>
 
 type ProcessExecutionFailed = Readonly<{
   tag: "ProcessExecutionFailed"
@@ -359,7 +369,7 @@ function parseCheckRun(input: Record<string, unknown>): Result<ParsedCheckRun, I
   }
 }
 
-function parseCheckContexts(input: unknown): Result<readonly ParsedCheckContext[], InvalidGitHubResponse> {
+function parseCheckContexts(input: unknown): Result<ParsedCheckContextPage, InvalidGitHubResponse> {
   if (
     !isRecord(input) ||
     !Number.isInteger(input.totalCount) ||
@@ -372,7 +382,7 @@ function parseCheckContexts(input: unknown): Result<readonly ParsedCheckContext[
   }
 
   const nodes = input.nodes === null && input.totalCount === 0 ? [] : input.nodes
-  if (!Array.isArray(nodes) || nodes.length > maximumCheckContextsPerPage || nodes.length !== input.totalCount) {
+  if (!Array.isArray(nodes) || nodes.length > maximumCheckContextsPerPage || nodes.length > Number(input.totalCount)) {
     return invalidGitHubResponse
   }
 
@@ -385,7 +395,17 @@ function parseCheckContexts(input: unknown): Result<readonly ParsedCheckContext[
     ids.add(parsed.value.id)
     contexts.push(parsed.value)
   }
-  return input.pageInfo.hasNextPage ? invalidGitHubResponse : { ok: true, value: contexts }
+  const nextCursor = input.pageInfo.hasNextPage ? parseNonBlankString(input.pageInfo.endCursor) : undefined
+  if (input.pageInfo.hasNextPage && nextCursor === undefined) return invalidGitHubResponse
+  if (nextCursor !== undefined && contexts.length === 0) return invalidGitHubResponse
+  return {
+    ok: true,
+    value: {
+      contexts,
+      totalCount: Number(input.totalCount),
+      ...(nextCursor === undefined ? {} : { nextCursor }),
+    },
+  }
 }
 
 function classifyStatusContext(state: StatusContextState): Exclude<CheckBucket, "ignored"> {
@@ -492,11 +512,10 @@ function classifyContexts(contexts: readonly ParsedCheckContext[]): PullRequestC
   return "none"
 }
 
-function parseStatusCheckRollup(input: unknown): Result<PullRequestCi, InvalidGitHubResponse> {
-  if (input === null) return { ok: true, value: "none" }
+function parseStatusCheckRollup(input: unknown): Result<ParsedCheckContextPage | null, InvalidGitHubResponse> {
+  if (input === null) return { ok: true, value: null }
   if (!isRecord(input)) return invalidGitHubResponse
-  const contexts = parseCheckContexts(input.contexts)
-  return contexts.ok ? { ok: true, value: classifyContexts(contexts.value) } : contexts
+  return parseCheckContexts(input.contexts)
 }
 
 function samePullRequest(left: PullRequestUrl, right: PullRequestUrl): boolean {
@@ -641,6 +660,7 @@ function parseBlocker(
 function parseResponse(
   input: unknown,
   pullRequest: PullRequestUrl,
+  ci: PullRequestCi,
 ): Result<AvailablePullRequestStatus, InvalidGitHubResponse> {
   if (
     !isRecord(input) ||
@@ -664,8 +684,6 @@ function parseResponse(
   const responseUrl = parsePullRequestUrl(input.url)
   if (!responseUrl.ok || !samePullRequest(responseUrl.value, pullRequest)) return invalidGitHubResponse
 
-  const ci = parseStatusCheckRollup(input.statusCheckRollup)
-  if (!ci.ok) return ci
   const mergeability = parseMergeability(input.mergeable)
   if (!mergeability.ok) return mergeability
 
@@ -673,12 +691,12 @@ function parseResponse(
   switch (input.state) {
     case "OPEN": {
       let blocker: PullRequestBlocker = "none"
-      if (mergeability.value !== "conflicting" && (ci.value === "none" || ci.value === "passed")) {
+      if (mergeability.value !== "conflicting" && (ci === "none" || ci === "passed")) {
         const parsedBlocker = parseBlocker(input.mergeStateStatus, input.baseRef)
         if (!parsedBlocker.ok) return parsedBlocker
         blocker = parsedBlocker.value
       }
-      state = { tag: "Open", ci: ci.value, mergeability: mergeability.value, blocker }
+      state = { tag: "Open", ci, mergeability: mergeability.value, blocker }
       break
     }
     case "MERGED":
@@ -701,6 +719,33 @@ function parseResponse(
       stale: false,
     },
   }
+}
+
+type ParsedInitialPullRequest = Readonly<{
+  response: Record<string, unknown>
+  contextPage: ParsedCheckContextPage | null
+  status: AvailablePullRequestStatus
+}>
+
+function parseInitialPullRequest(
+  input: unknown,
+  pullRequest: PullRequestUrl,
+): Result<ParsedInitialPullRequest, InvalidGitHubResponse> {
+  if (!isRecord(input)) return invalidGitHubResponse
+  const contextPage = parseStatusCheckRollup(input.statusCheckRollup)
+  if (!contextPage.ok) return contextPage
+  if (
+    contextPage.value !== null &&
+    contextPage.value.nextCursor === undefined &&
+    contextPage.value.contexts.length !== contextPage.value.totalCount
+  ) {
+    return invalidGitHubResponse
+  }
+  const ci = contextPage.value === null ? "none" : classifyContexts(contextPage.value.contexts)
+  const status = parseResponse(input, pullRequest, ci)
+  return status.ok
+    ? { ok: true, value: { response: input, contextPage: contextPage.value, status: status.value } }
+    : status
 }
 
 function createBatchQuery(size: number): string {
@@ -737,7 +782,7 @@ function parseGraphqlErrorAliases(input: unknown, size: number): Result<Readonly
 function parseBatchResponse(
   input: unknown,
   pullRequests: readonly PullRequestUrl[],
-): Result<GitHubBatch, InvalidGitHubResponse> {
+): Result<readonly Result<ParsedInitialPullRequest, InvalidGitHubResponse>[], InvalidGitHubResponse> {
   if (!isRecord(input) || !isRecord(input.data)) return invalidGitHubResponse
   const data = input.data
   const errorAliases = parseGraphqlErrorAliases(input.errors, pullRequests.length)
@@ -745,9 +790,30 @@ function parseBatchResponse(
   return {
     ok: true,
     value: pullRequests.map((pullRequest, index) =>
-      errorAliases.value.has(index) ? invalidGitHubResponse : parseResponse(data[`pr${index}`], pullRequest),
+      errorAliases.value.has(index) ? invalidGitHubResponse : parseInitialPullRequest(data[`pr${index}`], pullRequest),
     ),
   }
+}
+
+function parseContinuationResponse(
+  input: unknown,
+  pullRequest: PullRequestUrl,
+): Result<ParsedCheckContextPage, InvalidGitHubResponse> {
+  if (
+    !isRecord(input) ||
+    (input.errors !== undefined && (!Array.isArray(input.errors) || input.errors.length > 0)) ||
+    !isRecord(input.data) ||
+    !isRecord(input.data.resource)
+  ) {
+    return invalidGitHubResponse
+  }
+  const resource = input.data.resource
+  if (resource.__typename !== "PullRequest" || typeof resource.url !== "string") return invalidGitHubResponse
+  const responseUrl = parsePullRequestUrl(resource.url)
+  if (!responseUrl.ok || !samePullRequest(responseUrl.value, pullRequest) || !isRecord(resource.statusCheckRollup)) {
+    return invalidGitHubResponse
+  }
+  return parseCheckContexts(resource.statusCheckRollup.contexts)
 }
 
 function isCancellation(cause: unknown, signal: AbortSignal | undefined): boolean {
@@ -778,6 +844,110 @@ function classifyProcessFailure(cause: unknown): GitHubCliMissing | GitHubAuthen
 function processFailureStdout(cause: unknown): string | undefined {
   if (!isRecord(cause) || typeof cause.stdout !== "string" || cause.stdout.trim() === "") return undefined
   return cause.stdout
+}
+
+type ProcessFailure = GitHubCliMissing | GitHubAuthenticationRequired | GitHubUnavailable
+type DecodedProcessOutput = Readonly<{ decoded: unknown; processFailure?: ProcessFailure }>
+
+async function runAndDecode(
+  runner: ProcessRunner,
+  args: readonly string[],
+  options: Readonly<{ signal?: AbortSignal }>,
+): Promise<Result<DecodedProcessOutput, ProcessFailure | GitHubCancelled | InvalidGitHubResponse>> {
+  let stdout: string
+  let processFailure: ProcessFailure | undefined
+  try {
+    const output = await runner("gh", args, options)
+    stdout = output.stdout
+  } catch (cause) {
+    if (isCancellation(cause, options.signal)) {
+      return {
+        ok: false,
+        error: {
+          tag: "GitHubCancelled",
+          message: "GitHub status request cancelled",
+          cause,
+        },
+      }
+    }
+    processFailure = classifyProcessFailure(cause)
+    const partialStdout = processFailureStdout(cause)
+    if (partialStdout === undefined) return { ok: false, error: processFailure }
+    stdout = partialStdout
+  }
+
+  let decoded: unknown
+  try {
+    decoded = JSON.parse(stdout)
+  } catch {
+    return processFailure === undefined ? invalidGitHubResponse : { ok: false, error: processFailure }
+  }
+  return { ok: true, value: { decoded, ...(processFailure === undefined ? {} : { processFailure }) } }
+}
+
+type ContinuationOutcome =
+  | Readonly<{ tag: "Item"; result: Result<AvailablePullRequestStatus, PullRequestItemFailure> }>
+  | Readonly<{ tag: "Cancelled"; error: GitHubCancelled }>
+
+async function continuePullRequest(
+  runner: ProcessRunner,
+  pullRequest: PullRequestUrl,
+  initial: ParsedInitialPullRequest,
+  options: Readonly<{ signal?: AbortSignal }>,
+): Promise<ContinuationOutcome> {
+  if (initial.contextPage?.nextCursor === undefined) return { tag: "Item", result: { ok: true, value: initial.status } }
+
+  const contexts = [...initial.contextPage.contexts]
+  const totalCount = initial.contextPage.totalCount
+  const contextIds = new Set(contexts.map((context) => context.id))
+  const cursors = new Set([initial.contextPage.nextCursor])
+  let cursor: string | undefined = initial.contextPage.nextCursor
+  while (cursor !== undefined) {
+    const args = [
+      "api",
+      "graphql",
+      "--method",
+      "POST",
+      "-f",
+      `query=${continuationQuery}`,
+      "-f",
+      `url=${pullRequest.url}`,
+      "-f",
+      `cursor=${cursor}`,
+    ]
+    const output = await runAndDecode(runner, args, options)
+    if (!output.ok) {
+      return output.error.tag === "GitHubCancelled"
+        ? { tag: "Cancelled", error: output.error }
+        : { tag: "Item", result: { ok: false, error: output.error } }
+    }
+    const page = parseContinuationResponse(output.value.decoded, pullRequest)
+    if (!page.ok) {
+      return {
+        tag: "Item",
+        result: { ok: false, error: output.value.processFailure ?? page.error },
+      }
+    }
+    if (page.value.totalCount !== totalCount) return { tag: "Item", result: invalidGitHubResponse }
+    for (const context of page.value.contexts) {
+      if (contextIds.has(context.id)) return { tag: "Item", result: invalidGitHubResponse }
+      contextIds.add(context.id)
+    }
+    if (contexts.length + page.value.contexts.length > totalCount) {
+      return { tag: "Item", result: invalidGitHubResponse }
+    }
+    if (page.value.nextCursor !== undefined) {
+      if (cursors.has(page.value.nextCursor)) return { tag: "Item", result: invalidGitHubResponse }
+      cursors.add(page.value.nextCursor)
+    }
+    contexts.push(...page.value.contexts)
+    cursor = page.value.nextCursor
+  }
+
+  if (contexts.length !== totalCount) return { tag: "Item", result: invalidGitHubResponse }
+
+  const status = parseResponse(initial.response, pullRequest, classifyContexts(contexts))
+  return { tag: "Item", result: status }
 }
 
 export const execFileRunner: ProcessRunner = (file, args, options) =>
@@ -816,40 +986,24 @@ export function createGitHubClient(runner: ProcessRunner = execFileRunner): GitH
       for (const [index, pullRequest] of pullRequests.entries()) {
         args.push("-f", `url${index}=${pullRequest.url}`)
       }
-      let stdout: string
-      let processFailure: GitHubCliMissing | GitHubAuthenticationRequired | GitHubUnavailable | undefined
-      try {
-        const output = await runner("gh", args, options)
-        stdout = output.stdout
-      } catch (cause) {
-        if (isCancellation(cause, options.signal)) {
-          return {
-            ok: false,
-            error: {
-              tag: "GitHubCancelled",
-              message: "GitHub status request cancelled",
-              cause,
-            },
-          }
-        }
-        processFailure = classifyProcessFailure(cause)
-        const partialStdout = processFailureStdout(cause)
-        if (partialStdout !== undefined) {
-          stdout = partialStdout
-        } else {
-          return { ok: false, error: processFailure }
-        }
-      }
+      const output = await runAndDecode(runner, args, options)
+      if (!output.ok) return output
+      const parsed = parseBatchResponse(output.value.decoded, pullRequests)
+      if (!parsed.ok) return { ok: false, error: output.value.processFailure ?? parsed.error }
 
-      let decoded: unknown
-      try {
-        decoded = JSON.parse(stdout)
-      } catch {
-        return processFailure === undefined ? invalidGitHubResponse : { ok: false, error: processFailure }
+      const outcomes = await Promise.all(
+        parsed.value.map((item): Promise<ContinuationOutcome> => {
+          if (!item.ok) return Promise.resolve({ tag: "Item", result: item })
+          return continuePullRequest(runner, item.value.status.pullRequest, item.value, options)
+        }),
+      )
+      const batch: Result<AvailablePullRequestStatus, PullRequestItemFailure>[] = []
+      let cancellation: GitHubCancelled | undefined
+      for (const outcome of outcomes) {
+        if (outcome.tag === "Cancelled") cancellation ??= outcome.error
+        else batch.push(outcome.result)
       }
-      const parsed = parseBatchResponse(decoded, pullRequests)
-      if (processFailure === undefined || parsed.ok) return parsed
-      return { ok: false, error: processFailure }
+      return cancellation === undefined ? { ok: true, value: batch } : { ok: false, error: cancellation }
     },
   }
 }

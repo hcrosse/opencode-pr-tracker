@@ -90,7 +90,7 @@ function rollup(
     endCursor?: unknown
     overrides?: Record<string, unknown>
   }> = {},
-): Record<string, unknown> {
+): { contexts: Record<string, unknown> } {
   const nodes = "nodes" in input ? input.nodes : []
   const nodeCount = Array.isArray(nodes) ? nodes.length : 0
   return {
@@ -183,6 +183,41 @@ function batchResponse(...responses: readonly unknown[]): Record<string, unknown
   return {
     data: Object.fromEntries(responses.map((value, index) => [`pr${index}`, value])),
   }
+}
+
+function continuationResponse(
+  pullRequestUrl: string,
+  contexts: Record<string, unknown>,
+  errors?: readonly unknown[],
+): Record<string, unknown> {
+  return {
+    data: {
+      resource: {
+        __typename: "PullRequest",
+        url: pullRequestUrl,
+        statusCheckRollup: { contexts },
+      },
+    },
+    ...(errors === undefined ? {} : { errors }),
+  }
+}
+
+function processExecutionFailed(
+  code: string | number | null,
+  stdout = "",
+  stderr = "request failed",
+): Readonly<Record<string, unknown>> {
+  return {
+    tag: "ProcessExecutionFailed",
+    code,
+    stderr,
+    stdout,
+    cause: new Error("gh failed"),
+  }
+}
+
+function fieldValue(args: readonly string[], field: string): string | undefined {
+  return args.find((arg) => arg.startsWith(`${field}=`))?.slice(field.length + 1)
 }
 
 async function getOne(client: GitHubClient) {
@@ -642,21 +677,376 @@ describe("GitHub client", () => {
     expect((await getOne(client)).state).toMatchObject({ tag: "Open", ci: "failed" })
   })
 
-  test("fails an incomplete check-context connection closed", async () => {
-    const client = createGitHubClient(
-      runnerFor(
-        batchResponse(
-          response({
-            statusCheckRollup: rollup({
-              nodes: [checkRun()],
-              totalCount: 101,
-              hasNextPage: true,
-              endCursor: "cursor-1",
-            }),
+  test("continues an incomplete context page and propagates the caller signal", async () => {
+    const calls: Array<{ file: string; args: readonly string[]; signal?: AbortSignal }> = []
+    const outputs = [
+      batchResponse(
+        response({
+          statusCheckRollup: rollup({
+            nodes: [
+              checkRun({
+                id: "old-cancelled",
+                suiteId: "suite-10",
+                conclusion: "CANCELLED",
+                workflowRun: workflowRun({ runNumber: 10 }),
+              }),
+            ],
+            totalCount: 2,
+            hasNextPage: true,
+            endCursor: "page-1",
           }),
+        }),
+      ),
+      continuationResponse(
+        pullRequest.url,
+        rollup({
+          nodes: [checkRun({ id: "new-success", suiteId: "suite-11", workflowRun: workflowRun({ runNumber: 11 }) })],
+          totalCount: 2,
+          endCursor: "page-2",
+        }).contexts,
+      ),
+    ]
+    const client = createGitHubClient(async (file, args, options) => {
+      calls.push({ file, args, ...(options.signal ? { signal: options.signal } : {}) })
+      const output = outputs[calls.length - 1]
+      if (output === undefined) throw new Error("unexpected runner call")
+      return { stdout: JSON.stringify(output) }
+    })
+    const controller = new AbortController()
+
+    const result = await client.get([pullRequest], { signal: controller.signal })
+
+    expect(result.ok && result.value[0]).toMatchObject({ ok: true, value: { state: { ci: "passed" } } })
+    expect(calls).toHaveLength(2)
+    expect(calls[1]?.args[5]).toContain("query PullRequestContexts($url: URI!, $cursor: String!)")
+    expect(calls[1]?.args[5]).toContain("contexts(first: 100, after: $cursor)")
+    expect(fieldValue(calls[1]?.args ?? [], "cursor")).toBe("page-1")
+    expect(calls.map((call) => call.signal)).toEqual([controller.signal, controller.signal])
+  })
+
+  test("accumulates sequential continuation pages before classifying contexts", async () => {
+    const outputs = [
+      batchResponse(
+        response({
+          statusCheckRollup: rollup({
+            nodes: [checkRun({ id: "passed", name: "Build" })],
+            totalCount: 3,
+            hasNextPage: true,
+            endCursor: "page-1",
+          }),
+        }),
+      ),
+      continuationResponse(
+        pullRequest.url,
+        rollup({
+          nodes: [checkRun({ id: "pending", name: "Lint", status: "IN_PROGRESS", conclusion: null })],
+          totalCount: 3,
+          hasNextPage: true,
+          endCursor: "page-2",
+        }).contexts,
+      ),
+      continuationResponse(
+        pullRequest.url,
+        rollup({ nodes: [checkRun({ id: "failed", name: "Test", conclusion: "FAILURE" })], totalCount: 3 }).contexts,
+      ),
+    ]
+    const cursors: string[] = []
+    const client = createGitHubClient(async (_file, args) => {
+      const output = outputs.shift()
+      if (output === undefined) throw new Error("unexpected runner call")
+      const cursor = fieldValue(args, "cursor")
+      if (cursor !== undefined) cursors.push(cursor)
+      return { stdout: JSON.stringify(output) }
+    })
+
+    const result = await client.get([pullRequest])
+
+    expect(result.ok && result.value[0]).toMatchObject({ ok: true, value: { state: { ci: "failed" } } })
+    expect(cursors).toEqual(["page-1", "page-2"])
+  })
+
+  test("isolates a continuation process diagnostic to its incomplete alias", async () => {
+    const client = createGitHubClient(async (_file, args) => {
+      if (fieldValue(args, "cursor") === undefined) {
+        return {
+          stdout: JSON.stringify(
+            batchResponse(
+              response(),
+              response({
+                url: secondPullRequest.url,
+                statusCheckRollup: rollup({
+                  nodes: [checkRun()],
+                  totalCount: 2,
+                  hasNextPage: true,
+                  endCursor: "page-1",
+                }),
+              }),
+            ),
+          ),
+        }
+      }
+      throw processExecutionFailed(4)
+    })
+
+    const result = await client.get([pullRequest, secondPullRequest])
+
+    expect(result.ok && result.value[0]).toMatchObject({ ok: true, value: { pullRequest } })
+    expect(result.ok && result.value[1]).toMatchObject({ ok: false, error: { tag: "GitHubAuthenticationRequired" } })
+  })
+
+  test("starts continuation aliases concurrently and routes their responses by URL", async () => {
+    const firstContinuation = Promise.withResolvers<Readonly<{ stdout: string }>>()
+    const continuations = new Map<string, typeof firstContinuation>([
+      [pullRequest.url, firstContinuation],
+      [secondPullRequest.url, Promise.withResolvers<Readonly<{ stdout: string }>>()],
+    ])
+    const bothStarted = Promise.withResolvers<void>()
+    const started: string[] = []
+    const client = createGitHubClient(async (_file, args) => {
+      const url = fieldValue(args, "url")
+      if (url === undefined) {
+        return {
+          stdout: JSON.stringify(
+            batchResponse(
+              response({
+                statusCheckRollup: rollup({
+                  nodes: [checkRun({ id: "first-old", conclusion: "FAILURE" })],
+                  totalCount: 2,
+                  hasNextPage: true,
+                  endCursor: "first-page",
+                }),
+              }),
+              response({
+                url: secondPullRequest.url,
+                statusCheckRollup: rollup({
+                  nodes: [checkRun({ id: "second-old" })],
+                  totalCount: 2,
+                  hasNextPage: true,
+                  endCursor: "second-page",
+                }),
+              }),
+            ),
+          ),
+        }
+      }
+      started.push(url)
+      if (started.length === 2) bothStarted.resolve()
+      const continuation = continuations.get(url)
+      if (continuation === undefined) throw new Error(`unexpected URL ${url}`)
+      return continuation.promise
+    })
+
+    const request = client.get([pullRequest, secondPullRequest])
+    await bothStarted.promise
+    continuations.get(secondPullRequest.url)?.resolve({
+      stdout: JSON.stringify(
+        continuationResponse(
+          secondPullRequest.url,
+          rollup({ nodes: [checkRun({ id: "second-new", name: "Lint", conclusion: "FAILURE" })], totalCount: 2 })
+            .contexts,
         ),
       ),
-    )
+    })
+    continuations.get(pullRequest.url)?.resolve({
+      stdout: JSON.stringify(
+        continuationResponse(
+          pullRequest.url,
+          rollup({ nodes: [checkRun({ id: "first-new", name: "Lint" })], totalCount: 2 }).contexts,
+        ),
+      ),
+    })
+
+    const result = await request
+    expect(result.ok && result.value[0]).toMatchObject({ ok: true, value: { state: { ci: "failed" } } })
+    expect(result.ok && result.value[1]).toMatchObject({ ok: true, value: { state: { ci: "failed" } } })
+    expect(new Set(started)).toEqual(new Set([pullRequest.url, secondPullRequest.url]))
+  })
+
+  test("isolates continuation GraphQL errors to their alias", async () => {
+    const client = createGitHubClient(async (_file, args) => {
+      const url = fieldValue(args, "url")
+      if (url === undefined) {
+        return {
+          stdout: JSON.stringify(
+            batchResponse(
+              response({
+                statusCheckRollup: rollup({ nodes: [checkRun()], totalCount: 2, hasNextPage: true, endCursor: "a" }),
+              }),
+              response({
+                url: secondPullRequest.url,
+                statusCheckRollup: rollup({ nodes: [checkRun()], totalCount: 2, hasNextPage: true, endCursor: "b" }),
+              }),
+            ),
+          ),
+        }
+      }
+      const contexts = rollup({
+        nodes: [checkRun({ id: `${url}-next`, name: "Lint" })],
+        totalCount: 2,
+      }).contexts
+      return {
+        stdout: JSON.stringify(
+          url === pullRequest.url
+            ? continuationResponse(url, contexts)
+            : continuationResponse(url, contexts, [{ message: "partial failure", path: ["resource"] }]),
+        ),
+      }
+    })
+
+    const result = await client.get([pullRequest, secondPullRequest])
+
+    expect(result.ok && result.value[0]).toMatchObject({ ok: true })
+    expect(result.ok && result.value[1]).toEqual(invalidItem)
+  })
+
+  test("uses valid continuation partial stdout and retains invalid partial process diagnostics", async () => {
+    const client = createGitHubClient(async (_file, args) => {
+      const url = fieldValue(args, "url")
+      if (url === undefined) {
+        return {
+          stdout: JSON.stringify(
+            batchResponse(
+              response({
+                statusCheckRollup: rollup({ nodes: [checkRun()], totalCount: 2, hasNextPage: true, endCursor: "a" }),
+              }),
+              response({
+                url: secondPullRequest.url,
+                statusCheckRollup: rollup({ nodes: [checkRun()], totalCount: 2, hasNextPage: true, endCursor: "b" }),
+              }),
+            ),
+          ),
+        }
+      }
+      if (url === pullRequest.url) {
+        throw processExecutionFailed(
+          1,
+          JSON.stringify(
+            continuationResponse(
+              url,
+              rollup({ nodes: [checkRun({ id: "valid-partial", name: "Lint" })], totalCount: 2 }).contexts,
+            ),
+          ),
+          "credential=secret-value",
+        )
+      }
+      throw processExecutionFailed(4, "not json", "credential=secret-value")
+    })
+
+    const result = await client.get([pullRequest, secondPullRequest])
+
+    expect(result.ok && result.value[0]).toMatchObject({ ok: true })
+    expect(result.ok && result.value[1]).toMatchObject({ ok: false, error: { tag: "GitHubAuthenticationRequired" } })
+  })
+
+  test("joins every continuation chain before returning caller cancellation", async () => {
+    const controller = new AbortController()
+    const continuationsStarted = Promise.withResolvers<void>()
+    const cancellationCauses = [new Error("first aborted"), new Error("second aborted")]
+    const continuationSignals: AbortSignal[] = []
+    let settled = 0
+    const client = createGitHubClient(async (_file, args, options) => {
+      if (fieldValue(args, "url") === undefined) {
+        return {
+          stdout: JSON.stringify(
+            batchResponse(
+              response({
+                statusCheckRollup: rollup({ nodes: [checkRun()], totalCount: 2, hasNextPage: true, endCursor: "a" }),
+              }),
+              response({
+                url: secondPullRequest.url,
+                statusCheckRollup: rollup({ nodes: [checkRun()], totalCount: 2, hasNextPage: true, endCursor: "b" }),
+              }),
+            ),
+          ),
+        }
+      }
+      const index = continuationSignals.length
+      if (options.signal === undefined) throw new Error("expected caller signal")
+      continuationSignals.push(options.signal)
+      if (continuationSignals.length === 2) continuationsStarted.resolve()
+      return new Promise((_resolve, reject) => {
+        options.signal?.addEventListener(
+          "abort",
+          () => {
+            settled += 1
+            reject(cancellationCauses[index])
+          },
+          { once: true },
+        )
+      })
+    })
+
+    const request = client.get([pullRequest, secondPullRequest], { signal: controller.signal })
+    await continuationsStarted.promise
+    controller.abort()
+    const result = await request
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.tag).toBe("GitHubCancelled")
+    expect(continuationSignals).toEqual([controller.signal, controller.signal])
+    expect(settled).toBe(2)
+  })
+
+  test("does not request a continuation for complete first pages", async () => {
+    const calls: string[][] = []
+    const client = createGitHubClient(async (_file, args) => {
+      calls.push([...args])
+      return { stdout: JSON.stringify(batchResponse(response({ statusCheckRollup: rollup(successChecks) }))) }
+    })
+
+    const result = await client.get([pullRequest])
+
+    expect(result.ok && result.value[0]).toMatchObject({ ok: true })
+    expect(calls).toHaveLength(1)
+  })
+
+  test.each([
+    {
+      name: "a changed total count",
+      first: rollup({ nodes: [checkRun()], totalCount: 2, hasNextPage: true, endCursor: "page-1" }),
+      next: rollup({ nodes: [checkRun({ id: "next", name: "Lint" })], totalCount: 3 }),
+    },
+    {
+      name: "a repeated node ID",
+      first: rollup({ nodes: [checkRun()], totalCount: 2, hasNextPage: true, endCursor: "page-1" }),
+      next: rollup({ nodes: [checkRun()], totalCount: 2 }),
+    },
+    {
+      name: "more accumulated nodes than the total count",
+      first: rollup({ nodes: [checkRun()], totalCount: 1, hasNextPage: true, endCursor: "page-1" }),
+      next: rollup({ nodes: [checkRun({ id: "next", name: "Lint" })], totalCount: 1 }),
+    },
+    {
+      name: "an incomplete final node count",
+      first: rollup({ nodes: [checkRun()], totalCount: 3, hasNextPage: true, endCursor: "page-1" }),
+      next: rollup({ nodes: [checkRun({ id: "next", name: "Lint" })], totalCount: 3 }),
+    },
+    {
+      name: "a repeated cursor",
+      first: rollup({ nodes: [checkRun()], totalCount: 3, hasNextPage: true, endCursor: "page-1" }),
+      next: rollup({
+        nodes: [checkRun({ id: "next", name: "Lint" })],
+        totalCount: 3,
+        hasNextPage: true,
+        endCursor: "page-1",
+      }),
+    },
+    {
+      name: "an empty continuing page",
+      first: rollup({ nodes: [checkRun()], totalCount: 2, hasNextPage: true, endCursor: "page-1" }),
+      next: rollup({ nodes: [], totalCount: 2, hasNextPage: true, endCursor: "page-2" }),
+    },
+  ])("rejects continuation pages with $name", async ({ first, next }) => {
+    const outputs = [
+      batchResponse(response({ statusCheckRollup: first })),
+      continuationResponse(pullRequest.url, next.contexts),
+    ]
+    const client = createGitHubClient(async () => {
+      const output = outputs.shift()
+      if (output === undefined) throw new Error("unexpected runner call")
+      return { stdout: JSON.stringify(output) }
+    })
 
     const result = await client.get([pullRequest])
 
