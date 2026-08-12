@@ -9,13 +9,8 @@ import {
   resolvePullRequestInput,
   type AttachPullRequestFailure,
 } from "./attach.js"
-import {
-  createGitHubClient,
-  execFileRunner,
-  statusAppearance,
-  type GitHubClient,
-  type ProcessRunner,
-} from "./github.js"
+import { createGitHubClient, statusAppearance, type GitHubClient, type ProcessRunner } from "./github.js"
+import { openPullRequest } from "./external-url.js"
 import { startSessionPolling, type SessionRefreshResult, type SidebarPullRequest } from "./polling.js"
 import { createStateStore, type PullRequestAttachment, type StateStore } from "./state.js"
 import {
@@ -34,6 +29,8 @@ import {
   type InstallationScope,
   type UpdateCache,
 } from "./update.js"
+
+export { openPullRequest, type OpenPullRequestFailure } from "./external-url.js"
 
 export {
   startSessionPolling,
@@ -57,54 +54,6 @@ export function attachPullRequest(
     pullRequest.value,
     options.signal ? { signal: options.signal } : {},
   )
-}
-
-export type OpenPullRequestFailure =
-  | Readonly<{
-      tag: "UnsupportedPlatform"
-      message: string
-      platform: string
-    }>
-  | Readonly<{
-      tag: "OpenPullRequestFailed"
-      message: "Unable to open the pull request"
-      cause: unknown
-    }>
-
-export async function openPullRequest(
-  pullRequest: PullRequestUrl,
-  options: Readonly<{
-    platform?: string
-    runner?: ProcessRunner
-    signal?: AbortSignal
-  }> = {},
-): Promise<Result<void, OpenPullRequestFailure>> {
-  const platform = options.platform ?? process.platform
-  const executable = platform === "darwin" ? "open" : platform === "linux" ? "xdg-open" : undefined
-  if (executable === undefined) {
-    return {
-      ok: false,
-      error: {
-        tag: "UnsupportedPlatform",
-        message: `Opening pull requests is unsupported on ${platform}`,
-        platform,
-      },
-    }
-  }
-
-  try {
-    await (options.runner ?? execFileRunner)(
-      executable,
-      [pullRequest.url],
-      options.signal ? { signal: options.signal } : {},
-    )
-    return { ok: true, value: undefined }
-  } catch (cause) {
-    return {
-      ok: false,
-      error: { tag: "OpenPullRequestFailed", message: "Unable to open the pull request", cause },
-    }
-  }
 }
 
 type RefreshListener = Readonly<{
