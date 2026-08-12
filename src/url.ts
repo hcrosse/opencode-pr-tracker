@@ -35,7 +35,7 @@ const segmentPattern = /^[A-Za-z0-9._-]+$/
 const schemeLessPrefix = "github.com/"
 
 export function parsePullRequestUrl(input: string): Result<PullRequestUrl, InvalidPullRequestUrl> {
-  if (input.trim() !== input) return invalidPullRequestUrl
+  if (/\s/.test(input)) return invalidPullRequestUrl
   if (input.includes("\\")) return invalidPullRequestUrl
 
   const candidate =
