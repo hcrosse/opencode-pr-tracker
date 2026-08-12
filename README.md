@@ -50,6 +50,7 @@ scope. The plugin never installs updates automatically.
 - `/pr-open` lets you select and open an attached pull request on macOS or Linux.
 - `/pr-detach` lets you select and remove an attached pull request.
 - `/pr-sync` immediately refreshes attached pull request status.
+- `/pr-tracker-feedback` collects bug reports, feature requests, or other feedback and previews optional diagnostics. It opens a prefilled browser issue by default, with confirmed `gh` submission as an alternative. Diagnostics never automatically include session content, local paths, repository names, or pull request URLs.
 - `/pr-tracker-plugin-update` checks for a compatible plugin release and shows the update command.
 - Agents can use the `pr_list`, `pr_attach`, and `pr_detach` tools when the server plugin is enabled.
 
