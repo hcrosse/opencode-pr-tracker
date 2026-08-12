@@ -53,6 +53,11 @@ export type GitHubCancelled = Readonly<{
   cause: unknown
 }>
 
+export type PullRequestNotFound = Readonly<{
+  tag: "PullRequestNotFound"
+  message: "Pull request does not exist or is not accessible"
+}>
+
 export type InvalidGitHubResponse = Readonly<{
   tag: "InvalidGitHubResponse"
   message: "GitHub returned an invalid pull request response"
@@ -69,6 +74,7 @@ export type GitHubFailure =
   | GitHubAuthenticationRequired
   | GitHubUnavailable
   | GitHubCancelled
+  | PullRequestNotFound
   | InvalidGitHubResponse
   | GitHubBatchLimitExceeded
 
@@ -96,6 +102,13 @@ const invalidGitHubResponse: Result<never, InvalidGitHubResponse> = {
   error: {
     tag: "InvalidGitHubResponse",
     message: "GitHub returned an invalid pull request response",
+  },
+}
+const pullRequestNotFound: Result<never, PullRequestNotFound> = {
+  ok: false,
+  error: {
+    tag: "PullRequestNotFound",
+    message: "Pull request does not exist or is not accessible",
   },
 }
 const githubBatchLimitExceeded: Result<never, GitHubBatchLimitExceeded> = {
@@ -768,7 +781,8 @@ type ParsedInitialPullRequest = Readonly<{
 function parseInitialPullRequest(
   input: unknown,
   pullRequest: PullRequestUrl,
-): Result<ParsedInitialPullRequest, InvalidGitHubResponse> {
+): Result<ParsedInitialPullRequest, PullRequestNotFound | InvalidGitHubResponse> {
+  if (input === null) return pullRequestNotFound
   if (!isRecord(input)) return invalidGitHubResponse
   const contextPage = parseStatusCheckRollup(input.statusCheckRollup)
   if (!contextPage.ok) return contextPage
@@ -819,7 +833,10 @@ function parseGraphqlErrorAliases(input: unknown, size: number): Result<Readonly
 function parseBatchResponse(
   input: unknown,
   pullRequests: readonly PullRequestUrl[],
-): Result<readonly Result<ParsedInitialPullRequest, InvalidGitHubResponse>[], InvalidGitHubResponse> {
+): Result<
+  readonly Result<ParsedInitialPullRequest, PullRequestNotFound | InvalidGitHubResponse>[],
+  InvalidGitHubResponse
+> {
   if (!isRecord(input) || !isRecord(input.data)) return invalidGitHubResponse
   const data = input.data
   const errorAliases = parseGraphqlErrorAliases(input.errors, pullRequests.length)
@@ -1064,6 +1081,7 @@ const diagnosticLabels = {
   GitHubCliMissing: "install gh",
   GitHubAuthenticationRequired: "run gh auth login",
   GitHubUnavailable: "GitHub unavailable",
+  PullRequestNotFound: "not found or inaccessible",
   InvalidGitHubResponse: "invalid GitHub response",
 } satisfies Record<PullRequestDiagnostic, string>
 

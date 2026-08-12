@@ -1,5 +1,26 @@
-import { execFileRunner, type ProcessRunner } from "./github.js"
+import { execFileRunner, type GitHubClient, type GitHubFailure, type ProcessRunner } from "./github.js"
+import type { AttachFailure, StateStore } from "./state.js"
 import { parsePullRequestUrl, type PullRequestUrl, type Result } from "./url.js"
+
+export type AttachPullRequestFailure = GitHubFailure | AttachFailure
+
+export async function attachPullRequest(
+  dependencies: Readonly<{ store: StateStore; github: GitHubClient }>,
+  sessionID: string,
+  pullRequest: PullRequestUrl,
+  options: Readonly<{ signal?: AbortSignal }> = {},
+): Promise<Result<"added" | "already_attached", AttachPullRequestFailure>> {
+  return dependencies.store.attach(sessionID, pullRequest, {
+    async validate() {
+      const batch = await dependencies.github.get([pullRequest], options)
+      if (!batch.ok) return batch
+      const item = batch.value[0]
+      if (item === undefined) throw new Error("GitHub client omitted the requested pull request")
+      if (!item.ok) return item
+      return { ok: true, value: undefined }
+    },
+  })
+}
 
 export type InvalidPullRequestInput = Readonly<{
   tag: "InvalidPullRequestInput"

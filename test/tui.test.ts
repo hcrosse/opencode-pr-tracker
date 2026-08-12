@@ -21,7 +21,7 @@ import {
   type PullRequestState,
 } from "../src/github.js"
 import type { PullRequestAttachment, StateStore } from "../src/state.js"
-import { parsePullRequestUrl, type CanonicalPullRequestUrl, type PullRequestUrl } from "../src/url.js"
+import { parsePullRequestUrl, type PullRequestUrl } from "../src/url.js"
 
 const parsed = parsePullRequestUrl("https://github.com/owner/repository/pull/42")
 if (!parsed.ok) throw new Error("test fixture URL is invalid")
@@ -29,7 +29,6 @@ const pullRequest = parsed.value
 const secondParsed = parsePullRequestUrl("https://github.com/another/project/pull/7")
 if (!secondParsed.ok) throw new Error("second test fixture URL is invalid")
 const secondPullRequest = secondParsed.value
-const canonicalPullRequestUrl: CanonicalPullRequestUrl = pullRequest.url
 const attachment: PullRequestAttachment = {
   pullRequest,
   attachedAt: "2026-08-10T12:00:00.000Z",
@@ -50,7 +49,9 @@ function stateStore(items: readonly PullRequestAttachment[] = [attachment]): Sta
     async list() {
       return { ok: true, value: items }
     },
-    async attach() {
+    async attach(_sessionID, _pullRequest, options) {
+      const validation = await options?.validate?.()
+      if (validation !== undefined && !validation.ok) return validation
       return { ok: true, value: "added" }
     },
     async detach() {
@@ -425,22 +426,46 @@ describe("TUI orchestration", () => {
     ])
   })
 
-  test("validates and attaches manual input through the shared state store", async () => {
-    const attached: string[] = []
-    const store: StateStore = {
-      ...stateStore([]),
-      async attach(sessionID, value) {
-        attached.push(`${sessionID}:${value.url}`)
-        return { ok: true, value: "added" }
+  test("preserves the attach helper while rejecting an unresolved pull request without mutation", async () => {
+    const store = stateStore([])
+    let requestSignal: AbortSignal | undefined
+    const github: GitHubClient = {
+      async get(_pullRequests, options) {
+        requestSignal = options?.signal
+        return {
+          ok: true,
+          value: [
+            {
+              ok: false,
+              error: {
+                tag: "PullRequestNotFound",
+                message: "Pull request does not exist or is not accessible",
+              },
+            },
+          ],
+        }
       },
     }
+    const signal = new AbortController().signal
 
     expect(await attachPullRequest(store, "session", "https://example.com/pull/1")).toMatchObject({
       ok: false,
       error: { tag: "InvalidPullRequestUrl" },
     })
-    expect(await attachPullRequest(store, "session", canonicalPullRequestUrl)).toEqual({ ok: true, value: "added" })
-    expect(attached).toEqual([`session:${canonicalPullRequestUrl}`])
+    expect(
+      await attachPullRequest(store, "session", pullRequest.url, {
+        github,
+        signal,
+      }),
+    ).toEqual({
+      ok: false,
+      error: {
+        tag: "PullRequestNotFound",
+        message: "Pull request does not exist or is not accessible",
+      },
+    })
+    expect(requestSignal).toBe(signal)
+    expect(await store.list("session")).toEqual({ ok: true, value: [] })
   })
 
   test("resolves numeric attach input against the current session directory", async () => {
@@ -454,7 +479,9 @@ describe("TUI orchestration", () => {
     }> = []
     const store: StateStore = {
       ...stateStore([]),
-      async attach(sessionID, value) {
+      async attach(sessionID, value, options) {
+        const validation = await options?.validate?.()
+        if (validation !== undefined && !validation.ok) return validation
         attached.push(`${sessionID}:${value.url}`)
         return { ok: true, value: "added" }
       },
@@ -508,6 +535,72 @@ describe("TUI orchestration", () => {
     })
     expect(processCalls[0]?.options.signal).toBeInstanceOf(AbortSignal)
     expect(attached).toEqual(["session:https://github.com/owner/repository/pull/42"])
+  })
+
+  test("surfaces a missing pull request without mutating session state", async () => {
+    type Command = Readonly<{ name: string; run(): Promise<void> }>
+    const commands = new Map<string, Command>()
+    const toasts: string[] = []
+    const store = stateStore([])
+    let requestSignal: AbortSignal | undefined
+    const github: GitHubClient = {
+      async get(_pullRequests, options) {
+        requestSignal = options?.signal
+        return {
+          ok: true,
+          value: [
+            {
+              ok: false,
+              error: {
+                tag: "PullRequestNotFound",
+                message: "Pull request does not exist or is not accessible",
+              },
+            },
+          ],
+        }
+      },
+    }
+    const controller = new AbortController()
+    const api = {
+      state: { path: { directory: "/project" } },
+      route: { current: { name: "session", params: { sessionID: "session" } } },
+      keymap: {
+        registerLayer(layer: { commands: Command[] }) {
+          for (const command of layer.commands) commands.set(command.name, command)
+          return () => undefined
+        },
+      },
+      slots: { register: () => "pr-tracker" },
+      lifecycle: {
+        signal: controller.signal,
+        onDispose: () => () => undefined,
+      },
+      event: { on: () => () => undefined },
+      ui: {
+        DialogPrompt(props: { onConfirm(value: string): void }) {
+          props.onConfirm(pullRequest.url)
+          return null
+        },
+        dialog: {
+          clear() {},
+          setSize() {},
+          replace(render: () => unknown) {
+            render()
+          },
+        },
+        toast(input: { message: string }) {
+          toasts.push(input.message)
+        },
+      },
+    } as unknown as TuiPluginApi
+
+    registerTui(api, { store, github })
+
+    await commands.get("pr.attach")!.run()
+
+    expect(toasts).toEqual(["Pull request does not exist or is not accessible"])
+    expect(requestSignal).toBe(controller.signal)
+    expect(await store.list("session")).toEqual({ ok: true, value: [] })
   })
 
   test("does not attach numeric input when repository resolution fails", async () => {
@@ -720,7 +813,9 @@ describe("TUI orchestration", () => {
       async list() {
         return { ok: true, value: [attachment] }
       },
-      async attach() {
+      async attach(_sessionID, _pullRequest, options) {
+        const validation = await options?.validate?.()
+        if (validation !== undefined && !validation.ok) return validation
         attachCalls += 1
         return { ok: true, value: attachCalls === 1 ? "added" : "already_attached" }
       },

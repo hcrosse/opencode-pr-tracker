@@ -4,7 +4,11 @@ import type { TuiPluginApi, TuiPluginMeta, TuiPluginModule } from "@opencode-ai/
 import { join } from "node:path"
 import { createSignal, onCleanup } from "solid-js"
 
-import { resolvePullRequestInput } from "./attach.js"
+import {
+  attachPullRequest as attachValidatedPullRequest,
+  resolvePullRequestInput,
+  type AttachPullRequestFailure,
+} from "./attach.js"
 import {
   createGitHubClient,
   execFileRunner,
@@ -15,13 +19,7 @@ import {
   type PullRequestDiagnostic,
   type PullRequestStatus,
 } from "./github.js"
-import {
-  createStateStore,
-  type AttachFailure,
-  type PullRequestAttachment,
-  type StateFailure,
-  type StateStore,
-} from "./state.js"
+import { createStateStore, type PullRequestAttachment, type StateFailure, type StateStore } from "./state.js"
 import {
   formatPullRequestRef,
   parsePullRequestUrl,
@@ -72,10 +70,16 @@ export function attachPullRequest(
   store: StateStore,
   sessionID: string,
   input: string,
-): Promise<Result<"added" | "already_attached", InvalidPullRequestUrl | AttachFailure>> {
+  options: Readonly<{ github?: GitHubClient; signal?: AbortSignal }> = {},
+): Promise<Result<"added" | "already_attached", InvalidPullRequestUrl | AttachPullRequestFailure>> {
   const pullRequest = parsePullRequestUrl(input)
   if (!pullRequest.ok) return Promise.resolve(pullRequest)
-  return store.attach(sessionID, pullRequest.value)
+  return attachValidatedPullRequest(
+    { store, github: options.github ?? createGitHubClient() },
+    sessionID,
+    pullRequest.value,
+    options.signal ? { signal: options.signal } : {},
+  )
 }
 
 export function startSessionPolling(
@@ -458,7 +462,7 @@ function selectPullRequest(
   })
 }
 
-function showStateFailure(api: TuiPluginApi, failure: AttachFailure): void {
+function showStateFailure(api: TuiPluginApi, failure: AttachPullRequestFailure): void {
   api.ui.toast({ variant: "error", title: "Pull request tracker", message: failure.message })
 }
 
@@ -704,7 +708,9 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies, re
           })
           if (pullRequest === undefined) return
 
-          const result = await dependencies.store.attach(sessionID, pullRequest)
+          const result = await attachValidatedPullRequest(dependencies, sessionID, pullRequest, {
+            signal: api.lifecycle.signal,
+          })
           if (!result.ok) {
             showStateFailure(api, result.error)
             return

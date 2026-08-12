@@ -1,7 +1,51 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
-import { resolvePullRequestInput } from "../src/attach.js"
-import type { ProcessRunner } from "../src/github.js"
+import { attachPullRequest, resolvePullRequestInput } from "../src/attach.js"
+import type { GitHubClient, ProcessRunner } from "../src/github.js"
+import { createStateStore } from "../src/state.js"
+import { parsePullRequestUrl, type PullRequestUrl } from "../src/url.js"
+
+const directories: string[] = []
+
+afterEach(async () => {
+  await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
+})
+
+async function temporaryStateStore() {
+  const directory = await mkdtemp(join(tmpdir(), "opencode-pr-tracker-attach-"))
+  directories.push(directory)
+  return createStateStore({ directory })
+}
+
+function pullRequest(number: number): PullRequestUrl {
+  const parsed = parsePullRequestUrl(`https://github.com/owner/repository/pull/${number}`)
+  if (!parsed.ok) throw new Error("test fixture URL is invalid")
+  return parsed.value
+}
+
+function deferred(): Readonly<{ promise: Promise<void>; resolve(): void }> {
+  let resolve!: () => void
+  const promise = new Promise<void>((complete) => {
+    resolve = complete
+  })
+  return { promise, resolve }
+}
+
+function availableGitHubItem(value: PullRequestUrl) {
+  return {
+    ok: true,
+    value: {
+      tag: "Available",
+      pullRequest: value,
+      title: "Pull request",
+      state: { tag: "Open", ci: "none", mergeability: "unknown", blocker: "none" },
+      stale: false,
+    },
+  } as const
+}
 
 type ProcessCall = Readonly<{
   file: string
@@ -15,6 +59,103 @@ function recordingRunner(stdout: string, calls: ProcessCall[]): ProcessRunner {
     return { stdout }
   }
 }
+
+describe("attachPullRequest", () => {
+  test("returns a missing pull request failure without mutating state", async () => {
+    const store = await temporaryStateStore()
+    const requested = pullRequest(404)
+    let requestSignal: AbortSignal | undefined
+    const github: GitHubClient = {
+      async get(_pullRequests, options) {
+        requestSignal = options?.signal
+        return {
+          ok: true,
+          value: [
+            {
+              ok: false,
+              error: {
+                tag: "PullRequestNotFound",
+                message: "Pull request does not exist or is not accessible",
+              },
+            },
+          ],
+        }
+      },
+    }
+    const signal = new AbortController().signal
+
+    expect(await attachPullRequest({ store, github }, "session", requested, { signal })).toEqual({
+      ok: false,
+      error: {
+        tag: "PullRequestNotFound",
+        message: "Pull request does not exist or is not accessible",
+      },
+    })
+    expect(requestSignal).toBe(signal)
+    expect(await store.list("session")).toEqual({ ok: true, value: [] })
+  })
+
+  test("serializes validation and attachment in same-session FIFO order", async () => {
+    const store = await temporaryStateStore()
+    const firstValidationStarted = deferred()
+    const releaseFirstValidation = deferred()
+    const validationStarts: number[] = []
+    const github: GitHubClient = {
+      async get(pullRequests, _options) {
+        const requested = pullRequests[0]
+        if (requested === undefined) throw new Error("expected one pull request")
+        validationStarts.push(requested.number)
+        if (requested.number === 1) {
+          firstValidationStarted.resolve()
+          await releaseFirstValidation.promise
+        }
+        return { ok: true, value: [availableGitHubItem(requested)] }
+      },
+    }
+
+    const first = attachPullRequest({ store, github }, "session", pullRequest(1))
+    await firstValidationStarted.promise
+    const second = attachPullRequest({ store, github }, "session", pullRequest(2))
+    let secondSettled = false
+    void second.then(() => {
+      secondSettled = true
+    })
+    await Promise.resolve()
+
+    expect(validationStarts).toEqual([1])
+    expect(secondSettled).toBe(false)
+    releaseFirstValidation.resolve()
+
+    expect(await Promise.all([first, second])).toEqual([
+      { ok: true, value: "added" },
+      { ok: true, value: "added" },
+    ])
+    expect(validationStarts).toEqual([1, 2])
+    const attachments = await store.list("session")
+    expect(attachments.ok && attachments.value.map((item) => item.pullRequest.number)).toEqual([1, 2])
+  })
+
+  test("returns already attached without contacting GitHub", async () => {
+    const store = await temporaryStateStore()
+    const requested = pullRequest(1)
+    await store.attach("session", requested)
+    let githubCalls = 0
+    const github: GitHubClient = {
+      async get() {
+        githubCalls += 1
+        throw new Error("GitHub must not be called for an existing attachment")
+      },
+    }
+
+    expect(await attachPullRequest({ store, github }, "session", requested)).toEqual({
+      ok: true,
+      value: "already_attached",
+    })
+    expect(githubCalls).toBe(0)
+    const attachments = await store.list("session")
+    expect(attachments.ok && attachments.value.map((item) => item.pullRequest.number)).toEqual([1])
+  })
+})
 
 describe("resolvePullRequestInput", () => {
   test("returns a canonical URL without repository discovery", async () => {

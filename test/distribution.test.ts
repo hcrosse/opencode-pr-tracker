@@ -30,6 +30,12 @@ test("the TUI bundle uses OpenTUI's reactive Solid transform", async () => {
   expect(source).not.toContain('jsxDEV("box"')
 })
 
+test("the TUI bundle exports the attach helper", async () => {
+  const module = await import(new URL("../dist/tui.js", import.meta.url).href)
+
+  expect(module).toHaveProperty("attachPullRequest", expect.any(Function))
+})
+
 test("the package exposes the public OpenCode plugin", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"))
 
