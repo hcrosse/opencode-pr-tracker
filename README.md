@@ -66,7 +66,9 @@ The plugin accepts pull request URLs in the forms
 Each attached pull request appears with its repository, number, title, and
 current state. Open and closed pull requests refresh at least once per minute
 and when session activity changes. Click a row to open the pull request on
-macOS or Linux.
+macOS or Linux. When more than two pull requests are attached, click the
+**Pull requests** heading to collapse or expand its rows. Status refreshes
+continue while the section is collapsed.
 
 | State                    | Appearance            |
 | ------------------------ | --------------------- |
