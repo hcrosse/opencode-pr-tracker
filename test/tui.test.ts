@@ -13,6 +13,7 @@ import {
   type PollScheduler,
   type SidebarPullRequest,
 } from "../src/tui.jsx"
+import { createPluginUpdateController } from "../src/plugin-update-tui.js"
 import {
   createGitHubClient,
   type AvailablePullRequestStatus,
@@ -198,6 +199,53 @@ async function renderSidebar(items: readonly PullRequestAttachment[]) {
 }
 
 describe("TUI orchestration", () => {
+  test("exposes cached plugin update state through the controller boundary", async () => {
+    const now = new Date("2026-08-11T12:00:00.000Z").valueOf()
+    const observed: Array<string | undefined> = []
+    let checks = 0
+    const api = {
+      app: { version: "1.18.15" },
+      kv: {
+        ready: true,
+        get() {
+          return {
+            checkedAt: now,
+            currentVersion: "0.2.0",
+            opencodeVersion: "1.18.15",
+            availableVersion: "0.2.1",
+          }
+        },
+      },
+      lifecycle: { signal: new AbortController().signal },
+    } as unknown as TuiPluginApi
+
+    const updates = createPluginUpdateController(
+      api,
+      {
+        now: () => now,
+        async updateChecker() {
+          checks += 1
+          return { ok: true, value: undefined }
+        },
+      },
+      { source: "npm", version: "0.2.0" },
+    )
+    const unsubscribe = updates.subscribe((version) => observed.push(version))
+    await updates.startup
+    unsubscribe()
+
+    expect(updates.command).toMatchObject({
+      name: "pr.tracker.plugin.update",
+      title: "Update PR tracker plugin",
+      category: "Plugin",
+      namespace: "palette",
+      slashName: "pr-tracker-plugin-update",
+    })
+    expect(updates.current()).toBe("0.2.1")
+    expect(observed).toEqual(["0.2.1"])
+    expect(checks).toBe(0)
+  })
+
   test("collapses more than two pull requests without stopping refreshes", async () => {
     const sidebar = await renderSidebar([attachment, secondAttachment, thirdAttachment])
     try {
