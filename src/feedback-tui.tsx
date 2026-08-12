@@ -35,6 +35,8 @@ export type FeedbackCommand = Readonly<{
 type Delivery = "browser" | "gh"
 
 export type FeedbackConfirmationProps = Readonly<{
+  title: string
+  confirmLabel: string
   preview: string
   onConfirm(): void
   onCancel(): void
@@ -60,14 +62,14 @@ export function FeedbackConfirmation(props: FeedbackConfirmationProps): JSX.Elem
   return (
     <box flexDirection="column" gap={1}>
       <text>
-        <b>Send PR tracker feedback?</b>
+        <b>{props.title}</b>
       </text>
       <scrollbox focused scrollY height={10}>
         <text>{props.preview}</text>
       </scrollbox>
       <box flexDirection="row" gap={2}>
         <text onMouseUp={props.onCancel}>[Esc] Cancel</text>
-        <text onMouseUp={props.onConfirm}>[Enter] Send</text>
+        <text onMouseUp={props.onConfirm}>{props.confirmLabel}</text>
       </box>
     </box>
   )
@@ -216,10 +218,14 @@ function confirmFeedback(
   delivery: Delivery,
   confirmationRenderer: FeedbackConfirmationRenderer,
 ) {
+  const title = delivery === "browser" ? "Open PR tracker feedback?" : "Send PR tracker feedback?"
+  const confirmLabel = delivery === "browser" ? "[Enter] Open issue" : "[Enter] Send"
   return showDialog(api, signal, (finish) => {
     const Confirmation = confirmationRenderer
     return (
       <Confirmation
+        title={title}
+        confirmLabel={confirmLabel}
         preview={feedbackPreview(draft, delivery)}
         onConfirm={() => finish(true)}
         onCancel={() => finish(false)}

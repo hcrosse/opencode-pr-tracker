@@ -209,6 +209,8 @@ describe("createFeedbackCommand", () => {
     expect(final.kind).toBe("feedback-confirmation")
     expect(harness.processCalls).toEqual([])
     if (final.kind !== "feedback-confirmation") throw new Error("expected final confirmation")
+    expect(final.props.title).toBe("Open PR tracker feedback?")
+    expect(final.props.confirmLabel).toBe("[Enter] Open issue")
     final.props.onConfirm()
     await run
 
@@ -230,6 +232,8 @@ describe("createFeedbackCommand", () => {
     const final = await confirmFeedback(harness, true)
     await run
 
+    expect(final.title).toBe("Send PR tracker feedback?")
+    expect(final.confirmLabel).toBe("[Enter] Send")
     expect(final.preview).toContain("Label: none")
     expect(harness.processCalls[0]).toMatchObject({
       file: "gh",
@@ -552,7 +556,16 @@ describe("createFeedbackCommand", () => {
     await run
   })
 
-  test("renders a bounded scrollable preview with persistent controls", async () => {
+  test.each([
+    {
+      title: "Open PR tracker feedback?",
+      confirmLabel: "[Enter] Open issue",
+    },
+    {
+      title: "Send PR tracker feedback?",
+      confirmLabel: "[Enter] Send",
+    },
+  ])("renders a bounded scrollable preview with persistent $confirmLabel controls", async ({ title, confirmLabel }) => {
     const preview = [
       "Repository: hcrosse/opencode-pr-tracker",
       "Action: Open a prefilled issue in your browser",
@@ -568,6 +581,8 @@ describe("createFeedbackCommand", () => {
     const view = await testRender(
       () =>
         FeedbackConfirmation({
+          title,
+          confirmLabel,
           preview,
           onConfirm: () => {
             confirms += 1
@@ -580,11 +595,10 @@ describe("createFeedbackCommand", () => {
     )
 
     try {
-      const initial = await view.waitForFrame(
-        (frame) => frame.includes("Send PR tracker feedback?") && frame.includes("[Enter] Send"),
-      )
+      const initial = await view.waitForFrame((frame) => frame.includes(title) && frame.includes(confirmLabel))
       expect(initial).toContain("Repository: hcrosse/opencode-pr-tracker")
       expect(initial).toContain("[Esc] Cancel")
+      if (confirmLabel === "[Enter] Open issue") expect(initial).not.toContain("Send")
       expect(initial).not.toContain("Complete preview tail")
 
       view.mockInput.pressKey("END")
@@ -592,7 +606,7 @@ describe("createFeedbackCommand", () => {
       const scrolled = view.captureCharFrame()
       expect(scrolled).toContain("Complete preview tail")
       expect(scrolled).toContain("[Esc] Cancel")
-      expect(scrolled).toContain("[Enter] Send")
+      expect(scrolled).toContain(confirmLabel)
 
       view.mockInput.pressEnter()
       await view.flush()
