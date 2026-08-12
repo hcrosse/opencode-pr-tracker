@@ -143,6 +143,35 @@ describe("state store", () => {
     expect(attachments.ok && attachments.value.map((item) => item.pullRequest.number)).toEqual([2])
   })
 
+  test("runs queued validation before locking and skips it for existing attachments", async () => {
+    const directory = await temporaryDirectory()
+    const events: string[] = []
+    const lock: typeof import("proper-lockfile").lock = async () => {
+      events.push("lock")
+      return async () => undefined
+    }
+    const store = createStateStore({ directory, lock })
+
+    expect(
+      await store.attach("session", pullRequest(1), {
+        async validate() {
+          events.push("validate")
+          return { ok: true, value: undefined }
+        },
+      }),
+    ).toEqual({ ok: true, value: "added" })
+    expect(events).toEqual(["validate", "lock"])
+
+    expect(
+      await store.attach("session", pullRequest(1), {
+        async validate() {
+          throw new Error("validation must not run for an existing attachment")
+        },
+      }),
+    ).toEqual({ ok: true, value: "already_attached" })
+    expect(events).toEqual(["validate", "lock"])
+  })
+
   test("isolates sessions and persists canonical attachment identity", async () => {
     const directory = await temporaryDirectory()
     const store = createStateStore({

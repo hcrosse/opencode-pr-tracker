@@ -10,12 +10,16 @@ export async function attachPullRequest(
   pullRequest: PullRequestUrl,
   options: Readonly<{ signal?: AbortSignal }> = {},
 ): Promise<Result<"added" | "already_attached", AttachPullRequestFailure>> {
-  const batch = await dependencies.github.get([pullRequest], options)
-  if (!batch.ok) return batch
-  const item = batch.value[0]
-  if (item === undefined) throw new Error("GitHub client omitted the requested pull request")
-  if (!item.ok) return item
-  return dependencies.store.attach(sessionID, pullRequest)
+  return dependencies.store.attach(sessionID, pullRequest, {
+    async validate() {
+      const batch = await dependencies.github.get([pullRequest], options)
+      if (!batch.ok) return batch
+      const item = batch.value[0]
+      if (item === undefined) throw new Error("GitHub client omitted the requested pull request")
+      if (!item.ok) return item
+      return { ok: true, value: undefined }
+    },
+  })
 }
 
 export type InvalidPullRequestInput = Readonly<{

@@ -33,6 +33,9 @@ export type AttachmentLimitReached = Readonly<{
 
 export type StateFailure = InvalidStateFile | StateUnavailable
 export type AttachFailure = StateFailure | AttachmentLimitReached
+export type AttachOptions<ValidationFailure> = Readonly<{
+  validate?: () => Promise<Result<void, ValidationFailure>>
+}>
 export type DetachByNumberOutcome =
   | Readonly<{ tag: "removed"; pullRequest: PullRequestUrl }>
   | Readonly<{ tag: "absent" }>
@@ -40,7 +43,11 @@ export type DetachByNumberOutcome =
 
 export type StateStore = Readonly<{
   list(sessionID: string): Promise<Result<readonly PullRequestAttachment[], StateFailure>>
-  attach(sessionID: string, pullRequest: PullRequestUrl): Promise<Result<"added" | "already_attached", AttachFailure>>
+  attach<ValidationFailure = never>(
+    sessionID: string,
+    pullRequest: PullRequestUrl,
+    options?: AttachOptions<ValidationFailure>,
+  ): Promise<Result<"added" | "already_attached", AttachFailure | ValidationFailure>>
   detach(sessionID: string, pullRequest: PullRequestUrl): Promise<Result<"removed" | "absent", StateFailure>>
   detachByNumber(sessionID: string, number: number): Promise<Result<DetachByNumberOutcome, StateFailure>>
   removeSession(sessionID: string): Promise<Result<"removed" | "absent", StateFailure>>
@@ -262,33 +269,60 @@ export function createStateStore(
     }
   }
 
+  async function attach<ValidationFailure = never>(
+    sessionID: string,
+    pullRequest: PullRequestUrl,
+    attachOptions: AttachOptions<ValidationFailure> = {},
+  ): Promise<Result<"added" | "already_attached", AttachFailure | ValidationFailure>> {
+    return enqueueAttach(sessionID, async () => {
+      if (attachOptions.validate !== undefined) {
+        const current = await read(sessionID)
+        if (!current.ok) return current
+        if (current.value.some((attachment) => attachment.pullRequest.url === pullRequest.url)) {
+          return { ok: true, value: "already_attached" }
+        }
+        if (current.value.length >= maximumPullRequestsPerSession) {
+          return {
+            ok: false,
+            error: {
+              tag: "AttachmentLimitReached",
+              limit: maximumPullRequestsPerSession,
+              message: "A session can track at most 20 pull requests",
+            },
+          }
+        }
+
+        const validation = await attachOptions.validate()
+        if (!validation.ok) return validation
+      }
+
+      return withLock<"added" | "already_attached", AttachFailure>(sessionID, async () => {
+        const current = await read(sessionID)
+        if (!current.ok) return current
+        if (current.value.some((attachment) => attachment.pullRequest.url === pullRequest.url)) {
+          return { ok: true, value: "already_attached" } as const
+        }
+        if (current.value.length >= maximumPullRequestsPerSession) {
+          return {
+            ok: false,
+            error: {
+              tag: "AttachmentLimitReached",
+              limit: maximumPullRequestsPerSession,
+              message: "A session can track at most 20 pull requests",
+            },
+          } as const
+        }
+
+        const written = await write(sessionID, [...current.value, { pullRequest, attachedAt: now().toISOString() }])
+        if (!written.ok) return written
+        return { ok: true, value: "added" } as const
+      })
+    })
+  }
+
   return {
     list: read,
-    async attach(sessionID, pullRequest) {
-      return enqueueAttach(sessionID, () =>
-        withLock<"added" | "already_attached", AttachFailure>(sessionID, async () => {
-          const current = await read(sessionID)
-          if (!current.ok) return current
-          if (current.value.some((attachment) => attachment.pullRequest.url === pullRequest.url)) {
-            return { ok: true, value: "already_attached" } as const
-          }
-          if (current.value.length >= maximumPullRequestsPerSession) {
-            return {
-              ok: false,
-              error: {
-                tag: "AttachmentLimitReached",
-                limit: maximumPullRequestsPerSession,
-                message: "A session can track at most 20 pull requests",
-              },
-            } as const
-          }
-
-          const written = await write(sessionID, [...current.value, { pullRequest, attachedAt: now().toISOString() }])
-          if (!written.ok) return written
-          return { ok: true, value: "added" } as const
-        }),
-      )
-    },
+    attach,
     async detach(sessionID, pullRequest) {
       return withLock<"removed" | "absent", StateFailure>(sessionID, async () => {
         const current = await read(sessionID)

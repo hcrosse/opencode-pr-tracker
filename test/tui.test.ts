@@ -49,7 +49,9 @@ function stateStore(items: readonly PullRequestAttachment[] = [attachment]): Sta
     async list() {
       return { ok: true, value: items }
     },
-    async attach() {
+    async attach(_sessionID, _pullRequest, options) {
+      const validation = await options?.validate?.()
+      if (validation !== undefined && !validation.ok) return validation
       return { ok: true, value: "added" }
     },
     async detach() {
@@ -425,17 +427,7 @@ describe("TUI orchestration", () => {
   })
 
   test("preserves the attach helper while rejecting an unresolved pull request without mutation", async () => {
-    const attachments: PullRequestAttachment[] = []
-    const store: StateStore = {
-      ...stateStore([]),
-      async list() {
-        return { ok: true, value: attachments }
-      },
-      async attach(_sessionID, value) {
-        attachments.push({ pullRequest: value, attachedAt: "2026-08-10T12:00:00.000Z" })
-        return { ok: true, value: "added" }
-      },
-    }
+    const store = stateStore([])
     let requestSignal: AbortSignal | undefined
     const github: GitHubClient = {
       async get(_pullRequests, options) {
@@ -487,7 +479,9 @@ describe("TUI orchestration", () => {
     }> = []
     const store: StateStore = {
       ...stateStore([]),
-      async attach(sessionID, value) {
+      async attach(sessionID, value, options) {
+        const validation = await options?.validate?.()
+        if (validation !== undefined && !validation.ok) return validation
         attached.push(`${sessionID}:${value.url}`)
         return { ok: true, value: "added" }
       },
@@ -547,17 +541,7 @@ describe("TUI orchestration", () => {
     type Command = Readonly<{ name: string; run(): Promise<void> }>
     const commands = new Map<string, Command>()
     const toasts: string[] = []
-    const attachments: PullRequestAttachment[] = []
-    const store: StateStore = {
-      ...stateStore([]),
-      async list() {
-        return { ok: true, value: attachments }
-      },
-      async attach(_sessionID, value) {
-        attachments.push({ pullRequest: value, attachedAt: "2026-08-10T12:00:00.000Z" })
-        return { ok: true, value: "added" }
-      },
-    }
+    const store = stateStore([])
     let requestSignal: AbortSignal | undefined
     const github: GitHubClient = {
       async get(_pullRequests, options) {
@@ -829,7 +813,9 @@ describe("TUI orchestration", () => {
       async list() {
         return { ok: true, value: [attachment] }
       },
-      async attach() {
+      async attach(_sessionID, _pullRequest, options) {
+        const validation = await options?.validate?.()
+        if (validation !== undefined && !validation.ok) return validation
         attachCalls += 1
         return { ok: true, value: attachCalls === 1 ? "added" : "already_attached" }
       },
