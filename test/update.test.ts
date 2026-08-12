@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import * as hegel from "@hegeldev/hegel"
+import * as generators from "@hegeldev/hegel/generators"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -12,6 +14,7 @@ import {
 } from "../src/update.js"
 
 const now = new Date("2026-08-11T12:00:00.000Z").valueOf()
+const dayMilliseconds = 24 * 60 * 60 * 1000
 const directories: string[] = []
 
 afterEach(async () => {
@@ -133,6 +136,16 @@ describe("plugin update cache", () => {
     opencodeVersion: "1.18.15",
     availableVersion: "0.2.1",
   }
+
+  test("reuses cache entries exactly within the freshness window", () =>
+    hegel.test((testCase) => {
+      const age = testCase.draw(generators.integers({ minValue: -1, maxValue: dayMilliseconds * 2 }))
+      const input = { ...cache, checkedAt: now - age }
+
+      const result = parseFreshUpdateCache(input, cache, now)
+
+      expect(result).toBe(age >= 0 && age < dayMilliseconds ? cache.availableVersion : undefined)
+    }))
 
   test("reuses a matching result for twenty-four hours", () => {
     expect(parseFreshUpdateCache(cache, { currentVersion: "0.2.0", opencodeVersion: "1.18.15" }, now)).toBe("0.2.1")
