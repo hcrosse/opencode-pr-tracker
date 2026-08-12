@@ -657,11 +657,18 @@ function parseBlocker(
   return updatePolicy.value.incomplete ? invalidGitHubResponse : { ok: true, value: "none" }
 }
 
-function parseResponse(
+type ParsedPullRequestMetadata = Readonly<{
+  title: string
+  state: "OPEN" | "CLOSED" | "MERGED"
+  mergeability: PullRequestMergeability
+  mergeStateStatus: unknown
+  baseRef: unknown
+}>
+
+function parsePullRequestMetadata(
   input: unknown,
   pullRequest: PullRequestUrl,
-  ci: PullRequestCi,
-): Result<AvailablePullRequestStatus, InvalidGitHubResponse> {
+): Result<ParsedPullRequestMetadata, InvalidGitHubResponse> {
   if (
     !isRecord(input) ||
     input.__typename !== "PullRequest" ||
@@ -687,16 +694,33 @@ function parseResponse(
   const mergeability = parseMergeability(input.mergeable)
   if (!mergeability.ok) return mergeability
 
+  return {
+    ok: true,
+    value: {
+      title: input.title,
+      state: input.state,
+      mergeability: mergeability.value,
+      mergeStateStatus: input.mergeStateStatus,
+      baseRef: input.baseRef,
+    },
+  }
+}
+
+function finalizeResponse(
+  metadata: ParsedPullRequestMetadata,
+  pullRequest: PullRequestUrl,
+  ci: PullRequestCi,
+): Result<AvailablePullRequestStatus, InvalidGitHubResponse> {
   let state: PullRequestState
-  switch (input.state) {
+  switch (metadata.state) {
     case "OPEN": {
       let blocker: PullRequestBlocker = "none"
-      if (mergeability.value !== "conflicting" && (ci === "none" || ci === "passed")) {
-        const parsedBlocker = parseBlocker(input.mergeStateStatus, input.baseRef)
+      if (metadata.mergeability !== "conflicting" && (ci === "none" || ci === "passed")) {
+        const parsedBlocker = parseBlocker(metadata.mergeStateStatus, metadata.baseRef)
         if (!parsedBlocker.ok) return parsedBlocker
         blocker = parsedBlocker.value
       }
-      state = { tag: "Open", ci, mergeability: mergeability.value, blocker }
+      state = { tag: "Open", ci, mergeability: metadata.mergeability, blocker }
       break
     }
     case "MERGED":
@@ -706,7 +730,7 @@ function parseResponse(
       state = { tag: "Closed" }
       break
     default:
-      return casesHandled(input.state)
+      return casesHandled(metadata.state)
   }
 
   return {
@@ -714,7 +738,7 @@ function parseResponse(
     value: {
       tag: "Available",
       pullRequest,
-      title: input.title,
+      title: metadata.title,
       state,
       stale: false,
     },
@@ -722,9 +746,9 @@ function parseResponse(
 }
 
 type ParsedInitialPullRequest = Readonly<{
-  response: Record<string, unknown>
+  pullRequest: PullRequestUrl
+  metadata: ParsedPullRequestMetadata
   contextPage: ParsedCheckContextPage | null
-  status: AvailablePullRequestStatus
 }>
 
 function parseInitialPullRequest(
@@ -741,11 +765,10 @@ function parseInitialPullRequest(
   ) {
     return invalidGitHubResponse
   }
-  const ci = contextPage.value === null ? "none" : classifyContexts(contextPage.value.contexts)
-  const status = parseResponse(input, pullRequest, ci)
-  return status.ok
-    ? { ok: true, value: { response: input, contextPage: contextPage.value, status: status.value } }
-    : status
+  const metadata = parsePullRequestMetadata(input, pullRequest)
+  return metadata.ok
+    ? { ok: true, value: { pullRequest, metadata: metadata.value, contextPage: contextPage.value } }
+    : metadata
 }
 
 function createBatchQuery(size: number): string {
@@ -891,11 +914,13 @@ type ContinuationOutcome =
 
 async function continuePullRequest(
   runner: ProcessRunner,
-  pullRequest: PullRequestUrl,
   initial: ParsedInitialPullRequest,
   options: Readonly<{ signal?: AbortSignal }>,
 ): Promise<ContinuationOutcome> {
-  if (initial.contextPage?.nextCursor === undefined) return { tag: "Item", result: { ok: true, value: initial.status } }
+  if (initial.contextPage?.nextCursor === undefined) {
+    const ci = initial.contextPage === null ? "none" : classifyContexts(initial.contextPage.contexts)
+    return { tag: "Item", result: finalizeResponse(initial.metadata, initial.pullRequest, ci) }
+  }
 
   const contexts = [...initial.contextPage.contexts]
   const totalCount = initial.contextPage.totalCount
@@ -911,7 +936,7 @@ async function continuePullRequest(
       "-f",
       `query=${continuationQuery}`,
       "-f",
-      `url=${pullRequest.url}`,
+      `url=${initial.pullRequest.url}`,
       "-f",
       `cursor=${cursor}`,
     ]
@@ -921,7 +946,7 @@ async function continuePullRequest(
         ? { tag: "Cancelled", error: output.error }
         : { tag: "Item", result: { ok: false, error: output.error } }
     }
-    const page = parseContinuationResponse(output.value.decoded, pullRequest)
+    const page = parseContinuationResponse(output.value.decoded, initial.pullRequest)
     if (!page.ok) {
       return {
         tag: "Item",
@@ -946,7 +971,7 @@ async function continuePullRequest(
 
   if (contexts.length !== totalCount) return { tag: "Item", result: invalidGitHubResponse }
 
-  const status = parseResponse(initial.response, pullRequest, classifyContexts(contexts))
+  const status = finalizeResponse(initial.metadata, initial.pullRequest, classifyContexts(contexts))
   return { tag: "Item", result: status }
 }
 
@@ -994,7 +1019,7 @@ export function createGitHubClient(runner: ProcessRunner = execFileRunner): GitH
       const outcomes = await Promise.all(
         parsed.value.map((item): Promise<ContinuationOutcome> => {
           if (!item.ok) return Promise.resolve({ tag: "Item", result: item })
-          return continuePullRequest(runner, item.value.status.pullRequest, item.value, options)
+          return continuePullRequest(runner, item.value, options)
         }),
       )
       const batch: Result<AvailablePullRequestStatus, PullRequestItemFailure>[] = []

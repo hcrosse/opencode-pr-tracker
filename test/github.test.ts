@@ -724,6 +724,42 @@ describe("GitHub client", () => {
     expect(calls.map((call) => call.signal)).toEqual([controller.signal, controller.signal])
   })
 
+  test("defers blocker validation until continuation contexts determine CI", async () => {
+    const outputs = [
+      batchResponse(
+        response({
+          mergeStateStatus: "BEHIND",
+          baseRef: baseRefPolicy({ refUpdateRule: { requiredStatusCheckContexts: ["Build"] } }),
+          statusCheckRollup: rollup({
+            nodes: [checkRun()],
+            totalCount: 2,
+            hasNextPage: true,
+            endCursor: "page-1",
+          }),
+        }),
+      ),
+      continuationResponse(
+        pullRequest.url,
+        rollup({ nodes: [checkRun({ id: "failed", name: "Lint", conclusion: "FAILURE" })], totalCount: 2 }).contexts,
+      ),
+    ]
+    let calls = 0
+    const client = createGitHubClient(async () => {
+      const output = outputs[calls]
+      calls += 1
+      if (output === undefined) throw new Error("unexpected runner call")
+      return { stdout: JSON.stringify(output) }
+    })
+
+    const result = await client.get([pullRequest])
+
+    expect(result.ok && result.value[0]).toMatchObject({
+      ok: true,
+      value: { state: { tag: "Open", ci: "failed", blocker: "none" } },
+    })
+    expect(calls).toBe(2)
+  })
+
   test("accumulates sequential continuation pages before classifying contexts", async () => {
     const outputs = [
       batchResponse(
