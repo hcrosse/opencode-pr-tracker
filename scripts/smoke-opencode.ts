@@ -140,6 +140,7 @@ const expected = [
   { name: "pr.open", slashName: "pr-open" },
   { name: "pr.detach", slashName: "pr-detach" },
   { name: "pr.sync", slashName: "pr-sync" },
+  { name: "pr.tracker.feedback", slashName: "pr-tracker-feedback" },
   { name: "pr.tracker.plugin.update", slashName: "pr-tracker-plugin-update" },
 ]
 for (const command of expected) {
