@@ -23,6 +23,7 @@ describe("TUI composition root", () => {
     const disposers: Array<() => void> = []
     const events: string[] = []
     const eventHandlers = new Map<string, (event: { properties: { sessionID: string } }) => void>()
+    const emittedSessionIDs: string[] = []
     const disposedEvents: string[] = []
     let commandsDisposed = false
     const api = {
@@ -58,7 +59,21 @@ describe("TUI composition root", () => {
       },
     } as unknown as TuiPluginApi
 
-    tui.registerTui(api, { store: stateStore(), github: githubStatuses() })
+    tui.registerTui(api, {
+      store: stateStore(),
+      github: githubStatuses(),
+      refreshBus: {
+        emit(sessionID) {
+          emittedSessionIDs.push(sessionID)
+        },
+        async forceRefresh() {
+          return undefined
+        },
+        subscribe() {
+          return () => undefined
+        },
+      },
+    })
 
     expect(layer?.commands.map(({ name, slashName }) => ({ name, slashName }))).toEqual([
       { name: "pr.attach", slashName: "pr-attach" },
@@ -70,9 +85,11 @@ describe("TUI composition root", () => {
     expect(slots).toHaveProperty("sidebar_content")
     expect(disposers).toHaveLength(1)
     expect(events).toEqual(["session.updated", "message.updated", "message.part.updated"])
-    for (const event of events) {
-      expect(() => eventHandlers.get(event)?.({ properties: { sessionID: "session" } })).not.toThrow()
+    const sessionIDs = ["session-updated", "message-updated", "message-part-updated"]
+    for (const [index, event] of events.entries()) {
+      expect(() => eventHandlers.get(event)?.({ properties: { sessionID: sessionIDs[index]! } })).not.toThrow()
     }
+    expect(emittedSessionIDs).toEqual(sessionIDs)
 
     disposers[0]?.()
 

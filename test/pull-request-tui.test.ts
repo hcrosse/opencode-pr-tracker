@@ -14,15 +14,15 @@ import {
 } from "../src/pull-request-tui.js"
 import type { GitHubClient, ProcessRunner } from "../src/github.js"
 import type { PullRequestAttachment, StateStore } from "../src/state.js"
-import type { PullRequestUrl } from "../src/url.js"
-import {
-  attachment,
-  githubStatuses,
-  pullRequest,
-  secondAttachment,
-  stateStore,
-  thirdAttachment,
-} from "./tui-fixtures.js"
+import { parsePullRequestUrl, type PullRequestUrl } from "../src/url.js"
+import { attachment, githubStatuses, pullRequest, secondAttachment, stateStore } from "./tui-fixtures.js"
+
+const thirdParsed = parsePullRequestUrl("https://github.com/third/example/pull/9")
+if (!thirdParsed.ok) throw new Error("third test fixture URL is invalid")
+const thirdAttachment: PullRequestAttachment = {
+  pullRequest: thirdParsed.value,
+  attachedAt: "2026-08-10T12:02:00.000Z",
+}
 
 function registerPullRequestCommands(
   api: TuiPluginApi,

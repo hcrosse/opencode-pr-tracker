@@ -20,13 +20,6 @@ export const secondAttachment: PullRequestAttachment = {
   attachedAt: "2026-08-10T12:01:00.000Z",
 }
 
-const thirdParsed = parsePullRequestUrl("https://github.com/third/example/pull/9")
-if (!thirdParsed.ok) throw new Error("third test fixture URL is invalid")
-export const thirdAttachment: PullRequestAttachment = {
-  pullRequest: thirdParsed.value,
-  attachedAt: "2026-08-10T12:02:00.000Z",
-}
-
 export function stateStore(items: readonly PullRequestAttachment[] = [attachment]): StateStore {
   return {
     async list() {
