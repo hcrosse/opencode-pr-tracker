@@ -4,23 +4,19 @@ import * as generators from "@hegeldev/hegel/generators"
 
 import { formatPullRequestRef, parsePullRequestUrl, type PullRequestUrl } from "../src/url.js"
 
+const pullRequestSegment = generators
+  .text({
+    alphabet: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-",
+    minSize: 1,
+    maxSize: 24,
+  })
+  .filter((segment) => segment !== "." && segment !== "..")
+
 describe("parsePullRequestUrl", () => {
   test("canonicalizes every generated valid pull request URL idempotently", () =>
     hegel.test((testCase) => {
-      const owner = testCase.draw(
-        generators.text({
-          alphabet: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-",
-          minSize: 1,
-          maxSize: 24,
-        }),
-      )
-      const repository = testCase.draw(
-        generators.text({
-          alphabet: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-",
-          minSize: 1,
-          maxSize: 24,
-        }),
-      )
+      const owner = testCase.draw(pullRequestSegment)
+      const repository = testCase.draw(pullRequestSegment)
       const number = testCase.draw(generators.integers({ minValue: 1, maxValue: Number.MAX_SAFE_INTEGER }))
       const leadingZeros = "0".repeat(testCase.draw(generators.integers({ minValue: 0, maxValue: 5 })))
       const host = testCase.draw(generators.booleans()) ? "github.com" : "GITHUB.COM"
