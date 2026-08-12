@@ -549,6 +549,27 @@ describe("GitHub client", () => {
     expect((await getOne(client)).state).toMatchObject({ tag: "Open", ci: "passed" })
   })
 
+  test("preserves sub-millisecond ordering for non-workflow check suites", async () => {
+    const nodes = [
+      checkRun({
+        id: "old",
+        suiteId: "old-suite",
+        suiteCreatedAt: "2026-08-10T10:00:00.000000001Z",
+        conclusion: "CANCELLED",
+        workflowRun: null,
+      }),
+      checkRun({
+        id: "new",
+        suiteId: "new-suite",
+        suiteCreatedAt: "2026-08-10T10:00:00.000000002Z",
+        workflowRun: null,
+      }),
+    ]
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup({ nodes }) }))))
+
+    expect((await getOne(client)).state).toMatchObject({ tag: "Open", ci: "passed" })
+  })
+
   test("retains non-workflow checks from every tied newest suite", async () => {
     const nodes = [
       checkRun({ id: "success", suiteId: "suite-a", workflowRun: null }),
@@ -592,6 +613,25 @@ describe("GitHub client", () => {
     expect((await getOne(client)).state).toMatchObject({ tag: "Open", ci: "passed" })
   })
 
+  test("preserves sub-millisecond ordering for status contexts", async () => {
+    const nodes = [
+      statusContext({
+        id: "old",
+        context: "Build",
+        state: "FAILURE",
+        createdAt: "2026-08-10T10:00:00.000000001Z",
+      }),
+      statusContext({
+        id: "new",
+        context: "BUILD",
+        createdAt: "2026-08-10T10:00:00.000000002Z",
+      }),
+    ]
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup({ nodes }) }))))
+
+    expect((await getOne(client)).state).toMatchObject({ tag: "Open", ci: "passed" })
+  })
+
   test("retains every status context tied for newest", async () => {
     const nodes = [
       statusContext({ id: "success", context: "Build" }),
@@ -617,6 +657,17 @@ describe("GitHub client", () => {
         ),
       ),
     )
+
+    const result = await client.get([pullRequest])
+
+    expect(result.ok && result.value[0]).toEqual(invalidItem)
+  })
+
+  test("rejects complete context pages above 100 nodes", async () => {
+    const nodes = Array.from({ length: 101 }, (_, index) =>
+      statusContext({ id: `status-${index}`, context: `Check ${index}` }),
+    )
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup({ nodes }) }))))
 
     const result = await client.get([pullRequest])
 

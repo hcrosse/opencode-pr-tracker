@@ -106,7 +106,8 @@ const githubBatchLimitExceeded: Result<never, GitHubBatchLimitExceeded> = {
 }
 
 const maximumPullRequestsPerBatch = 20
-const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt mergeable mergeStateStatus baseRef { branchProtectionRule { requiresStatusChecks requiresStrictStatusChecks } refUpdateRule { requiredStatusCheckContexts } rules(first: 100) { nodes { parameters { __typename ... on RequiredStatusChecksParameters { strictRequiredStatusChecksPolicy requiredStatusChecks { context } } } } totalCount pageInfo { hasNextPage } } } statusCheckRollup { contexts(first: 100) { nodes { ... on StatusContext { id context state createdAt } ... on CheckRun { id name status conclusion checkSuite { id createdAt app { id } workflowRun { event runNumber runAttempt workflow { id } } } } } totalCount pageInfo { hasNextPage endCursor } } } }`
+const maximumCheckContextsPerPage = 100
+const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt mergeable mergeStateStatus baseRef { branchProtectionRule { requiresStatusChecks requiresStrictStatusChecks } refUpdateRule { requiredStatusCheckContexts } rules(first: 100) { nodes { parameters { __typename ... on RequiredStatusChecksParameters { strictRequiredStatusChecksPolicy requiredStatusChecks { context } } } } totalCount pageInfo { hasNextPage } } } statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}) { nodes { ... on StatusContext { id context state createdAt } ... on CheckRun { id name status conclusion checkSuite { id createdAt app { id } workflowRun { event runNumber runAttempt workflow { id } } } } } totalCount pageInfo { hasNextPage endCursor } } } }`
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -127,12 +128,17 @@ type CheckRunConclusion =
   | "NEUTRAL"
   | "SKIPPED"
 
+type ParsedTimestamp = Readonly<{
+  epochSeconds: number
+  fractionalSeconds: string
+}>
+
 type ParsedStatusContext = Readonly<{
   tag: "StatusContext"
   id: string
   context: string
   state: StatusContextState
-  createdAt: number
+  createdAt: ParsedTimestamp
 }>
 
 type ParsedCheckRun = Readonly<{
@@ -142,7 +148,7 @@ type ParsedCheckRun = Readonly<{
   status: CheckRunStatus
   conclusion: CheckRunConclusion | null
   suiteId: string
-  suiteCreatedAt: number
+  suiteCreatedAt: ParsedTimestamp
   sourceIdentity: readonly ["app" | "suite", string]
   workflowRun:
     | Readonly<{
@@ -189,9 +195,11 @@ function parseNonBlankString(input: unknown): string | undefined {
   return typeof input === "string" && input.trim() !== "" ? input : undefined
 }
 
-function parseDate(input: unknown): number | undefined {
+function parseDate(input: unknown): ParsedTimestamp | undefined {
   if (typeof input !== "string") return undefined
-  const match = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[Zz]|[+-](\d{2}):(\d{2}))$/.exec(input)
+  const match = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(?:[Zz]|[+-](\d{2}):(\d{2}))$/.exec(
+    input,
+  )
   if (match === null) return undefined
   const year = Number(match[1])
   const month = Number(match[2])
@@ -199,8 +207,8 @@ function parseDate(input: unknown): number | undefined {
   const hour = Number(match[4])
   const minute = Number(match[5])
   const second = Number(match[6])
-  const offsetHour = Number(match[7] ?? 0)
-  const offsetMinute = Number(match[8] ?? 0)
+  const offsetHour = Number(match[8] ?? 0)
+  const offsetMinute = Number(match[9] ?? 0)
   const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
   const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
   if (
@@ -215,8 +223,24 @@ function parseDate(input: unknown): number | undefined {
   ) {
     return undefined
   }
-  const timestamp = new Date(input).valueOf()
-  return Number.isNaN(timestamp) ? undefined : timestamp
+  if (Number.isNaN(new Date(input).valueOf())) return undefined
+  const epochSeconds = new Date(input.replace(/\.\d+/, "")).valueOf() / 1000
+  if (!Number.isInteger(epochSeconds)) return undefined
+  return {
+    epochSeconds,
+    fractionalSeconds: (match[7] ?? "").replace(/0+$/, ""),
+  }
+}
+
+function compareTimestamps(left: ParsedTimestamp, right: ParsedTimestamp): -1 | 0 | 1 {
+  if (left.epochSeconds < right.epochSeconds) return -1
+  if (left.epochSeconds > right.epochSeconds) return 1
+  const width = Math.max(left.fractionalSeconds.length, right.fractionalSeconds.length)
+  const leftFraction = left.fractionalSeconds.padEnd(width, "0")
+  const rightFraction = right.fractionalSeconds.padEnd(width, "0")
+  if (leftFraction < rightFraction) return -1
+  if (leftFraction > rightFraction) return 1
+  return 0
 }
 
 function parseStatusContextState(input: unknown): StatusContextState | undefined {
@@ -348,7 +372,9 @@ function parseCheckContexts(input: unknown): Result<readonly ParsedCheckContext[
   }
 
   const nodes = input.nodes === null && input.totalCount === 0 ? [] : input.nodes
-  if (!Array.isArray(nodes) || nodes.length !== input.totalCount) return invalidGitHubResponse
+  if (!Array.isArray(nodes) || nodes.length > maximumCheckContextsPerPage || nodes.length !== input.totalCount) {
+    return invalidGitHubResponse
+  }
 
   const contexts: ParsedCheckContext[] = []
   const ids = new Set<string>()
@@ -399,18 +425,19 @@ function classifyCheckRun(checkRun: ParsedCheckRun): CheckBucket {
 }
 
 function classifyContexts(contexts: readonly ParsedCheckContext[]): PullRequestCi {
-  const statusContexts = new Map<string, { createdAt: number; buckets: CheckBucket[] }>()
+  const statusContexts = new Map<string, { createdAt: ParsedTimestamp; buckets: CheckBucket[] }>()
   const workflowChecks = new Map<string, { runNumber: number; runAttempt: number; buckets: CheckBucket[] }>()
-  const nonWorkflowChecks = new Map<string, { suiteCreatedAt: number; buckets: CheckBucket[] }>()
+  const nonWorkflowChecks = new Map<string, { suiteCreatedAt: ParsedTimestamp; buckets: CheckBucket[] }>()
 
   for (const context of contexts) {
     if (context.tag === "StatusContext") {
       const identity = context.context.toLowerCase()
       const existing = statusContexts.get(identity)
       const bucket = classifyStatusContext(context.state)
-      if (existing === undefined || context.createdAt > existing.createdAt) {
+      const ordering = existing === undefined ? 1 : compareTimestamps(context.createdAt, existing.createdAt)
+      if (ordering > 0) {
         statusContexts.set(identity, { createdAt: context.createdAt, buckets: [bucket] })
-      } else if (context.createdAt === existing.createdAt) {
+      } else if (ordering === 0 && existing !== undefined) {
         existing.buckets.push(bucket)
       }
       continue
@@ -447,9 +474,10 @@ function classifyContexts(contexts: readonly ParsedCheckContext[]): PullRequestC
 
     const identity = JSON.stringify(["check", context.sourceIdentity, context.name])
     const existing = nonWorkflowChecks.get(identity)
-    if (existing === undefined || context.suiteCreatedAt > existing.suiteCreatedAt) {
+    const ordering = existing === undefined ? 1 : compareTimestamps(context.suiteCreatedAt, existing.suiteCreatedAt)
+    if (ordering > 0) {
       nonWorkflowChecks.set(identity, { suiteCreatedAt: context.suiteCreatedAt, buckets: [bucket] })
-    } else if (context.suiteCreatedAt === existing.suiteCreatedAt) {
+    } else if (ordering === 0 && existing !== undefined) {
       existing.buckets.push(bucket)
     }
   }
