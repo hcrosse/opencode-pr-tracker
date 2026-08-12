@@ -3,11 +3,14 @@ import { describe, expect, test } from "bun:test"
 import {
   createFeedbackDraft,
   createFeedbackIssueUrl,
+  openFeedbackDraft,
+  submitFeedbackDraft,
   type FeedbackDiagnostics,
   type FeedbackDraft,
   type FeedbackInput,
   type FeedbackKind,
 } from "../src/feedback.js"
+import type { ProcessRunner } from "../src/github.js"
 
 const diagnostics: FeedbackDiagnostics = {
   pluginVersion: " 0.3.0 ",
@@ -21,6 +24,22 @@ function expectDraft(result: ReturnType<typeof createFeedbackDraft>): FeedbackDr
   if (!result.ok) throw new Error("expected feedback draft")
   return result.value
 }
+
+function processExecutionFailed(
+  code: string | number | null,
+  stderr = "request failed",
+  cause: unknown = new Error("gh failed"),
+): Readonly<Record<string, unknown>> {
+  return {
+    tag: "ProcessExecutionFailed",
+    code,
+    stderr,
+    stdout: "",
+    cause,
+  }
+}
+
+const blankOutputRunner: ProcessRunner = async () => ({ stdout: " \n\t " })
 
 describe("createFeedbackDraft", () => {
   test("formats a bug report", () => {
@@ -262,5 +281,223 @@ describe("createFeedbackIssueUrl", () => {
     expect(url.searchParams.has("labels")).toBe(false)
     expect(url.searchParams.has("template")).toBe(false)
     expect([...url.searchParams.keys()]).toEqual(["title", "body"])
+  })
+})
+
+describe("openFeedbackDraft", () => {
+  const draft: FeedbackDraft = {
+    title: "Sidebar status is stale",
+    body: "## Problem\n\nThe sidebar does not update.",
+    label: "bug",
+    template: "bug_report.md",
+  }
+
+  test.each([
+    { platform: "darwin", executable: "open" },
+    { platform: "linux", executable: "xdg-open" },
+  ])("opens the generated issue URL with $executable on $platform", async ({ platform, executable }) => {
+    const calls: Array<{
+      file: string
+      args: readonly string[]
+      options: Readonly<{ signal?: AbortSignal; cwd?: string }>
+    }> = []
+    const runner: ProcessRunner = async (file, args, options) => {
+      calls.push({ file, args, options })
+      return { stdout: "" }
+    }
+    const signal = new AbortController().signal
+
+    expect(await openFeedbackDraft(draft, { platform, runner, signal })).toEqual({ ok: true, value: undefined })
+    expect(calls).toEqual([
+      {
+        file: executable,
+        args: [createFeedbackIssueUrl(draft)],
+        options: { signal },
+      },
+    ])
+  })
+
+  test("returns an unsupported-platform failure", async () => {
+    expect(await openFeedbackDraft(draft, { platform: "win32" })).toEqual({
+      ok: false,
+      error: {
+        tag: "UnsupportedPlatform",
+        message: "Opening feedback is unsupported on win32",
+        platform: "win32",
+      },
+    })
+  })
+
+  test("returns a feedback-specific process failure", async () => {
+    const cause = new Error("process failed")
+    const runner: ProcessRunner = async () => {
+      throw cause
+    }
+
+    expect(await openFeedbackDraft(draft, { platform: "darwin", runner })).toEqual({
+      ok: false,
+      error: {
+        tag: "OpenFeedbackFailed",
+        message: "Unable to open feedback",
+        cause,
+      },
+    })
+  })
+})
+
+describe("submitFeedbackDraft", () => {
+  const draft: FeedbackDraft = {
+    title: "Sidebar status is stale",
+    body: "## Problem\n\nThe sidebar does not update.",
+    label: "bug",
+    template: "bug_report.md",
+  }
+
+  test("submits the draft with exact gh arguments and returns its trimmed URL", async () => {
+    const calls: Array<{
+      file: string
+      args: readonly string[]
+      options: Readonly<{ signal?: AbortSignal; cwd?: string }>
+    }> = []
+    const runner: ProcessRunner = async (file, args, options) => {
+      calls.push({ file, args, options })
+      return { stdout: " \nhttps://github.com/hcrosse/opencode-pr-tracker/issues/69\n" }
+    }
+    const signal = new AbortController().signal
+
+    expect(await submitFeedbackDraft(draft, { runner, signal })).toEqual({
+      ok: true,
+      value: "https://github.com/hcrosse/opencode-pr-tracker/issues/69",
+    })
+    expect(calls).toEqual([
+      {
+        file: "gh",
+        args: [
+          "issue",
+          "create",
+          "--repo",
+          "hcrosse/opencode-pr-tracker",
+          "--title",
+          draft.title,
+          "--body",
+          draft.body,
+          "--label",
+          "bug",
+        ],
+        options: { signal },
+      },
+    ])
+  })
+
+  test("omits label and template arguments for an unlabeled draft", async () => {
+    const calls: Array<{ file: string; args: readonly string[] }> = []
+    const runner: ProcessRunner = async (file, args) => {
+      calls.push({ file, args })
+      return { stdout: "https://github.com/hcrosse/opencode-pr-tracker/issues/70" }
+    }
+    const unlabeled: FeedbackDraft = {
+      title: "Documentation feedback",
+      body: "## Details\n\nThe installation guide is clear.",
+    }
+
+    await submitFeedbackDraft(unlabeled, { runner })
+
+    expect(calls).toEqual([
+      {
+        file: "gh",
+        args: [
+          "issue",
+          "create",
+          "--repo",
+          "hcrosse/opencode-pr-tracker",
+          "--title",
+          unlabeled.title,
+          "--body",
+          unlabeled.body,
+        ],
+      },
+    ])
+  })
+
+  test("returns an actionable failure when gh is missing", async () => {
+    const cause = processExecutionFailed("ENOENT")
+    const runner: ProcessRunner = async () => {
+      throw cause
+    }
+
+    expect(await submitFeedbackDraft(draft, { runner })).toEqual({
+      ok: false,
+      error: {
+        tag: "GitHubCliMissing",
+        message: "GitHub CLI is not installed; install gh and retry",
+        cause,
+      },
+    })
+  })
+
+  test.each([
+    { name: "exit code 4", code: 4, stderr: "request failed" },
+    { name: "HTTP 401", code: 1, stderr: "HTTP 401" },
+    { name: "bad credentials", code: 1, stderr: "Bad credentials" },
+    { name: "not logged into", code: 1, stderr: "not logged into any GitHub hosts" },
+    { name: "gh auth login", code: 1, stderr: "Run gh auth login to authenticate" },
+  ])("returns an actionable authentication failure for $name", async ({ code, stderr }) => {
+    const cause = processExecutionFailed(code, stderr)
+    const runner: ProcessRunner = async () => {
+      throw cause
+    }
+
+    expect(await submitFeedbackDraft(draft, { runner })).toEqual({
+      ok: false,
+      error: {
+        tag: "GitHubAuthenticationRequired",
+        message: "GitHub CLI authentication required; run gh auth login",
+        cause,
+      },
+    })
+  })
+
+  test("preserves lifecycle cancellation without an error message", async () => {
+    const controller = new AbortController()
+    const abortError = new DOMException("This operation was aborted", "AbortError")
+    const cause = processExecutionFailed("ABORT_ERR", "", abortError)
+    const runner: ProcessRunner = (_file, _args, options) =>
+      new Promise((_resolve, reject) => {
+        options.signal?.addEventListener("abort", () => reject(cause), { once: true })
+      })
+
+    const submission = submitFeedbackDraft(draft, { runner, signal: controller.signal })
+    controller.abort()
+
+    expect(await submission).toEqual({
+      ok: false,
+      error: { tag: "SubmitFeedbackCancelled" },
+    })
+  })
+
+  test("rejects blank gh output", async () => {
+    expect(await submitFeedbackDraft(draft, { runner: blankOutputRunner })).toEqual({
+      ok: false,
+      error: {
+        tag: "InvalidGitHubResponse",
+        message: "GitHub CLI did not return the created issue URL",
+      },
+    })
+  })
+
+  test("returns a generic submission failure", async () => {
+    const cause = processExecutionFailed(1, "network unavailable")
+    const runner: ProcessRunner = async () => {
+      throw cause
+    }
+
+    expect(await submitFeedbackDraft(draft, { runner })).toEqual({
+      ok: false,
+      error: {
+        tag: "SubmitFeedbackFailed",
+        message: "Unable to submit feedback with GitHub CLI",
+        cause,
+      },
+    })
   })
 })
