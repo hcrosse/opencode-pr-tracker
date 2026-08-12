@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 
 import {
+  attachPullRequest,
   openPullRequest,
   registerTui,
   startSessionPolling,
@@ -175,6 +176,58 @@ describe("TUI orchestration", () => {
 
     expect(commandsDisposed).toBe(true)
     expect(disposedEvents).toEqual(["session.updated", "message.updated", "message.part.updated"])
+  })
+
+  test("preserves the attach helper while rejecting an unresolved pull request without mutation", async () => {
+    const attachments: PullRequestAttachment[] = []
+    const store: StateStore = {
+      ...stateStore([]),
+      async list() {
+        return { ok: true, value: attachments }
+      },
+      async attach(_sessionID, value) {
+        attachments.push({ pullRequest: value, attachedAt: "2026-08-10T12:00:00.000Z" })
+        return { ok: true, value: "added" }
+      },
+    }
+    let requestSignal: AbortSignal | undefined
+    const github: GitHubClient = {
+      async get(_pullRequests, options) {
+        requestSignal = options?.signal
+        return {
+          ok: true,
+          value: [
+            {
+              ok: false,
+              error: {
+                tag: "PullRequestNotFound",
+                message: "Pull request does not exist or is not accessible",
+              },
+            },
+          ],
+        }
+      },
+    }
+    const signal = new AbortController().signal
+
+    expect(await attachPullRequest(store, "session", "https://example.com/pull/1")).toMatchObject({
+      ok: false,
+      error: { tag: "InvalidPullRequestUrl" },
+    })
+    expect(
+      await attachPullRequest(store, "session", pullRequest.url, {
+        github,
+        signal,
+      }),
+    ).toEqual({
+      ok: false,
+      error: {
+        tag: "PullRequestNotFound",
+        message: "Pull request does not exist or is not accessible",
+      },
+    })
+    expect(requestSignal).toBe(signal)
+    expect(await store.list("session")).toEqual({ ok: true, value: [] })
   })
 
   test("resolves numeric attach input against the current session directory", async () => {
