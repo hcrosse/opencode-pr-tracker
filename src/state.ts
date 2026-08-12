@@ -115,9 +115,12 @@ export function defaultStateDirectory(
   return join(dataHome, "opencode", "opencode-pr-tracker")
 }
 
-export function createStateStore(options: Readonly<{ directory?: string; now?: () => Date }> = {}): StateStore {
+export function createStateStore(
+  options: Readonly<{ directory?: string; now?: () => Date; lock?: typeof lockFile }> = {},
+): StateStore {
   const directory = options.directory ?? defaultStateDirectory()
   const now = options.now ?? (() => new Date())
+  const lockStateFile = options.lock ?? lockFile
 
   async function acquireLock(sessionID: string): Promise<
     Result<
@@ -132,7 +135,7 @@ export function createStateStore(options: Readonly<{ directory?: string; now?: (
     let compromised: Error | undefined
     try {
       await mkdir(directory, { recursive: true })
-      const release = await lockFile(stateFile, {
+      const release = await lockStateFile(stateFile, {
         realpath: false,
         stale: lockStaleMilliseconds,
         update: lockUpdateMilliseconds,

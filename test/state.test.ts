@@ -34,6 +34,25 @@ describe("defaultStateDirectory", () => {
 })
 
 describe("state store", () => {
+  test("uses the configured file lock", async () => {
+    const directory = await temporaryDirectory()
+    const cause = new Error("injected lock failure")
+    const lock: typeof import("proper-lockfile").lock = async () => {
+      throw cause
+    }
+    const store = createStateStore({ directory, lock })
+
+    expect(await store.attach("session", pullRequest(1))).toEqual({
+      ok: false,
+      error: {
+        tag: "StateUnavailable",
+        operation: "write",
+        message: "Unable to lock the session pull request state",
+        cause,
+      },
+    })
+  })
+
   test("isolates sessions and persists canonical attachment identity", async () => {
     const directory = await temporaryDirectory()
     const store = createStateStore({
