@@ -338,7 +338,7 @@ describe("openFeedbackDraft", () => {
       ok: false,
       error: {
         tag: "OpenFeedbackFailed",
-        message: "Unable to open feedback",
+        message: "Unable to open feedback; choose GitHub CLI delivery or retry",
         cause,
       },
     })
@@ -495,7 +495,7 @@ describe("submitFeedbackDraft", () => {
       ok: false,
       error: {
         tag: "SubmitFeedbackFailed",
-        message: "Unable to submit feedback with GitHub CLI",
+        message: "Unable to submit feedback with GitHub CLI; choose browser delivery or retry",
         cause,
       },
     })

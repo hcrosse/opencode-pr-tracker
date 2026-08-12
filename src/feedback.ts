@@ -45,7 +45,7 @@ export type OpenFeedbackFailure =
   | Readonly<{ tag: "UnsupportedPlatform"; message: string; platform: string }>
   | Readonly<{
       tag: "OpenFeedbackFailed"
-      message: "Unable to open feedback"
+      message: "Unable to open feedback; choose GitHub CLI delivery or retry"
       cause: unknown
     }>
 
@@ -67,7 +67,7 @@ export type SubmitFeedbackFailure =
     }>
   | Readonly<{
       tag: "SubmitFeedbackFailed"
-      message: "Unable to submit feedback with GitHub CLI"
+      message: "Unable to submit feedback with GitHub CLI; choose browser delivery or retry"
       cause: unknown
     }>
 
@@ -260,7 +260,7 @@ export async function openFeedbackDraft(
     ok: false,
     error: {
       tag: "OpenFeedbackFailed",
-      message: "Unable to open feedback",
+      message: "Unable to open feedback; choose GitHub CLI delivery or retry",
       cause: result.error.cause,
     },
   }
@@ -319,7 +319,7 @@ export async function submitFeedbackDraft(
       ok: false,
       error: {
         tag: "SubmitFeedbackFailed",
-        message: "Unable to submit feedback with GitHub CLI",
+        message: "Unable to submit feedback with GitHub CLI; choose browser delivery or retry",
         cause,
       },
     }

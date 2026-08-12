@@ -26,6 +26,7 @@ function createHarness(
     platform?: string
     runner?: ProcessRunner
     release?: Readonly<{ source: "file" | "npm" | "internal"; version?: string }>
+    strictApi?: boolean
   }> = {},
 ) {
   const controller = new AbortController()
@@ -45,7 +46,7 @@ function createHarness(
     processCalls.push({ file, args, options: runnerOptions })
     return options.runner?.(file, args, runnerOptions) ?? { stdout: "" }
   }
-  const api = {
+  const baseApi = {
     app: { version: "1.18.15" },
     lifecycle: { signal: controller.signal },
     ui: {
@@ -75,9 +76,19 @@ function createHarness(
         toasts.push(input)
       },
     },
-  } as unknown as TuiPluginApi
+  }
+  const allowedApiProperties = new Set(["app", "ui", "lifecycle", "keymap", "event", "slots"])
+  const api = new Proxy(baseApi, {
+    get(target, property, receiver) {
+      if (options.strictApi && typeof property === "string" && !allowedApiProperties.has(property)) {
+        throw new Error(`Feedback command accessed forbidden TUI state: ${property}`)
+      }
+      return Reflect.get(target, property, receiver)
+    },
+  }) as unknown as TuiPluginApi
 
   return {
+    api,
     command: createFeedbackCommand(
       api,
       { runner, ...(options.platform === undefined ? {} : { platform: options.platform }) },
@@ -409,7 +420,7 @@ describe("createFeedbackCommand", () => {
       runner: async () => {
         throw new Error("open failed")
       },
-      message: "Unable to open feedback",
+      message: "Unable to open feedback; choose GitHub CLI delivery or retry",
     },
     {
       name: "generic GitHub CLI failure",
@@ -417,7 +428,7 @@ describe("createFeedbackCommand", () => {
       runner: async () => {
         throw processExecutionFailed(1, "network unavailable")
       },
-      message: "Unable to submit feedback with GitHub CLI",
+      message: "Unable to submit feedback with GitHub CLI; choose browser delivery or retry",
     },
   ] satisfies readonly {
     name: string
@@ -439,8 +450,12 @@ describe("createFeedbackCommand", () => {
     expect(harness.toasts).toEqual([{ variant: "error", title: "Pull request tracker", message }])
   })
 
-  test("uses unavailable release diagnostics without reading session or attachment state", async () => {
-    const harness = createHarness()
+  test("uses release diagnostics without reading forbidden TUI state", async () => {
+    const harness = createHarness({
+      strictApi: true,
+      release: { source: "npm", version: "0.3.0" },
+    })
+    expect(() => harness.api.state).toThrow("Feedback command accessed forbidden TUI state: state")
     const run = harness.command.run()
     await fillOtherFeedback(harness, true)
     await select(harness, "browser")
@@ -448,8 +463,8 @@ describe("createFeedbackCommand", () => {
     expect(final.kind).toBe("confirm")
     if (final.kind !== "confirm") throw new Error("expected final confirmation")
 
-    expect(final.props.message).toContain("- Plugin version: unavailable")
-    expect(final.props.message).toContain("- Installation source: unavailable")
+    expect(final.props.message).toContain("- Plugin version: 0.3.0")
+    expect(final.props.message).toContain("- Installation source: npm")
     harness.dismiss()
     await run
   })
