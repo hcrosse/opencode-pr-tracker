@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import * as hegel from "@hegeldev/hegel"
+import * as generators from "@hegeldev/hegel/generators"
 
 import {
   createFeedbackDraft,
@@ -18,6 +20,14 @@ const diagnostics: FeedbackDiagnostics = {
   operatingSystem: " macOS 15.6 ",
   installationSource: " npm ",
 }
+
+const boundedFeedbackText = generators.text({
+  alphabet: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 \t\n.,:;!?&=+#/%_-()[]{}",
+  minSize: 0,
+  maxSize: 128,
+})
+const nonblankFeedbackText = boundedFeedbackText.filter((value) => value.trim() !== "")
+const surroundingWhitespace = generators.text({ alphabet: " \t\n\r", minSize: 1, maxSize: 8 })
 
 function expectDraft(result: ReturnType<typeof createFeedbackDraft>): FeedbackDraft {
   expect(result.ok).toBe(true)
@@ -42,6 +52,27 @@ function processExecutionFailed(
 const blankOutputRunner: ProcessRunner = async () => ({ stdout: " \n\t " })
 
 describe("createFeedbackDraft", () => {
+  test("trims every generated other-feedback title and details exactly", () =>
+    hegel.test((testCase) => {
+      const title = testCase.draw(nonblankFeedbackText)
+      const details = testCase.draw(nonblankFeedbackText)
+      const explicitTitle = `${testCase.draw(surroundingWhitespace)}${title}${testCase.draw(surroundingWhitespace)}`
+      const explicitDetails = `${testCase.draw(surroundingWhitespace)}${details}${testCase.draw(surroundingWhitespace)}`
+
+      expect(
+        expectDraft(
+          createFeedbackDraft({
+            kind: "other",
+            title: explicitTitle,
+            details: explicitDetails,
+          }),
+        ),
+      ).toEqual({
+        title: explicitTitle.trim(),
+        body: `## Details\n\n${explicitDetails.trim()}`,
+      })
+    }))
+
   test("formats a bug report", () => {
     const kind: FeedbackKind = "bug"
     const input: FeedbackInput = {
@@ -241,6 +272,28 @@ describe("createFeedbackDraft", () => {
 })
 
 describe("createFeedbackIssueUrl", () => {
+  test("round-trips every generated feedback draft through issue URL parameters", () =>
+    hegel.test((testCase) => {
+      const title = testCase.draw(boundedFeedbackText)
+      const body = testCase.draw(boundedFeedbackText)
+      const includeTemplate = testCase.draw(generators.booleans())
+      const useBugTemplate = testCase.draw(generators.booleans())
+      const metadata = includeTemplate
+        ? useBugTemplate
+          ? ({ label: "bug", template: "bug_report.md" } as const)
+          : ({ label: "enhancement", template: "feature_request.md" } as const)
+        : {}
+      const draft: FeedbackDraft = { title, body, ...metadata }
+
+      const url = new URL(createFeedbackIssueUrl(draft))
+
+      expect(url.origin + url.pathname).toBe("https://github.com/hcrosse/opencode-pr-tracker/issues/new")
+      expect(url.searchParams.get("title")).toBe(title)
+      expect(url.searchParams.get("body")).toBe(body)
+      expect(url.searchParams.get("template")).toBe(draft.template ?? null)
+      expect(url.searchParams.has("labels")).toBe(false)
+    }))
+
   test("creates a prefilled bug report URL", () => {
     const draft = expectDraft(
       createFeedbackDraft({
