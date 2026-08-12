@@ -11,3 +11,6 @@ minimumReleaseAgeExcludes = []
 linker = "isolated"
 hoist = false
 saveTextLockfile = true
+
+[test]
+preload = ["@opentui/solid/preload"]

@@ -502,6 +502,8 @@ function PullRequestSidebar(
   const [items, setItems] = createSignal<readonly SidebarPullRequest[]>([])
   const [failure, setFailure] = createSignal<string>()
   const [update, setUpdate] = createSignal<string | undefined>(props.updateBus.current())
+  const [open, setOpen] = createSignal(true)
+  const collapsible = () => items().length > 2
   const polling = startSessionPolling({
     sessionID: props.sessionID,
     store: props.dependencies.store,
@@ -539,60 +541,67 @@ function PullRequestSidebar(
 
   return (
     <box flexDirection="column" gap={1}>
-      <text fg={props.api.theme.current.text}>
-        <b>Pull requests</b>
-      </text>
-      {update() ? (
-        <box flexDirection="row" onMouseUp={() => props.api.keymap.dispatchCommand("pr.tracker.plugin.update")}>
-          <text fg={props.api.theme.current.warning}>• </text>
-          <text fg={props.api.theme.current.textMuted} attributes={TextAttributes.ITALIC}>
-            {updateStatusLabel(update()!)}
-          </text>
+      <box flexDirection="row" gap={1} onMouseDown={() => collapsible() && setOpen((value) => !value)}>
+        {collapsible() ? <text fg={props.api.theme.current.text}>{open() ? "▼" : "▶"}</text> : null}
+        <text fg={props.api.theme.current.text}>
+          <b>Pull requests</b>
+        </text>
+      </box>
+      {!collapsible() || open() ? (
+        <box flexDirection="column" gap={1}>
+          {update() ? (
+            <box flexDirection="row" onMouseUp={() => props.api.keymap.dispatchCommand("pr.tracker.plugin.update")}>
+              <text fg={props.api.theme.current.warning}>• </text>
+              <text fg={props.api.theme.current.textMuted} attributes={TextAttributes.ITALIC}>
+                {updateStatusLabel(update()!)}
+              </text>
+            </box>
+          ) : null}
+          {failure() ? <text fg={props.api.theme.current.error}>{failure()}</text> : null}
+          {!failure() && items().length === 0 ? (
+            <text fg={props.api.theme.current.textMuted}>No pull requests attached</text>
+          ) : null}
+          {items().map((item) => {
+            const appearance = statusAppearance(item.status)
+            const attributes = appearance.strikethrough ? TextAttributes.STRIKETHROUGH : TextAttributes.NONE
+            const title = item.status.tag === "Available" ? item.status.title : "Title unavailable"
+            return (
+              <box
+                flexDirection="column"
+                onMouseUp={() => {
+                  openPullRequest(item.attachment.pullRequest, {
+                    ...(props.dependencies.runner ? { runner: props.dependencies.runner } : {}),
+                    signal: props.api.lifecycle.signal,
+                  })
+                    .then((result) => {
+                      if (!result.ok) {
+                        props.api.ui.toast({
+                          variant: "error",
+                          title: "Pull request tracker",
+                          message: result.error.message,
+                        })
+                      }
+                    })
+                    .catch(() => {
+                      props.api.ui.toast({
+                        variant: "error",
+                        title: "Pull request tracker",
+                        message: "Unable to open the pull request",
+                      })
+                    })
+                }}
+              >
+                <text fg={toneColor(props.api.theme.current, appearance.tone)} attributes={attributes}>
+                  <b>{formatPullRequestRef(item.attachment.pullRequest)}</b> {appearance.label}
+                </text>
+                <text fg={props.api.theme.current.textMuted} attributes={attributes}>
+                  {title}
+                </text>
+              </box>
+            )
+          })}
         </box>
       ) : null}
-      {failure() ? <text fg={props.api.theme.current.error}>{failure()}</text> : null}
-      {!failure() && items().length === 0 ? (
-        <text fg={props.api.theme.current.textMuted}>No pull requests attached</text>
-      ) : null}
-      {items().map((item) => {
-        const appearance = statusAppearance(item.status)
-        const attributes = appearance.strikethrough ? TextAttributes.STRIKETHROUGH : TextAttributes.NONE
-        const title = item.status.tag === "Available" ? item.status.title : "Title unavailable"
-        return (
-          <box
-            flexDirection="column"
-            onMouseUp={() => {
-              openPullRequest(item.attachment.pullRequest, {
-                ...(props.dependencies.runner ? { runner: props.dependencies.runner } : {}),
-                signal: props.api.lifecycle.signal,
-              })
-                .then((result) => {
-                  if (!result.ok) {
-                    props.api.ui.toast({
-                      variant: "error",
-                      title: "Pull request tracker",
-                      message: result.error.message,
-                    })
-                  }
-                })
-                .catch(() => {
-                  props.api.ui.toast({
-                    variant: "error",
-                    title: "Pull request tracker",
-                    message: "Unable to open the pull request",
-                  })
-                })
-            }}
-          >
-            <text fg={toneColor(props.api.theme.current, appearance.tone)} attributes={attributes}>
-              <b>{formatPullRequestRef(item.attachment.pullRequest)}</b> {appearance.label}
-            </text>
-            <text fg={props.api.theme.current.textMuted} attributes={attributes}>
-              {title}
-            </text>
-          </box>
-        )
-      })}
     </box>
   )
 }

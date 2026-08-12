@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
+import { RGBA } from "@opentui/core"
+import { testRender, type JSX } from "@opentui/solid"
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 
 import {
@@ -35,6 +37,12 @@ const attachment: PullRequestAttachment = {
 const secondAttachment: PullRequestAttachment = {
   pullRequest: secondPullRequest,
   attachedAt: "2026-08-10T12:01:00.000Z",
+}
+const thirdParsed = parsePullRequestUrl("https://github.com/third/example/pull/9")
+if (!thirdParsed.ok) throw new Error("third test fixture URL is invalid")
+const thirdAttachment: PullRequestAttachment = {
+  pullRequest: thirdParsed.value,
+  attachedAt: "2026-08-10T12:02:00.000Z",
 }
 
 function stateStore(items: readonly PullRequestAttachment[] = [attachment]): StateStore {
@@ -117,7 +125,121 @@ class UndefinedHandleScheduler implements PollScheduler {
   }
 }
 
+async function renderSidebar(items: readonly PullRequestAttachment[]) {
+  type SidebarSlot = (context: unknown, value: { session_id: string }) => JSX.Element
+  const eventHandlers = new Map<string, (event: { properties: { sessionID: string } }) => void>()
+  const lifecycleDisposers: Array<() => void | Promise<void>> = []
+  let sidebarSlot: SidebarSlot | undefined
+  let githubCalls = 0
+  const color = RGBA.fromHex("#ffffff")
+  const github = githubStatuses()
+  const api = {
+    keymap: { registerLayer: () => () => undefined },
+    slots: {
+      register(plugin: { slots: { sidebar_content: SidebarSlot } }) {
+        sidebarSlot = plugin.slots.sidebar_content
+        return "pr-tracker"
+      },
+    },
+    lifecycle: {
+      signal: new AbortController().signal,
+      onDispose(disposer: () => void | Promise<void>) {
+        lifecycleDisposers.push(disposer)
+        return () => undefined
+      },
+    },
+    event: {
+      on(type: string, handler: (event: { properties: { sessionID: string } }) => void) {
+        eventHandlers.set(type, handler)
+        return () => eventHandlers.delete(type)
+      },
+    },
+    theme: {
+      current: {
+        text: color,
+        textMuted: color,
+        error: color,
+        warning: color,
+        success: color,
+        secondary: color,
+      },
+    },
+    ui: { toast() {} },
+  } as unknown as TuiPluginApi
+
+  registerTui(api, {
+    store: stateStore(items),
+    github: {
+      async get(...args) {
+        githubCalls += 1
+        return github.get(...args)
+      },
+    },
+  })
+  if (sidebarSlot === undefined) throw new Error("sidebar slot was not registered")
+
+  const view = await testRender(() => sidebarSlot!({}, { session_id: "session" }), { width: 80, height: 20 })
+  await view.waitForFrame((frame) => frame.includes("Pull requests"))
+  await view.waitFor(() => githubCalls === 1)
+  await view.renderOnce()
+
+  return {
+    view,
+    emitSessionUpdated() {
+      eventHandlers.get("session.updated")?.({ properties: { sessionID: "session" } })
+    },
+    githubCalls: () => githubCalls,
+    async cleanup() {
+      view.renderer.destroy()
+      await Promise.all(lifecycleDisposers.map(async (dispose) => dispose()))
+    },
+  }
+}
+
 describe("TUI orchestration", () => {
+  test("collapses more than two pull requests without stopping refreshes", async () => {
+    const sidebar = await renderSidebar([attachment, secondAttachment, thirdAttachment])
+    try {
+      const openFrame = await sidebar.view.waitForFrame(
+        (frame) => frame.includes("▼ Pull requests") && frame.includes("owner/repository#42"),
+      )
+      expect(openFrame).toContain("third/example#9")
+
+      await sidebar.view.mockMouse.pressDown(1, 0)
+      await sidebar.view.flush()
+      const collapsedFrame = sidebar.view.captureCharFrame()
+      expect(collapsedFrame).toContain("▶ Pull requests")
+      expect(collapsedFrame).not.toContain("owner/repository#42")
+
+      await sidebar.view.waitFor(() => sidebar.githubCalls() === 1)
+      sidebar.emitSessionUpdated()
+      await sidebar.view.waitFor(() => sidebar.githubCalls() === 2)
+
+      await sidebar.view.mockMouse.pressDown(1, 0)
+      await sidebar.view.flush()
+      expect(sidebar.view.captureCharFrame()).toContain("owner/repository#42")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("keeps two pull requests expanded without a disclosure control", async () => {
+    const sidebar = await renderSidebar([attachment, secondAttachment])
+    try {
+      const frame = await sidebar.view.waitForFrame(
+        (value) => value.includes("Pull requests") && value.includes("owner/repository#42"),
+      )
+      expect(frame).not.toContain("▼ Pull requests")
+      expect(frame).not.toContain("▶ Pull requests")
+
+      await sidebar.view.mockMouse.pressDown(1, 0)
+      await sidebar.view.flush()
+      expect(sidebar.view.captureCharFrame()).toContain("owner/repository#42")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
   test("registers model-free slash commands and the sidebar slot", () => {
     let layer: { commands: Array<{ name: string; slashName?: string }> } | undefined
     let slots: Record<string, unknown> | undefined
