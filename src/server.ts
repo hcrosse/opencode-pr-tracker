@@ -32,7 +32,7 @@ function formatReferenceList(references: readonly string[]): string {
   return `${references.slice(0, -1).join(", ")}, and ${references.at(-1)}`
 }
 
-export function createServerHooks(store: StateStore, github: GitHubClient): Hooks {
+export function createServerHooks(store: StateStore, github: GitHubClient = createGitHubClient()): Hooks {
   return {
     async event({ event }) {
       if (event.type !== "session.deleted") return

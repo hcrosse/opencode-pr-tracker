@@ -82,6 +82,10 @@ describe("server tools", () => {
     })
   })
 
+  test("keeps the GitHub client optional for createServerHooks callers", () => {
+    expect(createServerHooks.length).toBe(1)
+  })
+
   test("attaches idempotently to the invoking session only", async () => {
     const { store, tools } = await setup()
 
