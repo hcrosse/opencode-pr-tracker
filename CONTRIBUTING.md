@@ -8,6 +8,10 @@ Install Bun 1.3.14, authenticate GitHub CLI, then run `bun ci`.
 
 Run `bun run check` before opening a pull request.
 
+Use Hegel property tests for parsers, normalization, serialization, and state
+transitions when a general invariant is clearer than selected examples. Keep
+example tests for named regressions and user-facing cases.
+
 ## Pull Requests
 
 Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for
