@@ -384,6 +384,7 @@ describe("GitHub client", () => {
 
   test.each([
     { name: "no checks", contexts: {}, expected: "none" },
+    { name: "nullable zero-node page", contexts: { nodes: null }, expected: "none" },
     {
       name: "successful check run",
       contexts: successChecks,
