@@ -408,6 +408,25 @@ describe("GitHub client", () => {
     })
   })
 
+  test("classifies a null resource as a pull request that is not found or inaccessible", async () => {
+    const client = createGitHubClient(runnerFor({ data: { pr0: null } }))
+
+    const result = await client.get([pullRequest])
+
+    expect(result.ok && result.value[0]).toEqual({
+      ok: false,
+      error: {
+        tag: "PullRequestNotFound",
+        message: "Pull request does not exist or is not accessible",
+      },
+    })
+    expect(statusAppearance({ tag: "Unavailable", diagnostic: "PullRequestNotFound" })).toEqual({
+      tone: "gray",
+      label: "not found or inaccessible",
+      strikethrough: false,
+    })
+  })
+
   test.each([
     "not json",
     JSON.stringify({ title: "Missing fields" }),

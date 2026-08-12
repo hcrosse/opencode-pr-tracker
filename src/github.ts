@@ -47,6 +47,11 @@ export type GitHubCancelled = Readonly<{
   cause: unknown
 }>
 
+export type PullRequestNotFound = Readonly<{
+  tag: "PullRequestNotFound"
+  message: "Pull request does not exist or is not accessible"
+}>
+
 export type InvalidGitHubResponse = Readonly<{
   tag: "InvalidGitHubResponse"
   message: "GitHub returned an invalid pull request response"
@@ -63,10 +68,11 @@ export type GitHubFailure =
   | GitHubAuthenticationRequired
   | GitHubUnavailable
   | GitHubCancelled
+  | PullRequestNotFound
   | InvalidGitHubResponse
   | GitHubBatchLimitExceeded
 
-export type GitHubBatch = readonly Result<AvailablePullRequestStatus, InvalidGitHubResponse>[]
+export type GitHubBatch = readonly Result<AvailablePullRequestStatus, PullRequestNotFound | InvalidGitHubResponse>[]
 
 export type PullRequestDiagnostic = Exclude<GitHubFailure, GitHubCancelled | GitHubBatchLimitExceeded>["tag"]
 
@@ -88,6 +94,13 @@ const invalidGitHubResponse: Result<never, InvalidGitHubResponse> = {
   error: {
     tag: "InvalidGitHubResponse",
     message: "GitHub returned an invalid pull request response",
+  },
+}
+const pullRequestNotFound: Result<never, PullRequestNotFound> = {
+  ok: false,
+  error: {
+    tag: "PullRequestNotFound",
+    message: "Pull request does not exist or is not accessible",
   },
 }
 const githubBatchLimitExceeded: Result<never, GitHubBatchLimitExceeded> = {
@@ -240,7 +253,8 @@ function parseMergeability(input: unknown): Result<PullRequestMergeability, Inva
 function parseResponse(
   input: unknown,
   pullRequest: PullRequestUrl,
-): Result<AvailablePullRequestStatus, InvalidGitHubResponse> {
+): Result<AvailablePullRequestStatus, PullRequestNotFound | InvalidGitHubResponse> {
+  if (input === null) return pullRequestNotFound
   if (
     !isRecord(input) ||
     input.__typename !== "PullRequest" ||
@@ -463,6 +477,7 @@ const diagnosticLabels = {
   GitHubCliMissing: "install gh",
   GitHubAuthenticationRequired: "run gh auth login",
   GitHubUnavailable: "GitHub unavailable",
+  PullRequestNotFound: "not found or inaccessible",
   InvalidGitHubResponse: "invalid GitHub response",
 } satisfies Record<PullRequestDiagnostic, string>
 
