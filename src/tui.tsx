@@ -1,6 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 import type { TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 
+import { createFeedbackCommand, type FeedbackTuiDependencies } from "./feedback-tui.js"
 import { createGitHubClient } from "./github.js"
 import {
   createPluginUpdateController,
@@ -29,6 +30,7 @@ export {
 
 type TuiDependencies = PullRequestTuiDependencies &
   PluginUpdateDependencies &
+  FeedbackTuiDependencies &
   Readonly<{
     refreshBus?: RefreshBus
   }>
@@ -42,7 +44,11 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies, re
     api.event.on("message.part.updated", (event) => refreshBus.emit(event.properties.sessionID)),
   ]
   const disposeCommands = api.keymap.registerLayer({
-    commands: [...createPullRequestCommands(api, dependencies, refreshBus), updates.command],
+    commands: [
+      ...createPullRequestCommands(api, dependencies, refreshBus),
+      updates.command,
+      createFeedbackCommand(api, dependencies, release),
+    ],
     bindings: [],
   })
   api.lifecycle.onDispose(async () => {

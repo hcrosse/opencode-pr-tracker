@@ -81,6 +81,7 @@ describe("TUI composition root", () => {
       { name: "pr.detach", slashName: "pr-detach" },
       { name: "pr.sync", slashName: "pr-sync" },
       { name: "pr.tracker.plugin.update", slashName: "pr-tracker-plugin-update" },
+      { name: "pr.tracker.feedback", slashName: "pr-tracker-feedback" },
     ])
     expect(slots).toHaveProperty("sidebar_content")
     expect(disposers).toHaveLength(1)
