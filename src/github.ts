@@ -72,7 +72,9 @@ export type GitHubFailure =
   | InvalidGitHubResponse
   | GitHubBatchLimitExceeded
 
-export type GitHubBatch = readonly Result<AvailablePullRequestStatus, InvalidGitHubResponse>[]
+export type PullRequestItemFailure = Exclude<GitHubFailure, GitHubCancelled | GitHubBatchLimitExceeded>
+
+export type GitHubBatch = readonly Result<AvailablePullRequestStatus, PullRequestItemFailure>[]
 
 export type PullRequestDiagnostic = Exclude<GitHubFailure, GitHubCancelled | GitHubBatchLimitExceeded>["tag"]
 
@@ -105,21 +107,72 @@ const githubBatchLimitExceeded: Result<never, GitHubBatchLimitExceeded> = {
   },
 }
 
-const checkRunPending = new Set(["QUEUED", "IN_PROGRESS", "WAITING", "PENDING"])
-const checkRunPassed = new Set(["SUCCESS"])
-const checkRunFailed = new Set(["FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE"])
-const checkRunIgnored = new Set(["NEUTRAL", "SKIPPED", "COMPLETED"])
-const statusContextPending = new Set(["EXPECTED", "PENDING"])
-const statusContextPassed = new Set(["SUCCESS"])
-const statusContextFailed = new Set(["ERROR", "FAILURE"])
 const maximumPullRequestsPerBatch = 20
-const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt mergeable mergeStateStatus baseRef { branchProtectionRule { requiresStatusChecks requiresStrictStatusChecks } refUpdateRule { requiredStatusCheckContexts } rules(first: 100) { nodes { parameters { __typename ... on RequiredStatusChecksParameters { strictRequiredStatusChecksPolicy requiredStatusChecks { context } } } } totalCount pageInfo { hasNextPage } } } statusCheckRollup { contexts(first: 1) { checkRunCount statusContextCount checkRunCountsByState { state count } statusContextCountsByState { state count } } } }`
+const maximumCheckContextsPerPage = 100
+const statusContextOnlyFields = ["context", "state", "createdAt"] as const
+const checkRunOnlyFields = ["name", "status", "conclusion", "checkSuite"] as const
+const checkContextSelection = `nodes { __typename ... on StatusContext { id context state createdAt } ... on CheckRun { id name status conclusion checkSuite { id createdAt app { id } workflowRun { event runNumber runAttempt workflow { id } } } } } totalCount pageInfo { hasNextPage endCursor }`
+const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt mergeable mergeStateStatus baseRef { branchProtectionRule { requiresStatusChecks requiresStrictStatusChecks } refUpdateRule { requiredStatusCheckContexts } rules(first: 100) { nodes { parameters { __typename ... on RequiredStatusChecksParameters { strictRequiredStatusChecksPolicy requiredStatusChecks { context } } } } totalCount pageInfo { hasNextPage } } } statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}) { ${checkContextSelection} } } }`
+const continuationQuery = `query PullRequestContexts($url: URI!, $cursor: String!) { resource(url: $url) { __typename ... on PullRequest { url statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}, after: $cursor) { ${checkContextSelection} } } } } }`
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
 type CheckBucket = "passed" | "pending" | "failed" | "ignored"
+
+type StatusContextState = "EXPECTED" | "PENDING" | "SUCCESS" | "ERROR" | "FAILURE"
+type CheckRunStatus = "REQUESTED" | "QUEUED" | "IN_PROGRESS" | "COMPLETED" | "WAITING" | "PENDING"
+type CheckRunConclusion =
+  | "SUCCESS"
+  | "FAILURE"
+  | "CANCELLED"
+  | "TIMED_OUT"
+  | "ACTION_REQUIRED"
+  | "STARTUP_FAILURE"
+  | "STALE"
+  | "NEUTRAL"
+  | "SKIPPED"
+
+type ParsedTimestamp = Readonly<{
+  epochSeconds: number
+  fractionalSeconds: string
+}>
+
+type ParsedStatusContext = Readonly<{
+  tag: "StatusContext"
+  id: string
+  context: string
+  state: StatusContextState
+  createdAt: ParsedTimestamp
+}>
+
+type ParsedCheckRun = Readonly<{
+  tag: "CheckRun"
+  id: string
+  name: string
+  status: CheckRunStatus
+  conclusion: CheckRunConclusion | null
+  suiteId: string
+  suiteCreatedAt: ParsedTimestamp
+  sourceIdentity: readonly ["app" | "suite", string]
+  workflowRun:
+    | Readonly<{
+        event: string
+        runNumber: number
+        runAttempt: number
+        workflowId: string
+      }>
+    | undefined
+}>
+
+type ParsedCheckContext = ParsedStatusContext | ParsedCheckRun
+
+type ParsedCheckContextPage = Readonly<{
+  contexts: readonly ParsedCheckContext[]
+  totalCount: number
+  nextCursor?: string
+}>
 
 type ProcessExecutionFailed = Readonly<{
   tag: "ProcessExecutionFailed"
@@ -150,76 +203,333 @@ function parseProcessExecutionFailed(value: unknown): ProcessExecutionFailed | u
   }
 }
 
-function classifyCountState(
-  state: string,
-  states: Readonly<{
-    passed: ReadonlySet<string>
-    pending: ReadonlySet<string>
-    failed: ReadonlySet<string>
-    ignored?: ReadonlySet<string>
-  }>,
-): CheckBucket | undefined {
-  if (states.failed.has(state)) return "failed"
-  if (states.pending.has(state)) return "pending"
-  if (states.passed.has(state)) return "passed"
-  if (states.ignored?.has(state)) return "ignored"
-  return undefined
+function parseNonBlankString(input: unknown): string | undefined {
+  return typeof input === "string" && input.trim() !== "" ? input : undefined
 }
 
-function aggregateCounts(
-  input: unknown,
-  expectedTotal: unknown,
-  states: Parameters<typeof classifyCountState>[1],
-): Result<ReadonlySet<CheckBucket>, InvalidGitHubResponse> {
-  if (!Number.isInteger(expectedTotal) || Number(expectedTotal) < 0) {
+function parseDate(input: unknown): ParsedTimestamp | undefined {
+  if (typeof input !== "string") return undefined
+  const match = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(?:[Zz]|[+-](\d{2}):(\d{2}))$/.exec(
+    input,
+  )
+  if (match === null) return undefined
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = Number(match[4])
+  const minute = Number(match[5])
+  const second = Number(match[6])
+  const offsetHour = Number(match[8] ?? 0)
+  const offsetMinute = Number(match[9] ?? 0)
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+  if (
+    daysInMonth === undefined ||
+    day < 1 ||
+    day > daysInMonth ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    offsetHour > 23 ||
+    offsetMinute > 59
+  ) {
+    return undefined
+  }
+  if (Number.isNaN(new Date(input).valueOf())) return undefined
+  const epochSeconds = new Date(input.replace(/\.\d+/, "")).valueOf() / 1000
+  if (!Number.isInteger(epochSeconds)) return undefined
+  return {
+    epochSeconds,
+    fractionalSeconds: (match[7] ?? "").replace(/0+$/, ""),
+  }
+}
+
+function compareTimestamps(left: ParsedTimestamp, right: ParsedTimestamp): -1 | 0 | 1 {
+  if (left.epochSeconds < right.epochSeconds) return -1
+  if (left.epochSeconds > right.epochSeconds) return 1
+  const width = Math.max(left.fractionalSeconds.length, right.fractionalSeconds.length)
+  const leftFraction = left.fractionalSeconds.padEnd(width, "0")
+  const rightFraction = right.fractionalSeconds.padEnd(width, "0")
+  if (leftFraction < rightFraction) return -1
+  if (leftFraction > rightFraction) return 1
+  return 0
+}
+
+function parseStatusContextState(input: unknown): StatusContextState | undefined {
+  switch (input) {
+    case "EXPECTED":
+    case "PENDING":
+    case "SUCCESS":
+    case "ERROR":
+    case "FAILURE":
+      return input
+    default:
+      return undefined
+  }
+}
+
+function parseCheckRunStatus(input: unknown): CheckRunStatus | undefined {
+  switch (input) {
+    case "REQUESTED":
+    case "QUEUED":
+    case "IN_PROGRESS":
+    case "COMPLETED":
+    case "WAITING":
+    case "PENDING":
+      return input
+    default:
+      return undefined
+  }
+}
+
+function parseCheckRunConclusion(input: unknown): CheckRunConclusion | null | undefined {
+  switch (input) {
+    case null:
+    case "SUCCESS":
+    case "FAILURE":
+    case "CANCELLED":
+    case "TIMED_OUT":
+    case "ACTION_REQUIRED":
+    case "STARTUP_FAILURE":
+    case "STALE":
+    case "NEUTRAL":
+    case "SKIPPED":
+      return input
+    default:
+      return undefined
+  }
+}
+
+function parseStatusContext(input: Record<string, unknown>): Result<ParsedStatusContext, InvalidGitHubResponse> {
+  const id = parseNonBlankString(input.id)
+  const context = parseNonBlankString(input.context)
+  const state = parseStatusContextState(input.state)
+  const createdAt = parseDate(input.createdAt)
+  if (id === undefined || context === undefined || state === undefined || createdAt === undefined) {
     return invalidGitHubResponse
   }
-  const buckets = new Set<CheckBucket>()
-  if (input === null) return expectedTotal === 0 ? { ok: true, value: buckets } : invalidGitHubResponse
-  if (!Array.isArray(input)) return invalidGitHubResponse
-  const seenStates = new Set<string>()
-  let total = 0
-  for (const item of input) {
+  return { ok: true, value: { tag: "StatusContext", id, context, state, createdAt } }
+}
+
+function parseCheckRun(input: Record<string, unknown>): Result<ParsedCheckRun, InvalidGitHubResponse> {
+  const id = parseNonBlankString(input.id)
+  const name = parseNonBlankString(input.name)
+  const status = parseCheckRunStatus(input.status)
+  const conclusion = parseCheckRunConclusion(input.conclusion)
+  if (
+    id === undefined ||
+    name === undefined ||
+    status === undefined ||
+    conclusion === undefined ||
+    (status !== "COMPLETED" && conclusion !== null) ||
+    !isRecord(input.checkSuite)
+  ) {
+    return invalidGitHubResponse
+  }
+
+  const suiteId = parseNonBlankString(input.checkSuite.id)
+  const suiteCreatedAt = parseDate(input.checkSuite.createdAt)
+  if (suiteId === undefined || suiteCreatedAt === undefined) return invalidGitHubResponse
+
+  let sourceIdentity: readonly ["app" | "suite", string]
+  if (input.checkSuite.app === null) {
+    sourceIdentity = ["suite", suiteId]
+  } else {
+    if (!isRecord(input.checkSuite.app)) return invalidGitHubResponse
+    const appId = parseNonBlankString(input.checkSuite.app.id)
+    if (appId === undefined) return invalidGitHubResponse
+    sourceIdentity = ["app", appId]
+  }
+
+  let workflowRun: ParsedCheckRun["workflowRun"]
+  if (input.checkSuite.workflowRun === null) {
+    workflowRun = undefined
+  } else {
+    if (!isRecord(input.checkSuite.workflowRun) || !isRecord(input.checkSuite.workflowRun.workflow)) {
+      return invalidGitHubResponse
+    }
+    const event = parseNonBlankString(input.checkSuite.workflowRun.event)
+    const workflowId = parseNonBlankString(input.checkSuite.workflowRun.workflow.id)
+    const runNumber = input.checkSuite.workflowRun.runNumber
+    const runAttempt = input.checkSuite.workflowRun.runAttempt
     if (
-      !isRecord(item) ||
-      typeof item.state !== "string" ||
-      !Number.isInteger(item.count) ||
-      Number(item.count) < 0 ||
-      seenStates.has(item.state)
+      event === undefined ||
+      workflowId === undefined ||
+      !Number.isInteger(runNumber) ||
+      Number(runNumber) <= 0 ||
+      !Number.isInteger(runAttempt) ||
+      Number(runAttempt) <= 0
     ) {
       return invalidGitHubResponse
     }
-    const bucket = classifyCountState(item.state, states)
-    if (bucket === undefined) return invalidGitHubResponse
-    seenStates.add(item.state)
-    total += Number(item.count)
-    if (bucket !== undefined && Number(item.count) > 0) buckets.add(bucket)
+    workflowRun = { event, workflowId, runNumber: Number(runNumber), runAttempt: Number(runAttempt) }
   }
-  return total === expectedTotal ? { ok: true, value: buckets } : invalidGitHubResponse
+
+  return {
+    ok: true,
+    value: { tag: "CheckRun", id, name, status, conclusion, suiteId, suiteCreatedAt, sourceIdentity, workflowRun },
+  }
 }
 
-function parseStatusCheckRollup(input: unknown): Result<PullRequestCi, InvalidGitHubResponse> {
-  if (input === null) return { ok: true, value: "none" }
-  if (!isRecord(input) || !isRecord(input.contexts)) return invalidGitHubResponse
-  const contexts = input.contexts
-  const checkRuns = aggregateCounts(contexts.checkRunCountsByState, contexts.checkRunCount, {
-    passed: checkRunPassed,
-    pending: checkRunPending,
-    failed: checkRunFailed,
-    ignored: checkRunIgnored,
-  })
-  if (!checkRuns.ok) return checkRuns
-  const statusContexts = aggregateCounts(contexts.statusContextCountsByState, contexts.statusContextCount, {
-    passed: statusContextPassed,
-    pending: statusContextPending,
-    failed: statusContextFailed,
-  })
-  if (!statusContexts.ok) return statusContexts
-  const buckets = new Set([...checkRuns.value, ...statusContexts.value])
-  if (buckets.has("failed")) return { ok: true, value: "failed" }
-  if (buckets.has("pending")) return { ok: true, value: "pending" }
-  if (buckets.has("passed")) return { ok: true, value: "passed" }
-  return { ok: true, value: "none" }
+function parseCheckContexts(input: unknown): Result<ParsedCheckContextPage, InvalidGitHubResponse> {
+  if (
+    !isRecord(input) ||
+    !Number.isInteger(input.totalCount) ||
+    Number(input.totalCount) < 0 ||
+    !isRecord(input.pageInfo) ||
+    typeof input.pageInfo.hasNextPage !== "boolean" ||
+    (input.pageInfo.endCursor !== null && typeof input.pageInfo.endCursor !== "string")
+  ) {
+    return invalidGitHubResponse
+  }
+
+  const nodes = input.nodes === null && input.totalCount === 0 ? [] : input.nodes
+  if (!Array.isArray(nodes) || nodes.length > maximumCheckContextsPerPage || nodes.length > Number(input.totalCount)) {
+    return invalidGitHubResponse
+  }
+
+  const contexts: ParsedCheckContext[] = []
+  const ids = new Set<string>()
+  for (const node of nodes) {
+    if (!isRecord(node)) return invalidGitHubResponse
+    let parsed: Result<ParsedCheckContext, InvalidGitHubResponse>
+    switch (node.__typename) {
+      case "StatusContext":
+        if (checkRunOnlyFields.some((field) => field in node)) return invalidGitHubResponse
+        parsed = parseStatusContext(node)
+        break
+      case "CheckRun":
+        if (statusContextOnlyFields.some((field) => field in node)) return invalidGitHubResponse
+        parsed = parseCheckRun(node)
+        break
+      default:
+        return invalidGitHubResponse
+    }
+    if (!parsed.ok || ids.has(parsed.value.id)) return invalidGitHubResponse
+    ids.add(parsed.value.id)
+    contexts.push(parsed.value)
+  }
+  const nextCursor = input.pageInfo.hasNextPage ? parseNonBlankString(input.pageInfo.endCursor) : undefined
+  if (input.pageInfo.hasNextPage && nextCursor === undefined) return invalidGitHubResponse
+  if (nextCursor !== undefined && contexts.length === 0) return invalidGitHubResponse
+  return {
+    ok: true,
+    value: {
+      contexts,
+      totalCount: Number(input.totalCount),
+      ...(nextCursor === undefined ? {} : { nextCursor }),
+    },
+  }
+}
+
+function classifyStatusContext(state: StatusContextState): Exclude<CheckBucket, "ignored"> {
+  switch (state) {
+    case "ERROR":
+    case "FAILURE":
+      return "failed"
+    case "EXPECTED":
+    case "PENDING":
+      return "pending"
+    case "SUCCESS":
+      return "passed"
+    default:
+      return casesHandled(state)
+  }
+}
+
+function classifyCheckRun(checkRun: ParsedCheckRun): CheckBucket {
+  if (checkRun.status !== "COMPLETED") return "pending"
+  switch (checkRun.conclusion) {
+    case "FAILURE":
+    case "CANCELLED":
+    case "TIMED_OUT":
+    case "ACTION_REQUIRED":
+    case "STARTUP_FAILURE":
+    case "STALE":
+      return "failed"
+    case "SUCCESS":
+      return "passed"
+    case "NEUTRAL":
+    case "SKIPPED":
+    case null:
+      return "ignored"
+    default:
+      return casesHandled(checkRun.conclusion)
+  }
+}
+
+function classifyContexts(contexts: readonly ParsedCheckContext[]): PullRequestCi {
+  const statusContexts = new Map<string, { createdAt: ParsedTimestamp; buckets: CheckBucket[] }>()
+  const workflowChecks = new Map<string, { runNumber: number; runAttempt: number; buckets: CheckBucket[] }>()
+  const nonWorkflowChecks = new Map<string, { suiteCreatedAt: ParsedTimestamp; buckets: CheckBucket[] }>()
+
+  for (const context of contexts) {
+    if (context.tag === "StatusContext") {
+      const identity = context.context.toLowerCase()
+      const existing = statusContexts.get(identity)
+      const bucket = classifyStatusContext(context.state)
+      const ordering = existing === undefined ? 1 : compareTimestamps(context.createdAt, existing.createdAt)
+      if (ordering > 0) {
+        statusContexts.set(identity, { createdAt: context.createdAt, buckets: [bucket] })
+      } else if (ordering === 0 && existing !== undefined) {
+        existing.buckets.push(bucket)
+      }
+      continue
+    }
+
+    const bucket = classifyCheckRun(context)
+    if (context.workflowRun !== undefined) {
+      const identity = JSON.stringify([
+        "workflow",
+        context.sourceIdentity,
+        context.workflowRun.workflowId,
+        context.workflowRun.event,
+        context.name,
+      ])
+      const existing = workflowChecks.get(identity)
+      const isNewer =
+        existing === undefined ||
+        context.workflowRun.runNumber > existing.runNumber ||
+        (context.workflowRun.runNumber === existing.runNumber && context.workflowRun.runAttempt > existing.runAttempt)
+      if (isNewer) {
+        workflowChecks.set(identity, {
+          runNumber: context.workflowRun.runNumber,
+          runAttempt: context.workflowRun.runAttempt,
+          buckets: [bucket],
+        })
+      } else if (
+        context.workflowRun.runNumber === existing.runNumber &&
+        context.workflowRun.runAttempt === existing.runAttempt
+      ) {
+        existing.buckets.push(bucket)
+      }
+      continue
+    }
+
+    const identity = JSON.stringify(["check", context.sourceIdentity, context.name])
+    const existing = nonWorkflowChecks.get(identity)
+    const ordering = existing === undefined ? 1 : compareTimestamps(context.suiteCreatedAt, existing.suiteCreatedAt)
+    if (ordering > 0) {
+      nonWorkflowChecks.set(identity, { suiteCreatedAt: context.suiteCreatedAt, buckets: [bucket] })
+    } else if (ordering === 0 && existing !== undefined) {
+      existing.buckets.push(bucket)
+    }
+  }
+
+  const buckets = new Set<CheckBucket>()
+  for (const selection of [...statusContexts.values(), ...workflowChecks.values(), ...nonWorkflowChecks.values()]) {
+    for (const bucket of selection.buckets) buckets.add(bucket)
+  }
+  if (buckets.has("failed")) return "failed"
+  if (buckets.has("pending")) return "pending"
+  if (buckets.has("passed")) return "passed"
+  return "none"
+}
+
+function parseStatusCheckRollup(input: unknown): Result<ParsedCheckContextPage | null, InvalidGitHubResponse> {
+  if (input === null) return { ok: true, value: null }
+  if (!isRecord(input)) return invalidGitHubResponse
+  return parseCheckContexts(input.contexts)
 }
 
 function samePullRequest(left: PullRequestUrl, right: PullRequestUrl): boolean {
@@ -361,10 +671,18 @@ function parseBlocker(
   return updatePolicy.value.incomplete ? invalidGitHubResponse : { ok: true, value: "none" }
 }
 
-function parseResponse(
+type ParsedPullRequestMetadata = Readonly<{
+  title: string
+  state: "OPEN" | "CLOSED" | "MERGED"
+  mergeability: PullRequestMergeability
+  mergeStateStatus: unknown
+  baseRef: unknown
+}>
+
+function parsePullRequestMetadata(
   input: unknown,
   pullRequest: PullRequestUrl,
-): Result<AvailablePullRequestStatus, InvalidGitHubResponse> {
+): Result<ParsedPullRequestMetadata, InvalidGitHubResponse> {
   if (
     !isRecord(input) ||
     input.__typename !== "PullRequest" ||
@@ -387,21 +705,36 @@ function parseResponse(
   const responseUrl = parsePullRequestUrl(input.url)
   if (!responseUrl.ok || !samePullRequest(responseUrl.value, pullRequest)) return invalidGitHubResponse
 
-  const ci = parseStatusCheckRollup(input.statusCheckRollup)
-  if (!ci.ok) return ci
   const mergeability = parseMergeability(input.mergeable)
   if (!mergeability.ok) return mergeability
 
+  return {
+    ok: true,
+    value: {
+      title: input.title,
+      state: input.state,
+      mergeability: mergeability.value,
+      mergeStateStatus: input.mergeStateStatus,
+      baseRef: input.baseRef,
+    },
+  }
+}
+
+function finalizeResponse(
+  metadata: ParsedPullRequestMetadata,
+  pullRequest: PullRequestUrl,
+  ci: PullRequestCi,
+): Result<AvailablePullRequestStatus, InvalidGitHubResponse> {
   let state: PullRequestState
-  switch (input.state) {
+  switch (metadata.state) {
     case "OPEN": {
       let blocker: PullRequestBlocker = "none"
-      if (mergeability.value !== "conflicting" && (ci.value === "none" || ci.value === "passed")) {
-        const parsedBlocker = parseBlocker(input.mergeStateStatus, input.baseRef)
+      if (metadata.mergeability !== "conflicting" && (ci === "none" || ci === "passed")) {
+        const parsedBlocker = parseBlocker(metadata.mergeStateStatus, metadata.baseRef)
         if (!parsedBlocker.ok) return parsedBlocker
         blocker = parsedBlocker.value
       }
-      state = { tag: "Open", ci: ci.value, mergeability: mergeability.value, blocker }
+      state = { tag: "Open", ci, mergeability: metadata.mergeability, blocker }
       break
     }
     case "MERGED":
@@ -411,7 +744,7 @@ function parseResponse(
       state = { tag: "Closed" }
       break
     default:
-      return casesHandled(input.state)
+      return casesHandled(metadata.state)
   }
 
   return {
@@ -419,11 +752,37 @@ function parseResponse(
     value: {
       tag: "Available",
       pullRequest,
-      title: input.title,
+      title: metadata.title,
       state,
       stale: false,
     },
   }
+}
+
+type ParsedInitialPullRequest = Readonly<{
+  pullRequest: PullRequestUrl
+  metadata: ParsedPullRequestMetadata
+  contextPage: ParsedCheckContextPage | null
+}>
+
+function parseInitialPullRequest(
+  input: unknown,
+  pullRequest: PullRequestUrl,
+): Result<ParsedInitialPullRequest, InvalidGitHubResponse> {
+  if (!isRecord(input)) return invalidGitHubResponse
+  const contextPage = parseStatusCheckRollup(input.statusCheckRollup)
+  if (!contextPage.ok) return contextPage
+  if (
+    contextPage.value !== null &&
+    contextPage.value.nextCursor === undefined &&
+    contextPage.value.contexts.length !== contextPage.value.totalCount
+  ) {
+    return invalidGitHubResponse
+  }
+  const metadata = parsePullRequestMetadata(input, pullRequest)
+  return metadata.ok
+    ? { ok: true, value: { pullRequest, metadata: metadata.value, contextPage: contextPage.value } }
+    : metadata
 }
 
 function createBatchQuery(size: number): string {
@@ -460,7 +819,7 @@ function parseGraphqlErrorAliases(input: unknown, size: number): Result<Readonly
 function parseBatchResponse(
   input: unknown,
   pullRequests: readonly PullRequestUrl[],
-): Result<GitHubBatch, InvalidGitHubResponse> {
+): Result<readonly Result<ParsedInitialPullRequest, InvalidGitHubResponse>[], InvalidGitHubResponse> {
   if (!isRecord(input) || !isRecord(input.data)) return invalidGitHubResponse
   const data = input.data
   const errorAliases = parseGraphqlErrorAliases(input.errors, pullRequests.length)
@@ -468,9 +827,30 @@ function parseBatchResponse(
   return {
     ok: true,
     value: pullRequests.map((pullRequest, index) =>
-      errorAliases.value.has(index) ? invalidGitHubResponse : parseResponse(data[`pr${index}`], pullRequest),
+      errorAliases.value.has(index) ? invalidGitHubResponse : parseInitialPullRequest(data[`pr${index}`], pullRequest),
     ),
   }
+}
+
+function parseContinuationResponse(
+  input: unknown,
+  pullRequest: PullRequestUrl,
+): Result<ParsedCheckContextPage, InvalidGitHubResponse> {
+  if (
+    !isRecord(input) ||
+    (input.errors !== undefined && (!Array.isArray(input.errors) || input.errors.length > 0)) ||
+    !isRecord(input.data) ||
+    !isRecord(input.data.resource)
+  ) {
+    return invalidGitHubResponse
+  }
+  const resource = input.data.resource
+  if (resource.__typename !== "PullRequest" || typeof resource.url !== "string") return invalidGitHubResponse
+  const responseUrl = parsePullRequestUrl(resource.url)
+  if (!responseUrl.ok || !samePullRequest(responseUrl.value, pullRequest) || !isRecord(resource.statusCheckRollup)) {
+    return invalidGitHubResponse
+  }
+  return parseCheckContexts(resource.statusCheckRollup.contexts)
 }
 
 function isCancellation(cause: unknown, signal: AbortSignal | undefined): boolean {
@@ -501,6 +881,112 @@ function classifyProcessFailure(cause: unknown): GitHubCliMissing | GitHubAuthen
 function processFailureStdout(cause: unknown): string | undefined {
   if (!isRecord(cause) || typeof cause.stdout !== "string" || cause.stdout.trim() === "") return undefined
   return cause.stdout
+}
+
+type ProcessFailure = GitHubCliMissing | GitHubAuthenticationRequired | GitHubUnavailable
+type DecodedProcessOutput = Readonly<{ decoded: unknown; processFailure?: ProcessFailure }>
+
+async function runAndDecode(
+  runner: ProcessRunner,
+  args: readonly string[],
+  options: Readonly<{ signal?: AbortSignal }>,
+): Promise<Result<DecodedProcessOutput, ProcessFailure | GitHubCancelled | InvalidGitHubResponse>> {
+  let stdout: string
+  let processFailure: ProcessFailure | undefined
+  try {
+    const output = await runner("gh", args, options)
+    stdout = output.stdout
+  } catch (cause) {
+    if (isCancellation(cause, options.signal)) {
+      return {
+        ok: false,
+        error: {
+          tag: "GitHubCancelled",
+          message: "GitHub status request cancelled",
+          cause,
+        },
+      }
+    }
+    processFailure = classifyProcessFailure(cause)
+    const partialStdout = processFailureStdout(cause)
+    if (partialStdout === undefined) return { ok: false, error: processFailure }
+    stdout = partialStdout
+  }
+
+  let decoded: unknown
+  try {
+    decoded = JSON.parse(stdout)
+  } catch {
+    return processFailure === undefined ? invalidGitHubResponse : { ok: false, error: processFailure }
+  }
+  return { ok: true, value: { decoded, ...(processFailure === undefined ? {} : { processFailure }) } }
+}
+
+type ContinuationOutcome =
+  | Readonly<{ tag: "Item"; result: Result<AvailablePullRequestStatus, PullRequestItemFailure> }>
+  | Readonly<{ tag: "Cancelled"; error: GitHubCancelled }>
+
+async function continuePullRequest(
+  runner: ProcessRunner,
+  initial: ParsedInitialPullRequest,
+  options: Readonly<{ signal?: AbortSignal }>,
+): Promise<ContinuationOutcome> {
+  if (initial.contextPage?.nextCursor === undefined) {
+    const ci = initial.contextPage === null ? "none" : classifyContexts(initial.contextPage.contexts)
+    return { tag: "Item", result: finalizeResponse(initial.metadata, initial.pullRequest, ci) }
+  }
+
+  const contexts = [...initial.contextPage.contexts]
+  const totalCount = initial.contextPage.totalCount
+  const contextIds = new Set(contexts.map((context) => context.id))
+  const cursors = new Set([initial.contextPage.nextCursor])
+  let cursor: string | undefined = initial.contextPage.nextCursor
+  while (cursor !== undefined) {
+    const args = [
+      "api",
+      "graphql",
+      "--method",
+      "POST",
+      "-f",
+      `query=${continuationQuery}`,
+      "-f",
+      `url=${initial.pullRequest.url}`,
+      "-f",
+      `cursor=${cursor}`,
+    ]
+    const output = await runAndDecode(runner, args, options)
+    if (!output.ok) {
+      return output.error.tag === "GitHubCancelled"
+        ? { tag: "Cancelled", error: output.error }
+        : { tag: "Item", result: { ok: false, error: output.error } }
+    }
+    const page = parseContinuationResponse(output.value.decoded, initial.pullRequest)
+    if (!page.ok) {
+      return {
+        tag: "Item",
+        result: { ok: false, error: output.value.processFailure ?? page.error },
+      }
+    }
+    if (page.value.totalCount !== totalCount) return { tag: "Item", result: invalidGitHubResponse }
+    for (const context of page.value.contexts) {
+      if (contextIds.has(context.id)) return { tag: "Item", result: invalidGitHubResponse }
+      contextIds.add(context.id)
+    }
+    if (contexts.length + page.value.contexts.length > totalCount) {
+      return { tag: "Item", result: invalidGitHubResponse }
+    }
+    if (page.value.nextCursor !== undefined) {
+      if (cursors.has(page.value.nextCursor)) return { tag: "Item", result: invalidGitHubResponse }
+      cursors.add(page.value.nextCursor)
+    }
+    contexts.push(...page.value.contexts)
+    cursor = page.value.nextCursor
+  }
+
+  if (contexts.length !== totalCount) return { tag: "Item", result: invalidGitHubResponse }
+
+  const status = finalizeResponse(initial.metadata, initial.pullRequest, classifyContexts(contexts))
+  return { tag: "Item", result: status }
 }
 
 export const execFileRunner: ProcessRunner = (file, args, options) =>
@@ -539,40 +1025,24 @@ export function createGitHubClient(runner: ProcessRunner = execFileRunner): GitH
       for (const [index, pullRequest] of pullRequests.entries()) {
         args.push("-f", `url${index}=${pullRequest.url}`)
       }
-      let stdout: string
-      let processFailure: GitHubCliMissing | GitHubAuthenticationRequired | GitHubUnavailable | undefined
-      try {
-        const output = await runner("gh", args, options)
-        stdout = output.stdout
-      } catch (cause) {
-        if (isCancellation(cause, options.signal)) {
-          return {
-            ok: false,
-            error: {
-              tag: "GitHubCancelled",
-              message: "GitHub status request cancelled",
-              cause,
-            },
-          }
-        }
-        processFailure = classifyProcessFailure(cause)
-        const partialStdout = processFailureStdout(cause)
-        if (partialStdout !== undefined) {
-          stdout = partialStdout
-        } else {
-          return { ok: false, error: processFailure }
-        }
-      }
+      const output = await runAndDecode(runner, args, options)
+      if (!output.ok) return output
+      const parsed = parseBatchResponse(output.value.decoded, pullRequests)
+      if (!parsed.ok) return { ok: false, error: output.value.processFailure ?? parsed.error }
 
-      let decoded: unknown
-      try {
-        decoded = JSON.parse(stdout)
-      } catch {
-        return processFailure === undefined ? invalidGitHubResponse : { ok: false, error: processFailure }
+      const outcomes = await Promise.all(
+        parsed.value.map((item): Promise<ContinuationOutcome> => {
+          if (!item.ok) return Promise.resolve({ tag: "Item", result: item })
+          return continuePullRequest(runner, item.value, options)
+        }),
+      )
+      const batch: Result<AvailablePullRequestStatus, PullRequestItemFailure>[] = []
+      let cancellation: GitHubCancelled | undefined
+      for (const outcome of outcomes) {
+        if (outcome.tag === "Cancelled") cancellation ??= outcome.error
+        else batch.push(outcome.result)
       }
-      const parsed = parseBatchResponse(decoded, pullRequests)
-      if (processFailure === undefined || parsed.ok) return parsed
-      return { ok: false, error: processFailure }
+      return cancellation === undefined ? { ok: true, value: batch } : { ok: false, error: cancellation }
     },
   }
 }
