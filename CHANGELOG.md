@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.0](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.2.0...v0.3.0) (2026-08-12)
+
+
+### Features
+
+* accept schemeless pull request URLs ([#67](https://github.com/hcrosse/opencode-pr-tracker/issues/67)) ([c770cff](https://github.com/hcrosse/opencode-pr-tracker/commit/c770cff894c6ddebf9eeb5fc241856a93489f8da)), closes [#64](https://github.com/hcrosse/opencode-pr-tracker/issues/64)
+* add guided feedback command ([#79](https://github.com/hcrosse/opencode-pr-tracker/issues/79)) ([0b1e091](https://github.com/hcrosse/opencode-pr-tracker/commit/0b1e0915cd3307b1378ab50dae1c472601920781))
+* add session pull request listing ([#61](https://github.com/hcrosse/opencode-pr-tracker/issues/61)) ([1c62e01](https://github.com/hcrosse/opencode-pr-tracker/commit/1c62e01096d1d57bc991fdd41e89e46c261d1c13))
+* collapse pull request sidebar section ([#74](https://github.com/hcrosse/opencode-pr-tracker/issues/74)) ([56b61b3](https://github.com/hcrosse/opencode-pr-tracker/commit/56b61b326b8dfe0d863c19fd011a6cdca45d3d65)), closes [#71](https://github.com/hcrosse/opencode-pr-tracker/issues/71)
+* surface plugin updates ([#62](https://github.com/hcrosse/opencode-pr-tracker/issues/62)) ([de13438](https://github.com/hcrosse/opencode-pr-tracker/commit/de13438bef50b59ac1c8fc9ca8a0d79c6dd49d13))
+* surface policy-required branch updates ([#63](https://github.com/hcrosse/opencode-pr-tracker/issues/63)) ([2f39b72](https://github.com/hcrosse/opencode-pr-tracker/commit/2f39b7273002a8b35594e9da8cee1fbc05205c81))
+
+
+### Bug Fixes
+
+* accept schema-valid status rollups ([#54](https://github.com/hcrosse/opencode-pr-tracker/issues/54)) ([25ae53b](https://github.com/hcrosse/opencode-pr-tracker/commit/25ae53b2302d9c4b7d8ddd7850164f46b53e2a85))
+* cancel dialogs when plugin lifecycle ends ([#57](https://github.com/hcrosse/opencode-pr-tracker/issues/57)) ([e10f0a2](https://github.com/hcrosse/opencode-pr-tracker/commit/e10f0a26dce1853d54722a55fee4f746fb29849c))
+* ignore superseded cancelled checks ([#75](https://github.com/hcrosse/opencode-pr-tracker/issues/75)) ([d1f63ad](https://github.com/hcrosse/opencode-pr-tracker/commit/d1f63add45e012dafccee424ca0529f6bf3f77de))
+* preserve attachment invocation order ([#73](https://github.com/hcrosse/opencode-pr-tracker/issues/73)) ([dd5e12d](https://github.com/hcrosse/opencode-pr-tracker/commit/dd5e12dc807062a066c4da374c3d65cfbfa54a9e))
+* reject unresolved pull request attachments ([#77](https://github.com/hcrosse/opencode-pr-tracker/issues/77)) ([4243e3d](https://github.com/hcrosse/opencode-pr-tracker/commit/4243e3dff8b701775c28722f69122c7612a9360c))
+
 ## [0.2.0](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.1.0...v0.2.0) (2026-08-11)
 
 
