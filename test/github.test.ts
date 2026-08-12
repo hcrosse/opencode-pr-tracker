@@ -446,6 +446,43 @@ describe("GitHub client", () => {
     })
   })
 
+  test.each([
+    { name: "blank", endCursor: " " },
+    { name: "null", endCursor: null },
+  ])("accepts a $name endCursor when no next page exists", async ({ endCursor }) => {
+    const client = createGitHubClient(runnerFor(batchResponse(response({ statusCheckRollup: rollup({ endCursor }) }))))
+
+    const result = await client.get([pullRequest])
+
+    expect(result.ok && result.value[0]).toMatchObject({ ok: true, value: { state: { ci: "none" } } })
+  })
+
+  test.each([
+    { name: "blank", endCursor: " " },
+    { name: "null", endCursor: null },
+  ])("rejects a $name endCursor when a next page exists", async ({ endCursor }) => {
+    const client = createGitHubClient(
+      runnerFor(
+        batchResponse(
+          response({
+            statusCheckRollup: rollup({
+              nodes: [checkRun()],
+              totalCount: 2,
+              hasNextPage: true,
+              endCursor,
+            }),
+          }),
+          response({ url: secondPullRequest.url }),
+        ),
+      ),
+    )
+
+    const result = await client.get([pullRequest, secondPullRequest])
+
+    expect(result.ok && result.value[0]).toEqual(invalidItem)
+    expect(result.ok && result.value[1]).toMatchObject({ ok: true, value: { pullRequest: secondPullRequest } })
+  })
+
   test("classifies every current non-completed check status as pending", async () => {
     const nodes = ["REQUESTED", "QUEUED", "IN_PROGRESS", "WAITING", "PENDING"].map((status, index) =>
       checkRun({ id: `pending-${index}`, name: `Check ${index}`, status, conclusion: null }),
@@ -1511,14 +1548,6 @@ describe("GitHub client", () => {
     }),
     response({ statusCheckRollup: rollup({ nodes: [checkRun()], totalCount: 2 }) }),
     response({
-      statusCheckRollup: rollup({
-        nodes: [checkRun()],
-        totalCount: 2,
-        hasNextPage: true,
-        endCursor: " ",
-      }),
-    }),
-    response({
       statusCheckRollup: rollup({ nodes: [], totalCount: 1, hasNextPage: true, endCursor: "page-1" }),
     }),
     response({
@@ -1594,6 +1623,13 @@ describe("GitHub client", () => {
         context: "Build",
         state: "SUCCESS",
         createdAt: "2026-08-10T10:00:00Z",
+      },
+    },
+    {
+      name: "a StatusContext typename with CheckRun evidence",
+      node: {
+        ...checkRun({ conclusion: "FAILURE" }),
+        ...statusContext(),
       },
     },
   ])("rejects context nodes with $name", async ({ node }) => {

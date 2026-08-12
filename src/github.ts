@@ -109,6 +109,8 @@ const githubBatchLimitExceeded: Result<never, GitHubBatchLimitExceeded> = {
 
 const maximumPullRequestsPerBatch = 20
 const maximumCheckContextsPerPage = 100
+const statusContextOnlyFields = ["context", "state", "createdAt"] as const
+const checkRunOnlyFields = ["name", "status", "conclusion", "checkSuite"] as const
 const checkContextSelection = `nodes { __typename ... on StatusContext { id context state createdAt } ... on CheckRun { id name status conclusion checkSuite { id createdAt app { id } workflowRun { event runNumber runAttempt workflow { id } } } } } totalCount pageInfo { hasNextPage endCursor }`
 const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt mergeable mergeStateStatus baseRef { branchProtectionRule { requiresStatusChecks requiresStrictStatusChecks } refUpdateRule { requiredStatusCheckContexts } rules(first: 100) { nodes { parameters { __typename ... on RequiredStatusChecksParameters { strictRequiredStatusChecksPolicy requiredStatusChecks { context } } } } totalCount pageInfo { hasNextPage } } } statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}) { ${checkContextSelection} } } }`
 const continuationQuery = `query PullRequestContexts($url: URI!, $cursor: String!) { resource(url: $url) { __typename ... on PullRequest { url statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}, after: $cursor) { ${checkContextSelection} } } } } }`
@@ -376,7 +378,7 @@ function parseCheckContexts(input: unknown): Result<ParsedCheckContextPage, Inva
     Number(input.totalCount) < 0 ||
     !isRecord(input.pageInfo) ||
     typeof input.pageInfo.hasNextPage !== "boolean" ||
-    (input.pageInfo.endCursor !== null && parseNonBlankString(input.pageInfo.endCursor) === undefined)
+    (input.pageInfo.endCursor !== null && typeof input.pageInfo.endCursor !== "string")
   ) {
     return invalidGitHubResponse
   }
@@ -393,10 +395,11 @@ function parseCheckContexts(input: unknown): Result<ParsedCheckContextPage, Inva
     let parsed: Result<ParsedCheckContext, InvalidGitHubResponse>
     switch (node.__typename) {
       case "StatusContext":
+        if (checkRunOnlyFields.some((field) => field in node)) return invalidGitHubResponse
         parsed = parseStatusContext(node)
         break
       case "CheckRun":
-        if ("context" in node) return invalidGitHubResponse
+        if (statusContextOnlyFields.some((field) => field in node)) return invalidGitHubResponse
         parsed = parseCheckRun(node)
         break
       default:
