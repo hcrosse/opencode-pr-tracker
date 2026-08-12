@@ -39,27 +39,36 @@ opencode plugin @hcrosse/opencode-pr-tracker@0.2.0 --global --force
 Replace `0.2.0` with the version you want. Omit `--global` for a plugin installed
 in the current project.
 
+The plugin checks for compatible stable releases at most once every 24 hours.
+When an update is available, the sidebar shows its version. Click it or run
+`/pr-tracker-plugin-update` to see the exact command for the current installation
+scope. The plugin never installs updates automatically.
+
 ## Commands
 
-- `/pr-attach` accepts a canonical pull request URL or a positive pull request number for the current GitHub repository.
+- `/pr-attach` accepts a pull request URL, with or without `https://`, or a positive pull request number for the current GitHub repository.
 - `/pr-open` lets you select and open an attached pull request on macOS or Linux.
 - `/pr-detach` lets you select and remove an attached pull request.
 - `/pr-sync` immediately refreshes attached pull request status.
-- Agents can use the `pr_attach` and `pr_detach` tools when the server plugin is enabled.
+- `/pr-tracker-plugin-update` checks for a compatible plugin release and shows the update command.
+- Agents can use the `pr_list`, `pr_attach`, and `pr_detach` tools when the server plugin is enabled.
 
 The `pr_detach` tool also accepts a positive pull request number when exactly
-one session attachment has that number. Use a canonical URL when repositories
+one session attachment has that number. Use a pull request URL when repositories
 have attached pull requests with the same number.
 
-The plugin accepts canonical URLs in the form
-`https://github.com/<owner>/<repository>/pull/<number>`.
+The plugin accepts pull request URLs in the forms
+`https://github.com/<owner>/<repository>/pull/<number>` and
+`github.com/<owner>/<repository>/pull/<number>`.
 
 ## Sidebar
 
 Each attached pull request appears with its repository, number, title, and
 current state. Open and closed pull requests refresh at least once per minute
 and when session activity changes. Click a row to open the pull request on
-macOS or Linux.
+macOS or Linux. When more than two pull requests are attached, click the
+**Pull requests** heading to collapse or expand its rows. Status refreshes
+continue while the section is collapsed.
 
 | State                    | Appearance            |
 | ------------------------ | --------------------- |

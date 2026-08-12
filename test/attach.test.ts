@@ -89,6 +89,20 @@ describe("resolvePullRequestInput", () => {
     expect(calls).toEqual([])
   })
 
+  test("returns a canonical URL for scheme-less input without repository discovery", async () => {
+    const calls: ProcessCall[] = []
+    const result = await resolvePullRequestInput("github.com/Owner/Repo/pull/7", {
+      directory: "/project",
+      runner: recordingRunner("", calls),
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { url: "https://github.com/owner/repo/pull/7", number: 7 },
+    })
+    expect(calls).toEqual([])
+  })
+
   test("resolves a positive number against the current GitHub repository", async () => {
     const calls: ProcessCall[] = []
     const signal = new AbortController().signal
@@ -127,7 +141,7 @@ describe("resolvePullRequestInput", () => {
         error: {
           tag: "InvalidPullRequestInput",
           message:
-            "Expected https://github.com/<owner>/<repository>/pull/<positive-integer> or a positive pull request number",
+            "Expected https://github.com/<owner>/<repository>/pull/<positive-integer>, github.com/<owner>/<repository>/pull/<positive-integer>, or a positive pull request number",
         },
       })
       expect(calls).toEqual([])

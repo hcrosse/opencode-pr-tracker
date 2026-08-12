@@ -69,7 +69,7 @@ function assertTools(value: unknown): void {
   if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
     throw new Error("OpenCode returned an invalid tool ID response")
   }
-  for (const tool of ["pr_attach", "pr_detach"]) {
+  for (const tool of ["pr_list", "pr_attach", "pr_detach"]) {
     if (!value.includes(tool)) throw new Error(`OpenCode did not register ${tool}`)
   }
 }
@@ -101,32 +101,36 @@ const layers = []
 const disposers = []
 let slots
 
-await plugin.tui({
-  keymap: {
-    registerLayer(layer) {
-      layers.push(layer)
-      return () => undefined
+await plugin.tui(
+  {
+    keymap: {
+      registerLayer(layer) {
+        layers.push(layer)
+        return () => undefined
+      },
+    },
+    slots: {
+      register(value) {
+        slots = value.slots
+        return "opencode-pr-tracker-smoke"
+      },
+    },
+    lifecycle: {
+      signal: new AbortController().signal,
+      onDispose(disposer) {
+        disposers.push(disposer)
+        return () => undefined
+      },
+    },
+    event: {
+      on() {
+        return () => undefined
+      },
     },
   },
-  slots: {
-    register(value) {
-      slots = value.slots
-      return "opencode-pr-tracker-smoke"
-    },
-  },
-  lifecycle: {
-    signal: new AbortController().signal,
-    onDispose(disposer) {
-      disposers.push(disposer)
-      return () => undefined
-    },
-  },
-  event: {
-    on() {
-      return () => undefined
-    },
-  },
-})
+  undefined,
+  { source: "file" },
+)
 
 const commands = new Map(
   layers.flatMap((layer) => layer.commands ?? []).map(({ name, slashName }) => [name, slashName]),
@@ -135,6 +139,8 @@ const expected = [
   { name: "pr.attach", slashName: "pr-attach" },
   { name: "pr.open", slashName: "pr-open" },
   { name: "pr.detach", slashName: "pr-detach" },
+  { name: "pr.sync", slashName: "pr-sync" },
+  { name: "pr.tracker.plugin.update", slashName: "pr-tracker-plugin-update" },
 ]
 for (const command of expected) {
   if (commands.get(command.name) !== command.slashName) {

@@ -24,6 +24,14 @@ function pullRequest(number: number, repository = "repository"): PullRequestUrl 
   return result.value
 }
 
+function deferred(): Readonly<{ promise: Promise<void>; resolve(): void }> {
+  let resolve!: () => void
+  const promise = new Promise<void>((complete) => {
+    resolve = complete
+  })
+  return { promise, resolve }
+}
+
 describe("defaultStateDirectory", () => {
   test("uses OpenCode's XDG data directory", () => {
     expect(defaultStateDirectory({ XDG_DATA_HOME: "/custom/data" }, "/home/test")).toBe(
@@ -34,6 +42,107 @@ describe("defaultStateDirectory", () => {
 })
 
 describe("state store", () => {
+  test("uses the configured file lock", async () => {
+    const directory = await temporaryDirectory()
+    const cause = new Error("injected lock failure")
+    const lock: typeof import("proper-lockfile").lock = async () => {
+      throw cause
+    }
+    const store = createStateStore({ directory, lock })
+
+    expect(await store.attach("session", pullRequest(1))).toEqual({
+      ok: false,
+      error: {
+        tag: "StateUnavailable",
+        operation: "write",
+        message: "Unable to lock the session pull request state",
+        cause,
+      },
+    })
+  })
+
+  test("preserves same-store attachment invocation order", async () => {
+    const directory = await temporaryDirectory()
+    const firstLockStarted = deferred()
+    const continueFirstLock = deferred()
+    let lockAttempts = 0
+    const lock: typeof import("proper-lockfile").lock = async () => {
+      lockAttempts += 1
+      if (lockAttempts === 1) {
+        firstLockStarted.resolve()
+        await continueFirstLock.promise
+      }
+      return async () => undefined
+    }
+    const store = createStateStore({ directory, lock })
+
+    const first = store.attach("session", pullRequest(1))
+    await firstLockStarted.promise
+    const second = store.attach("session", pullRequest(2))
+    const overtook = await Promise.race([second.then(() => true), Bun.sleep(50).then(() => false)])
+
+    expect(overtook).toBe(false)
+    expect(lockAttempts).toBe(1)
+    continueFirstLock.resolve()
+    expect(await Promise.all([first, second])).toEqual([
+      { ok: true, value: "added" },
+      { ok: true, value: "added" },
+    ])
+    const attachments = await store.list("session")
+    expect(attachments.ok && attachments.value.map((item) => item.pullRequest.number)).toEqual([1, 2])
+  })
+
+  test("does not serialize attachments across sessions", async () => {
+    const directory = await temporaryDirectory()
+    const firstLockStarted = deferred()
+    const continueFirstLock = deferred()
+    let lockAttempts = 0
+    const lock: typeof import("proper-lockfile").lock = async () => {
+      lockAttempts += 1
+      if (lockAttempts === 1) {
+        firstLockStarted.resolve()
+        await continueFirstLock.promise
+      }
+      return async () => undefined
+    }
+    const store = createStateStore({ directory, lock })
+
+    const first = store.attach("session-one", pullRequest(1))
+    await firstLockStarted.promise
+    const second = store.attach("session-two", pullRequest(2))
+
+    expect(await second).toEqual({ ok: true, value: "added" })
+    expect(lockAttempts).toBe(2)
+    continueFirstLock.resolve()
+    expect(await first).toEqual({ ok: true, value: "added" })
+    const firstAttachments = await store.list("session-one")
+    const secondAttachments = await store.list("session-two")
+    expect(firstAttachments.ok && firstAttachments.value.map((item) => item.pullRequest.number)).toEqual([1])
+    expect(secondAttachments.ok && secondAttachments.value.map((item) => item.pullRequest.number)).toEqual([2])
+  })
+
+  test("releases the attachment queue after an exception", async () => {
+    const directory = await temporaryDirectory()
+    const cause = new Error("injected timestamp failure")
+    let calls = 0
+    const store = createStateStore({
+      directory,
+      now: () => {
+        calls += 1
+        if (calls === 1) throw cause
+        return new Date("2026-08-10T12:00:00.000Z")
+      },
+    })
+
+    const first = store.attach("session", pullRequest(1))
+    const second = store.attach("session", pullRequest(2))
+
+    expect(first).rejects.toBe(cause)
+    expect(await second).toEqual({ ok: true, value: "added" })
+    const attachments = await store.list("session")
+    expect(attachments.ok && attachments.value.map((item) => item.pullRequest.number)).toEqual([2])
+  })
+
   test("isolates sessions and persists canonical attachment identity", async () => {
     const directory = await temporaryDirectory()
     const store = createStateStore({

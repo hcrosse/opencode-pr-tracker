@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
+import { RGBA } from "@opentui/core"
+import { testRender, type JSX } from "@opentui/solid"
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 
 import {
@@ -7,6 +9,7 @@ import {
   openPullRequest,
   registerTui,
   startSessionPolling,
+  updateStatusLabel,
   type PollScheduler,
   type SidebarPullRequest,
 } from "../src/tui.jsx"
@@ -34,6 +37,12 @@ const secondAttachment: PullRequestAttachment = {
   pullRequest: secondPullRequest,
   attachedAt: "2026-08-10T12:01:00.000Z",
 }
+const thirdParsed = parsePullRequestUrl("https://github.com/third/example/pull/9")
+if (!thirdParsed.ok) throw new Error("third test fixture URL is invalid")
+const thirdAttachment: PullRequestAttachment = {
+  pullRequest: thirdParsed.value,
+  attachedAt: "2026-08-10T12:02:00.000Z",
+}
 
 function stateStore(items: readonly PullRequestAttachment[] = [attachment]): StateStore {
   return {
@@ -56,7 +65,7 @@ function stateStore(items: readonly PullRequestAttachment[] = [attachment]): Sta
 }
 
 function available(
-  state: PullRequestState = { tag: "Open", ci: "passed", mergeability: "mergeable" },
+  state: PullRequestState = { tag: "Open", ci: "passed", mergeability: "mergeable", blocker: "none" },
   value: PullRequestUrl = pullRequest,
 ): AvailablePullRequestStatus {
   return {
@@ -115,7 +124,121 @@ class UndefinedHandleScheduler implements PollScheduler {
   }
 }
 
+async function renderSidebar(items: readonly PullRequestAttachment[]) {
+  type SidebarSlot = (context: unknown, value: { session_id: string }) => JSX.Element
+  const eventHandlers = new Map<string, (event: { properties: { sessionID: string } }) => void>()
+  const lifecycleDisposers: Array<() => void | Promise<void>> = []
+  let sidebarSlot: SidebarSlot | undefined
+  let githubCalls = 0
+  const color = RGBA.fromHex("#ffffff")
+  const github = githubStatuses()
+  const api = {
+    keymap: { registerLayer: () => () => undefined },
+    slots: {
+      register(plugin: { slots: { sidebar_content: SidebarSlot } }) {
+        sidebarSlot = plugin.slots.sidebar_content
+        return "pr-tracker"
+      },
+    },
+    lifecycle: {
+      signal: new AbortController().signal,
+      onDispose(disposer: () => void | Promise<void>) {
+        lifecycleDisposers.push(disposer)
+        return () => undefined
+      },
+    },
+    event: {
+      on(type: string, handler: (event: { properties: { sessionID: string } }) => void) {
+        eventHandlers.set(type, handler)
+        return () => eventHandlers.delete(type)
+      },
+    },
+    theme: {
+      current: {
+        text: color,
+        textMuted: color,
+        error: color,
+        warning: color,
+        success: color,
+        secondary: color,
+      },
+    },
+    ui: { toast() {} },
+  } as unknown as TuiPluginApi
+
+  registerTui(api, {
+    store: stateStore(items),
+    github: {
+      async get(...args) {
+        githubCalls += 1
+        return github.get(...args)
+      },
+    },
+  })
+  if (sidebarSlot === undefined) throw new Error("sidebar slot was not registered")
+
+  const view = await testRender(() => sidebarSlot!({}, { session_id: "session" }), { width: 80, height: 20 })
+  await view.waitForFrame((frame) => frame.includes("Pull requests"))
+  await view.waitFor(() => githubCalls === 1)
+  await view.renderOnce()
+
+  return {
+    view,
+    emitSessionUpdated() {
+      eventHandlers.get("session.updated")?.({ properties: { sessionID: "session" } })
+    },
+    githubCalls: () => githubCalls,
+    async cleanup() {
+      view.renderer.destroy()
+      await Promise.all(lifecycleDisposers.map(async (dispose) => dispose()))
+    },
+  }
+}
+
 describe("TUI orchestration", () => {
+  test("collapses more than two pull requests without stopping refreshes", async () => {
+    const sidebar = await renderSidebar([attachment, secondAttachment, thirdAttachment])
+    try {
+      const openFrame = await sidebar.view.waitForFrame(
+        (frame) => frame.includes("▼ Pull requests") && frame.includes("owner/repository#42"),
+      )
+      expect(openFrame).toContain("third/example#9")
+
+      await sidebar.view.mockMouse.pressDown(1, 0)
+      await sidebar.view.flush()
+      const collapsedFrame = sidebar.view.captureCharFrame()
+      expect(collapsedFrame).toContain("▶ Pull requests")
+      expect(collapsedFrame).not.toContain("owner/repository#42")
+
+      await sidebar.view.waitFor(() => sidebar.githubCalls() === 1)
+      sidebar.emitSessionUpdated()
+      await sidebar.view.waitFor(() => sidebar.githubCalls() === 2)
+
+      await sidebar.view.mockMouse.pressDown(1, 0)
+      await sidebar.view.flush()
+      expect(sidebar.view.captureCharFrame()).toContain("owner/repository#42")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("keeps two pull requests expanded without a disclosure control", async () => {
+    const sidebar = await renderSidebar([attachment, secondAttachment])
+    try {
+      const frame = await sidebar.view.waitForFrame(
+        (value) => value.includes("Pull requests") && value.includes("owner/repository#42"),
+      )
+      expect(frame).not.toContain("▼ Pull requests")
+      expect(frame).not.toContain("▶ Pull requests")
+
+      await sidebar.view.mockMouse.pressDown(1, 0)
+      await sidebar.view.flush()
+      expect(sidebar.view.captureCharFrame()).toContain("owner/repository#42")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
   test("registers model-free slash commands and the sidebar slot", () => {
     let layer: { commands: Array<{ name: string; slashName?: string }> } | undefined
     let slots: Record<string, unknown> | undefined
@@ -164,6 +287,7 @@ describe("TUI orchestration", () => {
       { name: "pr.open", slashName: "pr-open" },
       { name: "pr.detach", slashName: "pr-detach" },
       { name: "pr.sync", slashName: "pr-sync" },
+      { name: "pr.tracker.plugin.update", slashName: "pr-tracker-plugin-update" },
     ])
     expect(slots).toHaveProperty("sidebar_content")
     expect(disposers).toHaveLength(1)
@@ -176,6 +300,128 @@ describe("TUI orchestration", () => {
 
     expect(commandsDisposed).toBe(true)
     expect(disposedEvents).toEqual(["session.updated", "message.updated", "message.part.updated"])
+  })
+
+  test("shows minimal update status and scoped instructions without installing", async () => {
+    type Command = Readonly<{ name: string; run(): Promise<void> }>
+    const commands = new Map<string, Command>()
+    const toasts: string[] = []
+    const dialogs: Array<{ title: string; message: string }> = []
+    const cache = new Map<string, unknown>()
+    const scopeInputs: Array<{ projectConfigDirectory: string; globalConfigDirectory: string }> = []
+    let kvReady = false
+    const signals: Array<AbortSignal | undefined> = []
+    let checks = 0
+    let markFirstCheckStarted: (() => void) | undefined
+    const firstCheckStarted = new Promise<void>((resolve) => {
+      markFirstCheckStarted = resolve
+    })
+    let resolveFirstCheck: ((value: { currentVersion: string; version: string }) => void) | undefined
+    const firstCheck = new Promise<{ currentVersion: string; version: string }>((resolve) => {
+      resolveFirstCheck = resolve
+    })
+    const controller = new AbortController()
+    const api = {
+      app: { version: "1.18.15" },
+      state: { path: { config: "/global", worktree: "/", directory: "/project" } },
+      route: { current: { name: "home" } },
+      kv: {
+        get ready() {
+          return kvReady
+        },
+        get(key: string) {
+          return cache.get(key)
+        },
+        set(key: string, value: unknown) {
+          cache.set(key, value)
+        },
+      },
+      keymap: {
+        registerLayer(layer: { commands: Command[] }) {
+          for (const command of layer.commands) commands.set(command.name, command)
+          return () => undefined
+        },
+      },
+      slots: { register: () => "pr-tracker" },
+      lifecycle: {
+        signal: controller.signal,
+        onDispose: () => () => undefined,
+      },
+      event: { on: () => () => undefined },
+      ui: {
+        DialogAlert(props: { title: string; message: string }) {
+          dialogs.push(props)
+          return null
+        },
+        dialog: {
+          clear() {},
+          setSize() {},
+          replace(render: () => unknown) {
+            render()
+          },
+        },
+        toast(input: { message: string }) {
+          toasts.push(input.message)
+        },
+      },
+    } as unknown as TuiPluginApi
+
+    registerTui(
+      api,
+      {
+        store: stateStore(),
+        github: githubStatuses(),
+        now: () => new Date("2026-08-11T12:00:00.000Z").valueOf(),
+        async updateChecker(_versions, options) {
+          checks += 1
+          signals.push(options?.signal)
+          if (checks === 1) {
+            markFirstCheckStarted?.()
+            return { ok: true, value: await firstCheck }
+          }
+          return { ok: true, value: { currentVersion: "0.2.0", version: "0.2.2" } }
+        },
+        async installationScopes(input) {
+          scopeInputs.push(input)
+          return ["project"]
+        },
+      },
+      { source: "npm", version: "0.2.0" },
+    )
+
+    let commandFinished = false
+    const commandRun = commands
+      .get("pr.tracker.plugin.update")!
+      .run()
+      .then(() => {
+        commandFinished = true
+      })
+    expect(checks).toBe(0)
+    kvReady = true
+    await firstCheckStarted
+    expect(checks).toBe(1)
+    expect(commandFinished).toBe(false)
+    resolveFirstCheck?.({ currentVersion: "0.2.0", version: "0.2.1" })
+    await commandRun
+
+    expect(updateStatusLabel("0.2.2")).toBe("0.2.2 available")
+    expect(toasts).toEqual([])
+    expect(cache.get("plugin-update-check-v1")).toEqual({
+      checkedAt: new Date("2026-08-11T12:00:00.000Z").valueOf(),
+      currentVersion: "0.2.0",
+      opencodeVersion: "1.18.15",
+      availableVersion: "0.2.2",
+    })
+
+    expect(checks).toBe(2)
+    expect(signals).toEqual([controller.signal, controller.signal])
+    expect(scopeInputs).toEqual([{ projectConfigDirectory: "/project/.opencode", globalConfigDirectory: "/global" }])
+    expect(dialogs).toEqual([
+      {
+        title: "Update PR tracker to 0.2.2",
+        message: "opencode plugin @hcrosse/opencode-pr-tracker@0.2.2 --force\n\nRestart OpenCode after updating.",
+      },
+    ])
   })
 
   test("preserves the attach helper while rejecting an unresolved pull request without mutation", async () => {
@@ -1043,7 +1289,10 @@ describe("TUI orchestration", () => {
           value: [
             {
               ok: true,
-              value: available({ tag: "Open", ci: "failed", mergeability: "mergeable" }, pullRequests[0]),
+              value: available(
+                { tag: "Open", ci: "failed", mergeability: "mergeable", blocker: "none" },
+                pullRequests[0],
+              ),
             },
             {
               ok: false,
@@ -1074,10 +1323,14 @@ describe("TUI orchestration", () => {
     await polling.refresh()
 
     expect(latest.map((item) => item.status)).toMatchObject([
-      { tag: "Available", state: { tag: "Open", ci: "failed", mergeability: "mergeable" }, stale: false },
       {
         tag: "Available",
-        state: { tag: "Open", ci: "passed", mergeability: "mergeable" },
+        state: { tag: "Open", ci: "failed", mergeability: "mergeable", blocker: "none" },
+        stale: false,
+      },
+      {
+        tag: "Available",
+        state: { tag: "Open", ci: "passed", mergeability: "mergeable", blocker: "none" },
         stale: true,
         diagnostic: "InvalidGitHubResponse",
       },
@@ -1196,7 +1449,9 @@ describe("TUI orchestration", () => {
       store: stateStore(),
       github: githubStatuses(() => {
         calls += 1
-        return available(calls === 1 ? { tag: "Closed" } : { tag: "Open", ci: "pending", mergeability: "mergeable" })
+        return available(
+          calls === 1 ? { tag: "Closed" } : { tag: "Open", ci: "pending", mergeability: "mergeable", blocker: "none" },
+        )
       }),
       scheduler: new RecordingScheduler(),
       publish: (items) => {
@@ -1213,7 +1468,7 @@ describe("TUI orchestration", () => {
     await polling.refresh()
 
     expect(calls).toBe(2)
-    expect(latestState).toEqual({ tag: "Open", ci: "pending", mergeability: "mergeable" })
+    expect(latestState).toEqual({ tag: "Open", ci: "pending", mergeability: "mergeable", blocker: "none" })
   })
 
   test("queues one trailing refresh requested during an active poll", async () => {

@@ -26,7 +26,7 @@ function availableGitHub(): GitHubClient {
             tag: "Available",
             pullRequest,
             title: "Pull request",
-            state: { tag: "Open", ci: "none", mergeability: "unknown" },
+            state: { tag: "Open", ci: "none", mergeability: "unknown", blocker: "none" },
             stale: false,
           },
         })),
@@ -85,14 +85,22 @@ describe("server tools", () => {
   test("attaches idempotently to the invoking session only", async () => {
     const { store, tools } = await setup()
 
-    expect(
-      await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/1" }, context("session-one")),
-    ).toBe("Attached owner/repository#1 to this session.")
+    expect(await tools.pr_attach!.execute({ url: "github.com/Owner/Repository/pull/1" }, context("session-one"))).toBe(
+      "Attached owner/repository#1 to this session.",
+    )
     expect(
       await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/1" }, context("session-one")),
     ).toBe("owner/repository#1 is already attached to this session.")
 
-    const first = await store.list("session-one")
+    const attachments = await store.list("session-one")
+    expect(attachments.ok && String(attachments.value[0]?.pullRequest.url)).toBe(
+      "https://github.com/owner/repository/pull/1",
+    )
+    expect(await tools.pr_list!.execute({}, context("session-one"))).toBe(
+      "Attached pull requests:\n- https://github.com/owner/repository/pull/1",
+    )
+
+    const first = attachments
     const second = await store.list("session-two")
     expect(first.ok && first.value.map((item) => item.pullRequest.number)).toEqual([1])
     expect(second).toEqual({ ok: true, value: [] })
@@ -127,6 +135,37 @@ describe("server tools", () => {
     expect(await store.list("session")).toEqual({ ok: true, value: [] })
   })
 
+  test("reports when the invoking session has no attached pull requests", async () => {
+    const { tools } = await setup()
+
+    expect(await tools.pr_list!.execute({}, context("session"))).toBe("No pull requests are attached to this session.")
+  })
+
+  test("lists canonical pull request URLs in attachment order for the invoking session", async () => {
+    const { tools } = await setup()
+    await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/2" }, context("session"))
+    await tools.pr_attach!.execute({ url: "https://github.com/another/project/pull/1" }, context("session"))
+    await tools.pr_attach!.execute({ url: "https://github.com/other/session/pull/3" }, context("other-session"))
+
+    expect(await tools.pr_list!.execute({}, context("session"))).toBe(
+      "Attached pull requests:\n" +
+        "- https://github.com/owner/repository/pull/2\n" +
+        "- https://github.com/another/project/pull/1",
+    )
+  })
+
+  test("translates list state failures into structured tool errors", async () => {
+    const { directory, tools } = await setup()
+    await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/1" }, context("session"))
+    const [stateFile] = await readdir(directory)
+    if (stateFile === undefined) throw new Error("expected state file")
+    await writeFile(join(directory, stateFile), `${JSON.stringify({ version: 2, pullRequests: [] })}\n`)
+
+    expect(tools.pr_list!.execute({}, context("session"))).rejects.toEqual(
+      new PrToolError("InvalidStateFile", "The session pull request state file is invalid"),
+    )
+  })
+
   test("removes only the deleted session state", async () => {
     const { hooks, store, tools } = await setup()
     await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/1" }, context("deleted"))
@@ -157,9 +196,9 @@ describe("server tools", () => {
     const url = "https://github.com/owner/repository/pull/2"
     await tools.pr_attach!.execute({ url }, context("session"))
 
-    expect(await tools.pr_detach!.execute({ pull_request: url }, context("session"))).toBe(
-      "Detached owner/repository#2 from this session.",
-    )
+    expect(
+      await tools.pr_detach!.execute({ pull_request: "github.com/owner/repository/pull/2" }, context("session")),
+    ).toBe("Detached owner/repository#2 from this session.")
     expect(await tools.pr_detach!.execute({ pull_request: url }, context("session"))).toBe(
       "owner/repository#2 is not attached to this session.",
     )
@@ -197,7 +236,10 @@ describe("server tools", () => {
     const { tools } = await setup()
 
     expect(tools.pr_detach!.execute({ pull_request: number }, context("session"))).rejects.toEqual(
-      new PrToolError("InvalidPullRequestNumber", "Expected a positive pull request number or canonical GitHub URL"),
+      new PrToolError(
+        "InvalidPullRequestNumber",
+        "Expected 123, https://github.com/owner/repository/pull/123, or github.com/owner/repository/pull/123",
+      ),
     )
   })
 
@@ -218,7 +260,7 @@ describe("server tools", () => {
     expect(tools.pr_attach!.execute({ url: "https://example.com/pull/1" }, context("session"))).rejects.toEqual(
       new PrToolError(
         "InvalidPullRequestUrl",
-        "Expected https://github.com/<owner>/<repository>/pull/<positive-integer>",
+        "Expected https://github.com/<owner>/<repository>/pull/<positive-integer> or github.com/<owner>/<repository>/pull/<positive-integer>",
       ),
     )
   })

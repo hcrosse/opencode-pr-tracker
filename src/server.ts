@@ -40,10 +40,27 @@ export function createServerHooks(store: StateStore, github: GitHubClient): Hook
       if (!result.ok) throw toToolError(result.error)
     },
     tool: {
+      pr_list: tool({
+        description: "List pull requests attached to the current OpenCode session.",
+        args: {},
+        async execute(_args, context) {
+          const result = await store.list(context.sessionID)
+          if (!result.ok) throw toToolError(result.error)
+          if (result.value.length === 0) return "No pull requests are attached to this session."
+
+          return `Attached pull requests:\n${result.value
+            .map((attachment) => `- ${attachment.pullRequest.url}`)
+            .join("\n")}`
+        },
+      }),
       pr_attach: tool({
-        description: "Attach a canonical GitHub pull request URL to the current OpenCode session.",
+        description: "Attach a GitHub pull request URL to the current OpenCode session.",
         args: {
-          url: tool.schema.string().describe("A https://github.com/<owner>/<repository>/pull/<number> URL"),
+          url: tool.schema
+            .string()
+            .describe(
+              "A https://github.com/<owner>/<repository>/pull/<number> or github.com/<owner>/<repository>/pull/<number> URL",
+            ),
         },
         async execute(args, context) {
           const pullRequest = parsePullRequestUrl(args.url)
@@ -61,18 +78,18 @@ export function createServerHooks(store: StateStore, github: GitHubClient): Hook
         },
       }),
       pr_detach: tool({
-        description: "Detach a pull request from the current OpenCode session by positive number or canonical URL.",
+        description: "Detach a pull request from the current OpenCode session by positive number or GitHub URL.",
         args: {
           pull_request: tool.schema
             .union([tool.schema.number().int().positive().max(Number.MAX_SAFE_INTEGER), tool.schema.string()])
-            .describe("A positive pull request number or https://github.com/<owner>/<repository>/pull/<number> URL"),
+            .describe("https://github.com/owner/repository/pull/123, github.com/owner/repository/pull/123, or 123"),
         },
         async execute(args, context) {
           if (typeof args.pull_request === "number") {
             if (!Number.isSafeInteger(args.pull_request) || args.pull_request <= 0) {
               throw new PrToolError(
                 "InvalidPullRequestNumber",
-                "Expected a positive pull request number or canonical GitHub URL",
+                "Expected 123, https://github.com/owner/repository/pull/123, or github.com/owner/repository/pull/123",
               )
             }
             const result = await store.detachByNumber(context.sessionID, args.pull_request)

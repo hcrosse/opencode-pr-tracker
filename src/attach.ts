@@ -20,7 +20,7 @@ export async function attachPullRequest(
 
 export type InvalidPullRequestInput = Readonly<{
   tag: "InvalidPullRequestInput"
-  message: "Expected https://github.com/<owner>/<repository>/pull/<positive-integer> or a positive pull request number"
+  message: "Expected https://github.com/<owner>/<repository>/pull/<positive-integer>, github.com/<owner>/<repository>/pull/<positive-integer>, or a positive pull request number"
 }>
 
 export type RepositoryResolutionFailed = Readonly<{
@@ -43,7 +43,7 @@ const invalidPullRequestInput: Result<never, InvalidPullRequestInput> = {
   error: {
     tag: "InvalidPullRequestInput",
     message:
-      "Expected https://github.com/<owner>/<repository>/pull/<positive-integer> or a positive pull request number",
+      "Expected https://github.com/<owner>/<repository>/pull/<positive-integer>, github.com/<owner>/<repository>/pull/<positive-integer>, or a positive pull request number",
   },
 }
 
