@@ -66,6 +66,9 @@ describe("attachPullRequest", () => {
     const requested = pullRequest(404)
     let requestSignal: AbortSignal | undefined
     const github: GitHubClient = {
+      async getStack(value) {
+        return { ok: true, value: [value] }
+      },
       async get(_pullRequests, options) {
         requestSignal = options?.signal
         return {
@@ -101,6 +104,9 @@ describe("attachPullRequest", () => {
     const releaseFirstValidation = deferred()
     const validationStarts: number[] = []
     const github: GitHubClient = {
+      async getStack(value) {
+        return { ok: true, value: [value] }
+      },
       async get(pullRequests, _options) {
         const requested = pullRequests[0]
         if (requested === undefined) throw new Error("expected one pull request")
@@ -141,6 +147,9 @@ describe("attachPullRequest", () => {
     await store.attach("session", requested)
     let githubCalls = 0
     const github: GitHubClient = {
+      async getStack(value) {
+        return { ok: true, value: [value] }
+      },
       async get() {
         githubCalls += 1
         throw new Error("GitHub must not be called for an existing attachment")

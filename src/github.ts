@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process"
 
 import { casesHandled } from "./exhaustive.js"
-import { parsePullRequestUrl, type PullRequestUrl, type Result } from "./url.js"
+import { parsePullRequestUrl, type NonEmptyPullRequests, type PullRequestUrl, type Result } from "./url.js"
 
 export type PullRequestCi = "passed" | "pending" | "failed" | "none"
 export type PullRequestMergeability = "mergeable" | "conflicting" | "unknown"
@@ -95,6 +95,10 @@ export type GitHubClient = Readonly<{
     pullRequests: readonly PullRequestUrl[],
     options?: Readonly<{ signal?: AbortSignal }>,
   ): Promise<Result<GitHubBatch, GitHubFailure>>
+  getStack(
+    pullRequest: PullRequestUrl,
+    options?: Readonly<{ signal?: AbortSignal }>,
+  ): Promise<Result<NonEmptyPullRequests, GitHubFailure>>
 }>
 
 const invalidGitHubResponse: Result<never, InvalidGitHubResponse> = {
@@ -122,11 +126,13 @@ const githubBatchLimitExceeded: Result<never, GitHubBatchLimitExceeded> = {
 
 const maximumPullRequestsPerBatch = 20
 const maximumCheckContextsPerPage = 100
+const maximumStackEntriesPerPage = 100
 const statusContextOnlyFields = ["context", "state", "createdAt"] as const
 const checkRunOnlyFields = ["name", "status", "conclusion", "checkSuite"] as const
 const checkContextSelection = `nodes { __typename ... on StatusContext { id context state createdAt } ... on CheckRun { id name status conclusion checkSuite { id createdAt app { id } workflowRun { event runNumber runAttempt workflow { id } } } } } totalCount pageInfo { hasNextPage endCursor }`
 const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt mergeable mergeStateStatus baseRef { branchProtectionRule { requiresStatusChecks requiresStrictStatusChecks } refUpdateRule { requiredStatusCheckContexts } rules(first: 100) { nodes { parameters { __typename ... on RequiredStatusChecksParameters { strictRequiredStatusChecksPolicy requiredStatusChecks { context } } } } totalCount pageInfo { hasNextPage } } } statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}) { ${checkContextSelection} } } }`
 const continuationQuery = `query PullRequestContexts($url: URI!, $cursor: String!) { resource(url: $url) { __typename ... on PullRequest { url statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}, after: $cursor) { ${checkContextSelection} } } } } }`
+const stackQuery = `query PullRequestStack($url: URI!) { resource(url: $url) { __typename ... on PullRequest { url stack { id size entries(first: ${maximumStackEntriesPerPage}) { nodes { position pullRequest { url } } totalCount pageInfo { hasNextPage endCursor } } } } } }`
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -551,6 +557,93 @@ function samePullRequest(left: PullRequestUrl, right: PullRequestUrl): boolean {
     left.owner.toLowerCase() === right.owner.toLowerCase() &&
     left.repository.toLowerCase() === right.repository.toLowerCase()
   )
+}
+
+function sameRepository(left: PullRequestUrl, right: PullRequestUrl): boolean {
+  return (
+    left.owner.toLowerCase() === right.owner.toLowerCase() &&
+    left.repository.toLowerCase() === right.repository.toLowerCase()
+  )
+}
+
+function parseStackResponse(
+  input: unknown,
+  requested: PullRequestUrl,
+): Result<NonEmptyPullRequests, PullRequestNotFound | InvalidGitHubResponse> {
+  if (
+    !isRecord(input) ||
+    (input.errors !== undefined && (!Array.isArray(input.errors) || input.errors.length > 0)) ||
+    !isRecord(input.data)
+  ) {
+    return invalidGitHubResponse
+  }
+  if (input.data.resource === null) return pullRequestNotFound
+  if (!isRecord(input.data.resource)) return invalidGitHubResponse
+
+  const resource = input.data.resource
+  if (resource.__typename !== "PullRequest" || typeof resource.url !== "string") return invalidGitHubResponse
+  const resourceUrl = parsePullRequestUrl(resource.url)
+  if (!resourceUrl.ok || !samePullRequest(resourceUrl.value, requested)) return invalidGitHubResponse
+  if (resource.stack === null) return { ok: true, value: [requested] }
+  if (!isRecord(resource.stack)) return invalidGitHubResponse
+
+  const id = parseNonBlankString(resource.stack.id)
+  const size = resource.stack.size
+  if (id === undefined || !Number.isSafeInteger(size) || Number(size) <= 0 || !isRecord(resource.stack.entries)) {
+    return invalidGitHubResponse
+  }
+
+  const entries = resource.stack.entries
+  if (
+    !Number.isSafeInteger(entries.totalCount) ||
+    entries.totalCount !== size ||
+    !isRecord(entries.pageInfo) ||
+    typeof entries.pageInfo.hasNextPage !== "boolean" ||
+    (entries.pageInfo.endCursor !== null && typeof entries.pageInfo.endCursor !== "string") ||
+    (entries.pageInfo.hasNextPage && parseNonBlankString(entries.pageInfo.endCursor) === undefined) ||
+    !Array.isArray(entries.nodes) ||
+    entries.nodes.length === 0 ||
+    entries.nodes.length > maximumStackEntriesPerPage ||
+    entries.nodes.length > Number(size) ||
+    (entries.pageInfo.hasNextPage && entries.nodes.length >= Number(size)) ||
+    (!entries.pageInfo.hasNextPage && entries.nodes.length !== size)
+  ) {
+    return invalidGitHubResponse
+  }
+
+  const parsedEntries: Array<Readonly<{ position: number; pullRequest: PullRequestUrl }>> = []
+  const positions = new Set<number>()
+  const urls = new Set<string>()
+  let includesRequested = false
+  for (const entry of entries.nodes) {
+    if (
+      !isRecord(entry) ||
+      !Number.isSafeInteger(entry.position) ||
+      Number(entry.position) <= 0 ||
+      Number(entry.position) > Number(size) ||
+      !isRecord(entry.pullRequest) ||
+      typeof entry.pullRequest.url !== "string"
+    ) {
+      return invalidGitHubResponse
+    }
+    const parsedUrl = parsePullRequestUrl(entry.pullRequest.url)
+    if (!parsedUrl.ok || !sameRepository(parsedUrl.value, requested)) return invalidGitHubResponse
+    const position = Number(entry.position)
+    if (positions.has(position) || urls.has(parsedUrl.value.url)) return invalidGitHubResponse
+    positions.add(position)
+    urls.add(parsedUrl.value.url)
+    if (samePullRequest(parsedUrl.value, requested)) includesRequested = true
+    parsedEntries.push({ position, pullRequest: parsedUrl.value })
+  }
+  if (!includesRequested) return invalidGitHubResponse
+
+  parsedEntries.sort((left, right) => left.position - right.position)
+  const first = parsedEntries[0]
+  if (first === undefined) return invalidGitHubResponse
+  return {
+    ok: true,
+    value: [first.pullRequest, ...parsedEntries.slice(1).map((entry) => entry.pullRequest)],
+  }
 }
 
 function parseMergeability(input: unknown): Result<PullRequestMergeability, InvalidGitHubResponse> {
@@ -1060,6 +1153,13 @@ export function createGitHubClient(runner: ProcessRunner = execFileRunner): GitH
         else batch.push(outcome.result)
       }
       return cancellation === undefined ? { ok: true, value: batch } : { ok: false, error: cancellation }
+    },
+    async getStack(pullRequest, options = {}) {
+      const args = ["api", "graphql", "--method", "POST", "-f", `query=${stackQuery}`, "-f", `url=${pullRequest.url}`]
+      const output = await runAndDecode(runner, args, options)
+      if (!output.ok) return output
+      const parsed = parseStackResponse(output.value.decoded, pullRequest)
+      return parsed.ok ? parsed : { ok: false, error: output.value.processFailure ?? parsed.error }
     },
   }
 }

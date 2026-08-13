@@ -56,6 +56,9 @@ async function renderSidebar(items: readonly PullRequestAttachment[]) {
   const dependencies = {
     store: stateStore(items),
     github: {
+      async getStack(requested) {
+        return { ok: true, value: [requested] }
+      },
       async get(...args) {
         githubCalls += 1
         return github.get(...args)
@@ -138,6 +141,9 @@ describe("pull request TUI", () => {
     const store = stateStore([])
     let requestSignal: AbortSignal | undefined
     const github: GitHubClient = {
+      async getStack(requested) {
+        return { ok: true, value: [requested] }
+      },
       async get(_pullRequests, options) {
         requestSignal = options?.signal
         return {
@@ -252,6 +258,9 @@ describe("pull request TUI", () => {
     const store = stateStore([])
     let requestSignal: AbortSignal | undefined
     const github: GitHubClient = {
+      async getStack(requested) {
+        return { ok: true, value: [requested] }
+      },
       async get(_pullRequests, options) {
         requestSignal = options?.signal
         return {

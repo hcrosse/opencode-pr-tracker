@@ -13,6 +13,8 @@ export type PullRequestUrl = Readonly<{
   readonly [pullRequestBrand]: "PullRequestUrl"
 }>
 
+export type NonEmptyPullRequests = readonly [PullRequestUrl, ...PullRequestUrl[]]
+
 const expectedPullRequestUrl =
   "Expected https://github.com/<owner>/<repository>/pull/<positive-integer> or github.com/<owner>/<repository>/pull/<positive-integer>" as const
 

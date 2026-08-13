@@ -61,6 +61,9 @@ export function githubStatuses(
   ) => available(undefined, value),
 ): GitHubClient {
   return {
+    async getStack(requested) {
+      return { ok: true, value: [requested] }
+    },
     async get(pullRequests) {
       return {
         ok: true,

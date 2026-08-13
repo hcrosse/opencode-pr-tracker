@@ -18,6 +18,12 @@ const pullRequest = parsed.value
 const secondParsed = parsePullRequestUrl("https://github.com/another/project/pull/7")
 if (!secondParsed.ok) throw new Error("second test fixture URL is invalid")
 const secondPullRequest = secondParsed.value
+const firstStackParsed = parsePullRequestUrl("https://github.com/owner/repository/pull/41")
+if (!firstStackParsed.ok) throw new Error("first stack fixture URL is invalid")
+const firstStackPullRequest = firstStackParsed.value
+const thirdStackParsed = parsePullRequestUrl("https://github.com/owner/repository/pull/43")
+if (!thirdStackParsed.ok) throw new Error("third stack fixture URL is invalid")
+const thirdStackPullRequest = thirdStackParsed.value
 const successChecks = { nodes: [checkRun()] }
 const pendingChecks = { nodes: [checkRun({ status: "IN_PROGRESS", conclusion: null })] }
 const failedChecks = { nodes: [checkRun({ conclusion: "FAILURE" })] }
@@ -187,6 +193,44 @@ function batchResponse(...responses: readonly unknown[]): Record<string, unknown
   }
 }
 
+function stackEntry(position: unknown, url: unknown): Record<string, unknown> {
+  return { position, pullRequest: { url } }
+}
+
+function stack(
+  overrides: Record<string, unknown> = {},
+  entriesOverrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    id: "stack-1",
+    size: 3,
+    entries: {
+      nodes: [
+        stackEntry(3, thirdStackPullRequest.url),
+        stackEntry(1, firstStackPullRequest.url),
+        stackEntry(2, pullRequest.url),
+      ],
+      totalCount: 3,
+      pageInfo: { hasNextPage: false, endCursor: "cursor-3" },
+      ...entriesOverrides,
+    },
+    ...overrides,
+  }
+}
+
+function stackResponse(stackValue: unknown, resourceOverrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    data: {
+      resource: {
+        __typename: "PullRequest",
+        url: pullRequest.url,
+        stack: stackValue,
+        ...resourceOverrides,
+      },
+    },
+  }
+}
+
 function continuationResponse(
   pullRequestUrl: string,
   contexts: Record<string, unknown>,
@@ -240,6 +284,163 @@ function processFailureRunner(code: number, stderr: string): ProcessRunner {
 }
 
 describe("GitHub client", () => {
+  test("stack discovery returns the requested pull request when it has no stack", async () => {
+    const calls: Array<{ file: string; args: readonly string[]; signal?: AbortSignal }> = []
+    const controller = new AbortController()
+    const result = await createGitHubClient(runnerFor(stackResponse(null), calls)).getStack(pullRequest, {
+      signal: controller.signal,
+    })
+
+    expect(result).toEqual({ ok: true, value: [pullRequest] })
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ file: "gh", signal: controller.signal })
+  })
+
+  test("stack discovery returns stack pull requests in position order", async () => {
+    const calls: Array<{ file: string; args: readonly string[]; signal?: AbortSignal }> = []
+    const result = await createGitHubClient(runnerFor(stackResponse(stack()), calls)).getStack(pullRequest)
+
+    expect(result).toEqual({ ok: true, value: [firstStackPullRequest, pullRequest, thirdStackPullRequest] })
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.args.slice(0, 5)).toEqual(["api", "graphql", "--method", "POST", "-f"])
+    expect(calls[0]?.args[5]).toContain("stack { id size entries(first: 100)")
+    expect(calls[0]?.args[5]).toContain("nodes { position pullRequest { url } }")
+    expect(calls[0]?.args[5]).toContain("totalCount pageInfo { hasNextPage endCursor }")
+    expect(calls[0]?.args.slice(6)).toEqual(["-f", `url=${pullRequest.url}`])
+  })
+
+  test("stack discovery returns PullRequestNotFound for a null resource", async () => {
+    const result = await createGitHubClient(runnerFor({ data: { resource: null } })).getStack(pullRequest)
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        tag: "PullRequestNotFound",
+        message: "Pull request does not exist or is not accessible",
+      },
+    })
+  })
+
+  test.each([
+    { name: "a mismatched requested URL", response: stackResponse(stack(), { url: secondPullRequest.url }) },
+    { name: "a blank stack ID", response: stackResponse(stack({ id: " " })) },
+    { name: "a zero stack size", response: stackResponse(stack({ size: 0 })) },
+    { name: "a fractional stack size", response: stackResponse(stack({ size: 3.5 })) },
+    { name: "an unsafe stack size", response: stackResponse(stack({ size: Number.MAX_SAFE_INTEGER + 1 })) },
+    { name: "a mismatched entry count", response: stackResponse(stack({}, { totalCount: 2 })) },
+    { name: "missing page metadata", response: stackResponse(stack({}, { pageInfo: null })) },
+    {
+      name: "a non-boolean next-page marker",
+      response: stackResponse(stack({}, { pageInfo: { hasNextPage: "false", endCursor: null } })),
+    },
+    {
+      name: "a non-string page cursor",
+      response: stackResponse(stack({}, { pageInfo: { hasNextPage: false, endCursor: 3 } })),
+    },
+    {
+      name: "a missing continuation cursor",
+      response: stackResponse(stack({}, { pageInfo: { hasNextPage: true, endCursor: null } })),
+    },
+    {
+      name: "a next-page marker on a complete page",
+      response: stackResponse(stack({}, { pageInfo: { hasNextPage: true, endCursor: "cursor-3" } })),
+    },
+    {
+      name: "a zero entry position",
+      response: stackResponse(
+        stack(
+          {},
+          {
+            nodes: [
+              stackEntry(0, firstStackPullRequest.url),
+              stackEntry(2, pullRequest.url),
+              stackEntry(3, thirdStackPullRequest.url),
+            ],
+          },
+        ),
+      ),
+    },
+    {
+      name: "a duplicate entry position",
+      response: stackResponse(
+        stack(
+          {},
+          {
+            nodes: [
+              stackEntry(1, firstStackPullRequest.url),
+              stackEntry(1, pullRequest.url),
+              stackEntry(3, thirdStackPullRequest.url),
+            ],
+          },
+        ),
+      ),
+    },
+    {
+      name: "a duplicate pull request URL",
+      response: stackResponse(
+        stack(
+          {},
+          {
+            nodes: [
+              stackEntry(1, firstStackPullRequest.url),
+              stackEntry(2, pullRequest.url),
+              stackEntry(3, pullRequest.url),
+            ],
+          },
+        ),
+      ),
+    },
+    {
+      name: "a pull request from another repository",
+      response: stackResponse(
+        stack(
+          {},
+          {
+            nodes: [
+              stackEntry(1, firstStackPullRequest.url),
+              stackEntry(2, pullRequest.url),
+              stackEntry(3, secondPullRequest.url),
+            ],
+          },
+        ),
+      ),
+    },
+    {
+      name: "a stack without the requested pull request",
+      response: stackResponse(
+        stack(
+          {},
+          {
+            nodes: [
+              stackEntry(1, firstStackPullRequest.url),
+              stackEntry(2, thirdStackPullRequest.url),
+              stackEntry(3, "https://github.com/owner/repository/pull/44"),
+            ],
+          },
+        ),
+      ),
+    },
+    {
+      name: "an invalid pull request URL",
+      response: stackResponse(
+        stack(
+          {},
+          {
+            nodes: [
+              stackEntry(1, firstStackPullRequest.url),
+              stackEntry(2, pullRequest.url),
+              stackEntry(3, "https://example.com/owner/repository/pull/43"),
+            ],
+          },
+        ),
+      ),
+    },
+  ])("stack discovery rejects $name", async ({ response: output }) => {
+    const result = await createGitHubClient(runnerFor(output)).getStack(pullRequest)
+
+    expect(result).toEqual(invalidItem)
+  })
+
   test("batches mixed-repository pull requests through one fixed gh graphql invocation", async () => {
     const calls: Array<{ file: string; args: readonly string[]; signal?: AbortSignal }> = []
     const client = createGitHubClient(

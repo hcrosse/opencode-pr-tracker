@@ -17,6 +17,9 @@ afterEach(async () => {
 
 function availableGitHub(): GitHubClient {
   return {
+    async getStack(requested) {
+      return { ok: true, value: [requested] }
+    },
     async get(pullRequests) {
       return {
         ok: true,
@@ -113,6 +116,9 @@ describe("server tools", () => {
   test("surfaces a missing pull request without mutating session state", async () => {
     let requestSignal: AbortSignal | undefined
     const github: GitHubClient = {
+      async getStack(requested) {
+        return { ok: true, value: [requested] }
+      },
       async get(_pullRequests, options) {
         requestSignal = options?.signal
         return {
