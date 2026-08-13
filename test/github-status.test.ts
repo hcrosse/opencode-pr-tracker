@@ -90,6 +90,13 @@ function processFailureRunner(code: number, stderr: string): ProcessRunner {
 }
 
 describe("GitHub client", () => {
+  test("status facade preserves its async method contract", () => {
+    const client = createGitHubClient()
+
+    expect(client.get.length).toBe(1)
+    expect(Object.getPrototypeOf(client.get)).toBe(Object.getPrototypeOf(async function () {}))
+  })
+
   test("batches mixed-repository pull requests through one fixed gh graphql invocation", async () => {
     const calls: Array<{ file: string; args: readonly string[]; signal?: AbortSignal }> = []
     const client = createGitHubClient(

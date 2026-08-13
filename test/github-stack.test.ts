@@ -96,6 +96,13 @@ function stackPage(
 }
 
 describe("GitHub client", () => {
+  test("stack facade preserves its async method contract", () => {
+    const client = createGitHubClient()
+
+    expect(client.getStack.length).toBe(1)
+    expect(Object.getPrototypeOf(client.getStack)).toBe(Object.getPrototypeOf(async function () {}))
+  })
+
   test("stack discovery returns the requested pull request when it has no stack", async () => {
     const calls: Array<{ file: string; args: readonly string[]; signal?: AbortSignal }> = []
     const controller = new AbortController()

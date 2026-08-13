@@ -30,7 +30,11 @@ export type { ProcessRunner } from "./github-transport.js"
 
 export function createGitHubClient(runner: ProcessRunner = execFileRunner): GitHubClient {
   return {
-    get: (pullRequests, options) => getPullRequestStatuses(runner, pullRequests, options),
-    getStack: (pullRequest, options) => getPullRequestStack(runner, pullRequest, options),
+    async get(pullRequests, options = {}) {
+      return getPullRequestStatuses(runner, pullRequests, options)
+    },
+    async getStack(pullRequest, options = {}) {
+      return getPullRequestStack(runner, pullRequest, options)
+    },
   }
 }
