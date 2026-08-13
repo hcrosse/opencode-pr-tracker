@@ -4,7 +4,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { lock as lockFile } from "proper-lockfile"
 
-import { parsePullRequestUrl, type PullRequestUrl, type Result } from "./url.js"
+import { parsePullRequestUrl, type NonEmptyPullRequests, type PullRequestUrl, type Result } from "./url.js"
 
 export const maximumPullRequestsPerSession = 20
 
@@ -48,6 +48,10 @@ export type StateStore = Readonly<{
     pullRequest: PullRequestUrl,
     options?: AttachOptions<ValidationFailure>,
   ): Promise<Result<"added" | "already_attached", AttachFailure | ValidationFailure>>
+  attachGroup<ResolutionFailure>(
+    sessionID: string,
+    resolve: () => Promise<Result<NonEmptyPullRequests, ResolutionFailure>>,
+  ): Promise<Result<"added" | "already_attached", AttachFailure | ResolutionFailure>>
   detach(sessionID: string, pullRequest: PullRequestUrl): Promise<Result<"removed" | "absent", StateFailure>>
   detachByNumber(sessionID: string, number: number): Promise<Result<DetachByNumberOutcome, StateFailure>>
   removeSession(sessionID: string): Promise<Result<"removed" | "absent", StateFailure>>
@@ -320,9 +324,73 @@ export function createStateStore(
     })
   }
 
+  async function attachGroup<ResolutionFailure>(
+    sessionID: string,
+    resolve: () => Promise<Result<NonEmptyPullRequests, ResolutionFailure>>,
+  ): Promise<Result<"added" | "already_attached", AttachFailure | ResolutionFailure>> {
+    return enqueueAttach(sessionID, async () => {
+      const beforeResolution = await read(sessionID)
+      if (!beforeResolution.ok) return beforeResolution
+
+      const resolution = await resolve()
+      if (!resolution.ok) return resolution
+
+      const groupByUrl = new Map<PullRequestUrl["url"], PullRequestUrl>()
+      for (const pullRequest of resolution.value) {
+        if (!groupByUrl.has(pullRequest.url)) groupByUrl.set(pullRequest.url, pullRequest)
+      }
+      const group = [...groupByUrl.values()]
+      const groupUrls = new Set(groupByUrl.keys())
+
+      return withLock<"added" | "already_attached", AttachFailure>(sessionID, async () => {
+        const current = await read(sessionID)
+        if (!current.ok) return current
+
+        const remaining = current.value.filter((attachment) => !groupUrls.has(attachment.pullRequest.url))
+        if (remaining.length + group.length > maximumPullRequestsPerSession) {
+          return {
+            ok: false,
+            error: {
+              tag: "AttachmentLimitReached",
+              limit: maximumPullRequestsPerSession,
+              message: "A session can track at most 20 pull requests",
+            },
+          } as const
+        }
+
+        const existingByUrl = new Map(
+          current.value.map((attachment) => [attachment.pullRequest.url, attachment] as const),
+        )
+        const earliestMemberIndex = current.value.findIndex((attachment) => groupUrls.has(attachment.pullRequest.url))
+        const insertionIndex = earliestMemberIndex === -1 ? remaining.length : earliestMemberIndex
+        let attachedAt: string | undefined
+        const orderedGroup = group.map((pullRequest): PullRequestAttachment => {
+          const existing = existingByUrl.get(pullRequest.url)
+          if (existing !== undefined) return existing
+          attachedAt ??= now().toISOString()
+          return { pullRequest, attachedAt }
+        })
+        const next = [...remaining.slice(0, insertionIndex), ...orderedGroup, ...remaining.slice(insertionIndex)]
+        const unchanged =
+          next.length === current.value.length &&
+          next.every(
+            (attachment, index) =>
+              attachment.pullRequest.url === current.value[index]?.pullRequest.url &&
+              attachment.attachedAt === current.value[index]?.attachedAt,
+          )
+        if (unchanged) return { ok: true, value: "already_attached" } as const
+
+        const written = await write(sessionID, next)
+        if (!written.ok) return written
+        return { ok: true, value: "added" } as const
+      })
+    })
+  }
+
   return {
     list: read,
     attach,
+    attachGroup,
     async detach(sessionID, pullRequest) {
       return withLock<"removed" | "absent", StateFailure>(sessionID, async () => {
         const current = await read(sessionID)
