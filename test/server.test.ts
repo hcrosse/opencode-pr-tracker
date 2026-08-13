@@ -8,6 +8,7 @@ import { tool, type Hooks, type ToolContext } from "@opencode-ai/plugin"
 import serverModule, { createServerHooks, PrToolError } from "../src/server.js"
 import type { GitHubClient } from "../src/github.js"
 import { createStateStore } from "../src/state.js"
+import { parsePullRequestUrl, type PullRequestUrl } from "../src/url.js"
 
 const directories: string[] = []
 
@@ -36,6 +37,12 @@ function availableGitHub(): GitHubClient {
       }
     },
   }
+}
+
+function stackPullRequest(number: number): PullRequestUrl {
+  const parsed = parsePullRequestUrl(`https://github.com/owner/repository/pull/${number}`)
+  if (!parsed.ok) throw new Error("test fixture URL is invalid")
+  return parsed.value
 }
 
 async function setup(github: GitHubClient = availableGitHub()) {
@@ -116,22 +123,15 @@ describe("server tools", () => {
   test("surfaces a missing pull request without mutating session state", async () => {
     let requestSignal: AbortSignal | undefined
     const github: GitHubClient = {
-      async getStack(requested) {
-        return { ok: true, value: [requested] }
-      },
-      async get(_pullRequests, options) {
+      ...availableGitHub(),
+      async getStack(_requested, options) {
         requestSignal = options?.signal
         return {
-          ok: true,
-          value: [
-            {
-              ok: false,
-              error: {
-                tag: "PullRequestNotFound",
-                message: "Pull request does not exist or is not accessible",
-              },
-            },
-          ],
+          ok: false,
+          error: {
+            tag: "PullRequestNotFound",
+            message: "Pull request does not exist or is not accessible",
+          },
         }
       },
     }
@@ -212,6 +212,27 @@ describe("server tools", () => {
     expect(await tools.pr_detach!.execute({ pull_request: url }, context("session"))).toBe(
       "owner/repository#2 is not attached to this session.",
     )
+  })
+
+  test("detaches only the explicitly selected member of an attached stack", async () => {
+    const stack = [stackPullRequest(1), stackPullRequest(2), stackPullRequest(3)] as const
+    const github: GitHubClient = {
+      async getStack() {
+        return { ok: true, value: stack }
+      },
+      async get() {
+        throw new Error("status lookup is not expected")
+      },
+    }
+    const { store, tools } = await setup(github)
+    const session = context("session")
+    await tools.pr_attach!.execute({ url: stack[1].url }, session)
+
+    expect(await tools.pr_detach!.execute({ pull_request: stack[1].url }, session)).toBe(
+      "Detached owner/repository#2 from this session.",
+    )
+    const attachments = await store.list("session")
+    expect(attachments.ok && attachments.value.map((item) => item.pullRequest.number)).toEqual([1, 3])
   })
 
   test("detaches a unique session attachment by pull request number", async () => {

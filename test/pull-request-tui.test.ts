@@ -141,23 +141,18 @@ describe("pull request TUI", () => {
     const store = stateStore([])
     let requestSignal: AbortSignal | undefined
     const github: GitHubClient = {
-      async getStack(requested) {
-        return { ok: true, value: [requested] }
-      },
-      async get(_pullRequests, options) {
+      async getStack(_requested, options) {
         requestSignal = options?.signal
         return {
-          ok: true,
-          value: [
-            {
-              ok: false,
-              error: {
-                tag: "PullRequestNotFound",
-                message: "Pull request does not exist or is not accessible",
-              },
-            },
-          ],
+          ok: false,
+          error: {
+            tag: "PullRequestNotFound",
+            message: "Pull request does not exist or is not accessible",
+          },
         }
+      },
+      async get() {
+        throw new Error("status lookup is not expected")
       },
     }
     const signal = new AbortController().signal
@@ -258,23 +253,18 @@ describe("pull request TUI", () => {
     const store = stateStore([])
     let requestSignal: AbortSignal | undefined
     const github: GitHubClient = {
-      async getStack(requested) {
-        return { ok: true, value: [requested] }
-      },
-      async get(_pullRequests, options) {
+      async getStack(_requested, options) {
         requestSignal = options?.signal
         return {
-          ok: true,
-          value: [
-            {
-              ok: false,
-              error: {
-                tag: "PullRequestNotFound",
-                message: "Pull request does not exist or is not accessible",
-              },
-            },
-          ],
+          ok: false,
+          error: {
+            tag: "PullRequestNotFound",
+            message: "Pull request does not exist or is not accessible",
+          },
         }
+      },
+      async get() {
+        throw new Error("status lookup is not expected")
       },
     }
     const controller = new AbortController()

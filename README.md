@@ -46,9 +46,9 @@ scope. The plugin never installs updates automatically.
 
 ## Commands
 
-- `/pr-attach` accepts a pull request URL, with or without `https://`, or a positive pull request number for the current GitHub repository.
+- `/pr-attach` accepts a pull request URL, with or without `https://`, or a positive pull request number for the current GitHub repository. Attaching any GitHub Stack member attaches the complete stack in bottom-to-top order.
 - `/pr-open` lets you select and open an attached pull request on macOS or Linux.
-- `/pr-detach` lets you select and remove an attached pull request.
+- `/pr-detach` lets you select and remove one attached pull request. Stack members are detached individually; detaching one member does not detach the rest of its stack.
 - `/pr-sync` immediately refreshes attached pull request status.
 - `/pr-tracker-feedback` collects bug reports, feature requests, or other feedback and previews optional diagnostics. It opens a prefilled browser issue by default, with confirmed `gh` submission as an alternative. Diagnostics never automatically include session content, local paths, repository names, or pull request URLs.
 - `/pr-tracker-plugin-update` checks for a compatible plugin release and shows the update command.
@@ -65,11 +65,13 @@ The plugin accepts pull request URLs in the forms
 ## Sidebar
 
 Each attached pull request appears with its repository, number, title, and
-current state. Open and closed pull requests refresh at least once per minute
-and when session activity changes. Click a row to open the pull request on
-macOS or Linux. When more than two pull requests are attached, click the
-**Pull requests** heading to collapse or expand its rows. Status refreshes
-continue while the section is collapsed.
+current state. GitHub Stack members appear together in bottom-to-top order,
+from the pull request closest to the trunk through the top pull request. Open
+and closed pull requests refresh at least once per minute and when session
+activity changes. Click a row to open the pull request on macOS or Linux. When
+more than two pull requests are attached, click the **Pull requests** heading
+to collapse or expand its rows. Status refreshes continue while the section is
+collapsed.
 
 | State                    | Appearance            |
 | ------------------------ | --------------------- |
