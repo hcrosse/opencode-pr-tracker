@@ -20,8 +20,8 @@ async function temporaryStateStore() {
   return createStateStore({ directory })
 }
 
-function pullRequest(number: number): PullRequestUrl {
-  const parsed = parsePullRequestUrl(`https://github.com/owner/repository/pull/${number}`)
+function pullRequest(number: number, owner = "owner", repository = "repository"): PullRequestUrl {
+  const parsed = parsePullRequestUrl(`https://github.com/${owner}/${repository}/pull/${number}`)
   if (!parsed.ok) throw new Error("test fixture URL is invalid")
   return parsed.value
 }
@@ -47,6 +47,15 @@ function availableGitHubItem(value: PullRequestUrl) {
   } as const
 }
 
+function githubWithStack(getStack: GitHubClient["getStack"]): GitHubClient {
+  return {
+    getStack,
+    async get(pullRequests) {
+      return { ok: true, value: pullRequests.map(availableGitHubItem) }
+    },
+  }
+}
+
 type ProcessCall = Readonly<{
   file: string
   args: readonly string[]
@@ -61,60 +70,131 @@ function recordingRunner(stdout: string, calls: ProcessCall[]): ProcessRunner {
 }
 
 describe("attachPullRequest", () => {
-  test("returns a missing pull request failure without mutating state", async () => {
+  test("attaches a complete stack in bottom-to-top order", async () => {
     const store = await temporaryStateStore()
-    const requested = pullRequest(404)
-    let requestSignal: AbortSignal | undefined
-    const github: GitHubClient = {
-      async get(_pullRequests, options) {
-        requestSignal = options?.signal
-        return {
-          ok: true,
-          value: [
-            {
-              ok: false,
-              error: {
-                tag: "PullRequestNotFound",
-                message: "Pull request does not exist or is not accessible",
-              },
-            },
-          ],
-        }
-      },
-    }
-    const signal = new AbortController().signal
+    const stack = [pullRequest(1), pullRequest(2), pullRequest(3)] as const
+    const github = githubWithStack(async () => ({ ok: true, value: stack }))
 
-    expect(await attachPullRequest({ store, github }, "session", requested, { signal })).toEqual({
+    expect(await attachPullRequest({ store, github }, "session", stack[1])).toEqual({
+      ok: true,
+      value: "added",
+    })
+    const attachments = await store.list("session")
+    expect(attachments.ok && attachments.value.map((item) => item.pullRequest.number)).toEqual([1, 2, 3])
+  })
+
+  test("normalizes a partially attached stack without disturbing mixed-repository attachments", async () => {
+    const store = await temporaryStateStore()
+    const unrelatedBefore = pullRequest(91, "another", "project")
+    const unrelatedAfter = pullRequest(92, "another", "project")
+    for (const item of [unrelatedBefore, pullRequest(3), unrelatedAfter, pullRequest(1)]) {
+      await store.attach("session", item)
+    }
+    const github = githubWithStack(async () => ({
+      ok: true,
+      value: [pullRequest(1), pullRequest(2), pullRequest(3)],
+    }))
+
+    expect(await attachPullRequest({ store, github }, "session", pullRequest(2))).toEqual({
+      ok: true,
+      value: "added",
+    })
+    const attachments = await store.list("session")
+    expect(attachments.ok && attachments.value.map((item) => item.pullRequest.url)).toEqual([
+      unrelatedBefore.url,
+      pullRequest(1).url,
+      pullRequest(2).url,
+      pullRequest(3).url,
+      unrelatedAfter.url,
+    ])
+  })
+
+  test("returns a stack discovery failure without mutating state", async () => {
+    const store = await temporaryStateStore()
+    await store.attach("session", pullRequest(1))
+    const requested = pullRequest(404)
+    const github = githubWithStack(async () => ({
+      ok: false,
+      error: {
+        tag: "PullRequestNotFound",
+        message: "Pull request does not exist or is not accessible",
+      },
+    }))
+
+    expect(await attachPullRequest({ store, github }, "session", requested)).toEqual({
       ok: false,
       error: {
         tag: "PullRequestNotFound",
         message: "Pull request does not exist or is not accessible",
       },
     })
-    expect(requestSignal).toBe(signal)
+    const attachments = await store.list("session")
+    expect(attachments.ok && attachments.value.map((item) => item.pullRequest.number)).toEqual([1])
+  })
+
+  test("rejects a 21-member stack without mutating state", async () => {
+    const store = await temporaryStateStore()
+    const members = Array.from({ length: 21 }, (_, index) => pullRequest(index + 1))
+    const first = members[0]
+    if (first === undefined) throw new Error("expected a non-empty stack fixture")
+    const stack = [first, ...members.slice(1)] as const
+    const github = githubWithStack(async () => ({ ok: true, value: stack }))
+
+    expect(await attachPullRequest({ store, github }, "session", pullRequest(11))).toEqual({
+      ok: false,
+      error: {
+        tag: "AttachmentLimitReached",
+        limit: 20,
+        message: "A session can track at most 20 pull requests",
+      },
+    })
     expect(await store.list("session")).toEqual({ ok: true, value: [] })
   })
 
-  test("serializes validation and attachment in same-session FIFO order", async () => {
+  test("propagates the caller signal to stack discovery", async () => {
     const store = await temporaryStateStore()
-    const firstValidationStarted = deferred()
-    const releaseFirstValidation = deferred()
-    const validationStarts: number[] = []
+    const requested = pullRequest(1)
+    let requestSignal: AbortSignal | undefined
+    const github = githubWithStack(async (value, options) => {
+      requestSignal = options?.signal
+      return { ok: true, value: [value] }
+    })
+    const signal = new AbortController().signal
+
+    expect(await attachPullRequest({ store, github }, "session", requested, { signal })).toEqual({
+      ok: true,
+      value: "added",
+    })
+    expect(requestSignal).toBe(signal)
+  })
+
+  test("serializes stack discovery and attachment in same-session FIFO order", async () => {
+    const store = await temporaryStateStore()
+    const firstDiscoveryStarted = deferred()
+    const releaseFirstDiscovery = deferred()
+    const discoveryStarts: number[] = []
+    const discover = async (requested: PullRequestUrl) => {
+      discoveryStarts.push(requested.number)
+      if (requested.number === 1) {
+        firstDiscoveryStarted.resolve()
+        await releaseFirstDiscovery.promise
+      }
+    }
     const github: GitHubClient = {
-      async get(pullRequests, _options) {
+      async getStack(requested) {
+        await discover(requested)
+        return { ok: true, value: [requested] }
+      },
+      async get(pullRequests) {
         const requested = pullRequests[0]
         if (requested === undefined) throw new Error("expected one pull request")
-        validationStarts.push(requested.number)
-        if (requested.number === 1) {
-          firstValidationStarted.resolve()
-          await releaseFirstValidation.promise
-        }
+        await discover(requested)
         return { ok: true, value: [availableGitHubItem(requested)] }
       },
     }
 
     const first = attachPullRequest({ store, github }, "session", pullRequest(1))
-    await firstValidationStarted.promise
+    await firstDiscoveryStarted.promise
     const second = attachPullRequest({ store, github }, "session", pullRequest(2))
     let secondSettled = false
     void second.then(() => {
@@ -122,38 +202,39 @@ describe("attachPullRequest", () => {
     })
     await Promise.resolve()
 
-    expect(validationStarts).toEqual([1])
+    expect(discoveryStarts).toEqual([1])
     expect(secondSettled).toBe(false)
-    releaseFirstValidation.resolve()
+    releaseFirstDiscovery.resolve()
 
     expect(await Promise.all([first, second])).toEqual([
       { ok: true, value: "added" },
       { ok: true, value: "added" },
     ])
-    expect(validationStarts).toEqual([1, 2])
+    expect(discoveryStarts).toEqual([1, 2])
     const attachments = await store.list("session")
     expect(attachments.ok && attachments.value.map((item) => item.pullRequest.number)).toEqual([1, 2])
   })
 
-  test("returns already attached without contacting GitHub", async () => {
+  test("repeated stack attachment does not duplicate members", async () => {
     const store = await temporaryStateStore()
-    const requested = pullRequest(1)
-    await store.attach("session", requested)
-    let githubCalls = 0
-    const github: GitHubClient = {
-      async get() {
-        githubCalls += 1
-        throw new Error("GitHub must not be called for an existing attachment")
-      },
-    }
+    const stack = [pullRequest(1), pullRequest(2), pullRequest(3)] as const
+    let discoveryCalls = 0
+    const github = githubWithStack(async () => {
+      discoveryCalls += 1
+      return { ok: true, value: stack }
+    })
 
-    expect(await attachPullRequest({ store, github }, "session", requested)).toEqual({
+    expect(await attachPullRequest({ store, github }, "session", stack[1])).toEqual({
+      ok: true,
+      value: "added",
+    })
+    expect(await attachPullRequest({ store, github }, "session", stack[1])).toEqual({
       ok: true,
       value: "already_attached",
     })
-    expect(githubCalls).toBe(0)
+    expect(discoveryCalls).toBe(2)
     const attachments = await store.list("session")
-    expect(attachments.ok && attachments.value.map((item) => item.pullRequest.number)).toEqual([1])
+    expect(attachments.ok && attachments.value.map((item) => item.pullRequest.number)).toEqual([1, 2, 3])
   })
 })
 

@@ -80,6 +80,9 @@ describe("session polling", () => {
       sessionID: "session",
       store: stateStore(),
       github: {
+        async getStack(requested) {
+          return { ok: true, value: [requested] }
+        },
         async get() {
           return { ok: false, error: githubFailure }
         },
@@ -131,6 +134,9 @@ describe("session polling", () => {
       sessionID: "session",
       store: stateStore([attachment, secondAttachment]),
       github: {
+        async getStack(requested) {
+          return { ok: true, value: [requested] }
+        },
         async get(pullRequests) {
           batches.push([...pullRequests])
           return {
@@ -156,6 +162,9 @@ describe("session polling", () => {
     let calls = 0
     let latest: readonly SidebarPullRequest[] = []
     const github: GitHubClient = {
+      async getStack(requested) {
+        return { ok: true, value: [requested] }
+      },
       async get(pullRequests) {
         calls += 1
         if (calls === 1) {
@@ -492,6 +501,9 @@ describe("session polling", () => {
       sessionID: "session",
       store: stateStore(),
       github: {
+        async getStack(requested) {
+          return { ok: true, value: [requested] }
+        },
         async get(pullRequests) {
           return availableResponse
             ? {

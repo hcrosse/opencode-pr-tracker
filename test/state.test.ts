@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { createStateStore, defaultStateDirectory } from "../src/state.js"
-import { parsePullRequestUrl, type PullRequestUrl } from "../src/url.js"
+import { parsePullRequestUrl, type NonEmptyPullRequests, type PullRequestUrl } from "../src/url.js"
 
 const directories: string[] = []
 
@@ -170,6 +170,268 @@ describe("state store", () => {
       }),
     ).toEqual({ ok: true, value: "already_attached" })
     expect(events).toEqual(["validate", "lock"])
+  })
+
+  test("attachment group inserts at its earliest member and preserves attachment timestamps", async () => {
+    const directory = await temporaryDirectory()
+    const timestamps = [
+      "2026-08-10T12:00:00.000Z",
+      "2026-08-10T12:01:00.000Z",
+      "2026-08-10T12:02:00.000Z",
+      "2026-08-10T12:03:00.000Z",
+      "2026-08-10T12:04:00.000Z",
+    ] as const
+    let timestampIndex = 0
+    const store = createStateStore({
+      directory,
+      now: () => new Date(timestamps[timestampIndex++]!),
+    })
+    for (const number of [91, 3, 92, 1]) {
+      expect(await store.attach("session", pullRequest(number))).toEqual({ ok: true, value: "added" })
+    }
+
+    expect(
+      await store.attachGroup("session", async () => ({
+        ok: true,
+        value: [pullRequest(1), pullRequest(2), pullRequest(3)],
+      })),
+    ).toEqual({ ok: true, value: "added" })
+
+    const attachments = await store.list("session")
+    expect(attachments.ok).toBe(true)
+    if (!attachments.ok) throw new Error("expected state to be readable")
+    expect(attachments.value.map(({ pullRequest: item }) => item.number)).toEqual([91, 1, 2, 3, 92])
+    expect(
+      Object.fromEntries(
+        attachments.value.map(({ pullRequest: item, attachedAt }) => [item.number, attachedAt] as const),
+      ),
+    ).toEqual({
+      1: timestamps[3],
+      2: timestamps[4],
+      3: timestamps[1],
+      91: timestamps[0],
+      92: timestamps[2],
+    })
+
+    const [stateFile] = await readdir(directory)
+    const path = join(directory, stateFile!)
+    const beforeContent = await readFile(path, "utf8")
+    const beforeInode = (await stat(path)).ino
+    expect(
+      await store.attachGroup("session", async () => ({
+        ok: true,
+        value: [pullRequest(1), pullRequest(2), pullRequest(3)],
+      })),
+    ).toEqual({ ok: true, value: "already_attached" })
+    expect(await readFile(path, "utf8")).toBe(beforeContent)
+    expect((await stat(path)).ino).toBe(beforeInode)
+    expect(timestampIndex).toBe(5)
+  })
+
+  test("attachment group canonically deduplicates members and timestamps new members once", async () => {
+    const directory = await temporaryDirectory()
+    let timestampCalls = 0
+    const store = createStateStore({
+      directory,
+      now: () => {
+        timestampCalls += 1
+        return new Date("2026-08-10T12:00:00.000Z")
+      },
+    })
+    const mixedCase = parsePullRequestUrl("https://github.com/Owner/Repository/pull/1")
+    if (!mixedCase.ok) throw new Error("test fixture URL is invalid")
+
+    expect(
+      await store.attachGroup("session", async () => ({
+        ok: true,
+        value: [mixedCase.value, pullRequest(1), pullRequest(2), pullRequest(3)],
+      })),
+    ).toEqual({ ok: true, value: "added" })
+
+    const attachments = await store.list("session")
+    expect(attachments.ok && attachments.value.map(({ pullRequest: item }) => item.number)).toEqual([1, 2, 3])
+    expect(attachments.ok && new Set(attachments.value.map(({ attachedAt }) => attachedAt))).toEqual(
+      new Set(["2026-08-10T12:00:00.000Z"]),
+    )
+    expect(timestampCalls).toBe(1)
+  })
+
+  test("attachment group returns resolution failure without locking or writing", async () => {
+    const directory = await temporaryDirectory()
+    const seedStore = createStateStore({ directory })
+    await seedStore.attach("session", pullRequest(1))
+    const [stateFile] = await readdir(directory)
+    const path = join(directory, stateFile!)
+    const beforeContent = await readFile(path, "utf8")
+    const beforeInode = (await stat(path)).ino
+    let lockAttempts = 0
+    const store = createStateStore({
+      directory,
+      lock: async () => {
+        lockAttempts += 1
+        throw new Error("lock must not be acquired")
+      },
+    })
+    const resolutionFailure = { tag: "ResolutionFailure" } as const
+
+    expect(await store.attachGroup("session", async () => ({ ok: false, error: resolutionFailure }))).toEqual({
+      ok: false,
+      error: resolutionFailure,
+    })
+    expect(lockAttempts).toBe(0)
+    expect(await readFile(path, "utf8")).toBe(beforeContent)
+    expect((await stat(path)).ino).toBe(beforeInode)
+  })
+
+  test("attachment group surfaces corrupt state before resolving", async () => {
+    const directory = await temporaryDirectory()
+    const store = createStateStore({ directory })
+    await store.attach("session", pullRequest(1))
+    const [stateFile] = await readdir(directory)
+    const path = join(directory, stateFile!)
+    const content = "not json"
+    await writeFile(path, content)
+    let resolutionCalls = 0
+
+    expect(
+      await store.attachGroup("session", async () => {
+        resolutionCalls += 1
+        return { ok: true, value: [pullRequest(2)] }
+      }),
+    ).toEqual({
+      ok: false,
+      error: {
+        tag: "InvalidStateFile",
+        message: "The session pull request state file is invalid",
+      },
+    })
+    expect(resolutionCalls).toBe(0)
+    expect(await readFile(path, "utf8")).toBe(content)
+  })
+
+  test("attachment group does not write when the unique union exceeds the session limit", async () => {
+    const directory = await temporaryDirectory()
+    const store = createStateStore({ directory })
+    for (let number = 1; number <= 20; number += 1) {
+      await store.attach("session", pullRequest(number))
+    }
+    const [stateFile] = await readdir(directory)
+    const path = join(directory, stateFile!)
+    const beforeContent = await readFile(path, "utf8")
+    const beforeInode = (await stat(path)).ino
+
+    expect(
+      await store.attachGroup("session", async () => ({
+        ok: true,
+        value: [pullRequest(1), pullRequest(21)],
+      })),
+    ).toEqual({
+      ok: false,
+      error: {
+        tag: "AttachmentLimitReached",
+        limit: 20,
+        message: "A session can track at most 20 pull requests",
+      },
+    })
+    expect(await readFile(path, "utf8")).toBe(beforeContent)
+    expect((await stat(path)).ino).toBe(beforeInode)
+  })
+
+  test("attachment group checks capacity after its locked reread", async () => {
+    const directory = await temporaryDirectory()
+    const firstStore = createStateStore({ directory })
+    const secondStore = createStateStore({ directory })
+    for (let number = 1; number <= 19; number += 1) {
+      await firstStore.attach("session", pullRequest(number))
+    }
+    const resolutionStarted = deferred()
+    const continueResolution = deferred()
+    const group = firstStore.attachGroup("session", async () => {
+      resolutionStarted.resolve()
+      await continueResolution.promise
+      return { ok: true, value: [pullRequest(21)] }
+    })
+    await resolutionStarted.promise
+    expect(await secondStore.attach("session", pullRequest(20))).toEqual({ ok: true, value: "added" })
+    continueResolution.resolve()
+
+    expect(await group).toEqual({
+      ok: false,
+      error: {
+        tag: "AttachmentLimitReached",
+        limit: 20,
+        message: "A session can track at most 20 pull requests",
+      },
+    })
+    const attachments = await firstStore.list("session")
+    expect(attachments.ok && attachments.value.map(({ pullRequest: item }) => item.number)).toEqual(
+      Array.from({ length: 20 }, (_, index) => index + 1),
+    )
+  })
+
+  test("attachment group resolution follows same-session FIFO before locking", async () => {
+    const directory = await temporaryDirectory()
+    const firstResolutionStarted = deferred()
+    const continueFirstResolution = deferred()
+    const events: string[] = []
+    const lock: typeof import("proper-lockfile").lock = async () => {
+      events.push("lock")
+      return async () => undefined
+    }
+    const store = createStateStore({ directory, lock })
+
+    const first = store.attachGroup("session", async () => {
+      events.push("resolve-first")
+      firstResolutionStarted.resolve()
+      await continueFirstResolution.promise
+      return { ok: true, value: [pullRequest(1), pullRequest(2)] }
+    })
+    await firstResolutionStarted.promise
+    const second = store.attachGroup("session", async () => {
+      events.push("resolve-second")
+      return { ok: true, value: [pullRequest(3)] }
+    })
+    await Bun.sleep(50)
+
+    expect(events).toEqual(["resolve-first"])
+    continueFirstResolution.resolve()
+    expect(await Promise.all([first, second])).toEqual([
+      { ok: true, value: "added" },
+      { ok: true, value: "added" },
+    ])
+    expect(events).toEqual(["resolve-first", "lock", "resolve-second", "lock"])
+    const attachments = await store.list("session")
+    expect(attachments.ok && attachments.value.map(({ pullRequest: item }) => item.number)).toEqual([1, 2, 3])
+  })
+
+  test("attachment group locks concurrent transactions from separate stores", async () => {
+    const directory = await temporaryDirectory()
+    const firstStore = createStateStore({ directory })
+    const secondStore = createStateStore({ directory })
+    const bothResolved = deferred()
+    let resolutionCount = 0
+    const resolve = (value: NonEmptyPullRequests) => async () => {
+      resolutionCount += 1
+      if (resolutionCount === 2) bothResolved.resolve()
+      await bothResolved.promise
+      return { ok: true, value } as const
+    }
+
+    expect(
+      await Promise.all([
+        firstStore.attachGroup("session", resolve([pullRequest(1), pullRequest(2)])),
+        secondStore.attachGroup("session", resolve([pullRequest(3), pullRequest(4)])),
+      ]),
+    ).toEqual([
+      { ok: true, value: "added" },
+      { ok: true, value: "added" },
+    ])
+    const attachments = await firstStore.list("session")
+    const numbers = attachments.ok ? attachments.value.map(({ pullRequest: item }) => item.number) : []
+    expect([
+      [1, 2, 3, 4],
+      [3, 4, 1, 2],
+    ]).toContainEqual(numbers)
   })
 
   test("isolates sessions and persists canonical attachment identity", async () => {

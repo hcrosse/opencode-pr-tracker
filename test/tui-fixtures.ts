@@ -30,6 +30,17 @@ export function stateStore(items: readonly PullRequestAttachment[] = [attachment
       if (validation !== undefined && !validation.ok) return validation
       return { ok: true, value: "added" }
     },
+    async attachGroup(sessionID, resolve) {
+      const resolution = await resolve()
+      if (!resolution.ok) return resolution
+      let added = false
+      for (const member of resolution.value) {
+        const outcome = await this.attach(sessionID, member)
+        if (!outcome.ok) return outcome
+        if (outcome.value === "added") added = true
+      }
+      return { ok: true, value: added ? "added" : "already_attached" }
+    },
     async detach() {
       return { ok: true, value: "removed" }
     },
@@ -61,6 +72,9 @@ export function githubStatuses(
   ) => available(undefined, value),
 ): GitHubClient {
   return {
+    async getStack(requested) {
+      return { ok: true, value: [requested] }
+    },
     async get(pullRequests) {
       return {
         ok: true,
