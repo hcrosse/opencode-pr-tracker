@@ -113,6 +113,17 @@ export function parsePullRequestUrl(input: string): Result<PullRequestUrl, Inval
   return { ok: true, value: value as PullRequestUrl }
 }
 
+export function samePullRequest(left: PullRequestUrl, right: PullRequestUrl): boolean {
+  return left.number === right.number && sameRepository(left, right)
+}
+
+export function sameRepository(left: PullRequestUrl, right: PullRequestUrl): boolean {
+  return (
+    left.owner.toLowerCase() === right.owner.toLowerCase() &&
+    left.repository.toLowerCase() === right.repository.toLowerCase()
+  )
+}
+
 export function formatPullRequestRef(pullRequest: PullRequestUrl): string {
   return `${pullRequest.owner}/${pullRequest.repository}#${pullRequest.number}`
 }
