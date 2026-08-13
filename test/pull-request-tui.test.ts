@@ -527,6 +527,7 @@ describe("pull request TUI", () => {
     let attachCalls = 0
     let detachCalls = 0
     const store: StateStore = {
+      ...stateStore(),
       async list() {
         return { ok: true, value: [attachment] }
       },

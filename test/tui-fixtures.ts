@@ -30,6 +30,11 @@ export function stateStore(items: readonly PullRequestAttachment[] = [attachment
       if (validation !== undefined && !validation.ok) return validation
       return { ok: true, value: "added" }
     },
+    async attachGroup(_sessionID, resolve) {
+      const resolution = await resolve()
+      if (!resolution.ok) return resolution
+      return { ok: true, value: "added" }
+    },
     async detach() {
       return { ok: true, value: "removed" }
     },
