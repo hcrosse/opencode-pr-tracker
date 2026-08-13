@@ -1,105 +1,44 @@
-import { execFile } from "node:child_process"
-
 import { casesHandled } from "./exhaustive.js"
-import { parsePullRequestUrl, type NonEmptyPullRequests, type PullRequestUrl, type Result } from "./url.js"
+import {
+  type AvailablePullRequestStatus,
+  type GitHubBatchLimitExceeded,
+  type GitHubCancelled,
+  type GitHubClient,
+  type InvalidGitHubResponse,
+  type PullRequestBlocker,
+  type PullRequestCi,
+  type PullRequestDiagnostic,
+  type PullRequestItemFailure,
+  type PullRequestMergeability,
+  type PullRequestNotFound,
+  type PullRequestState,
+  type PullRequestStatus,
+} from "./github-types.js"
+import { execFileRunner, runAndDecode, type ProcessRunner } from "./github-transport.js"
+import { parsePullRequestUrl, type PullRequestUrl, type Result } from "./url.js"
 
-export type PullRequestCi = "passed" | "pending" | "failed" | "none"
-export type PullRequestMergeability = "mergeable" | "conflicting" | "unknown"
-export type PullRequestBlocker = "behind" | "none"
-
-export type PullRequestState =
-  | Readonly<{
-      tag: "Open"
-      ci: PullRequestCi
-      mergeability: PullRequestMergeability
-      blocker: PullRequestBlocker
-    }>
-  | Readonly<{ tag: "Merged" }>
-  | Readonly<{ tag: "Closed" }>
-
-export type AvailablePullRequestStatus = Readonly<{
-  tag: "Available"
-  pullRequest: PullRequestUrl
-  title: string
-  state: PullRequestState
-}> &
-  (Readonly<{ stale: false }> | Readonly<{ stale: true; diagnostic: PullRequestDiagnostic }>)
-
-export type PullRequestStatus =
-  | AvailablePullRequestStatus
-  | Readonly<{ tag: "Unavailable"; diagnostic?: PullRequestDiagnostic }>
-
-export type GitHubUnavailable = Readonly<{
-  tag: "GitHubUnavailable"
-  message: "GitHub status unavailable"
-  cause: unknown
-}>
-
-export type GitHubCliMissing = Readonly<{
-  tag: "GitHubCliMissing"
-  message: "GitHub CLI is not installed"
-  cause: unknown
-}>
-
-export type GitHubAuthenticationRequired = Readonly<{
-  tag: "GitHubAuthenticationRequired"
-  message: "GitHub CLI authentication required"
-  cause: unknown
-}>
-
-export type GitHubCancelled = Readonly<{
-  tag: "GitHubCancelled"
-  message: "GitHub status request cancelled"
-  cause: unknown
-}>
-
-export type PullRequestNotFound = Readonly<{
-  tag: "PullRequestNotFound"
-  message: "Pull request does not exist or is not accessible"
-}>
-
-export type InvalidGitHubResponse = Readonly<{
-  tag: "InvalidGitHubResponse"
-  message: "GitHub returned an invalid pull request response"
-}>
-
-export type GitHubBatchLimitExceeded = Readonly<{
-  tag: "GitHubBatchLimitExceeded"
-  limit: 20
-  message: "GitHub batch cannot contain more than 20 pull requests"
-}>
-
-export type GitHubFailure =
-  | GitHubCliMissing
-  | GitHubAuthenticationRequired
-  | GitHubUnavailable
-  | GitHubCancelled
-  | PullRequestNotFound
-  | InvalidGitHubResponse
-  | GitHubBatchLimitExceeded
-
-export type PullRequestItemFailure = Exclude<GitHubFailure, GitHubCancelled | GitHubBatchLimitExceeded>
-
-export type GitHubBatch = readonly Result<AvailablePullRequestStatus, PullRequestItemFailure>[]
-
-export type PullRequestDiagnostic = Exclude<GitHubFailure, GitHubCancelled | GitHubBatchLimitExceeded>["tag"]
-
-export type ProcessRunner = (
-  file: string,
-  args: readonly string[],
-  options: Readonly<{ signal?: AbortSignal; cwd?: string }>,
-) => Promise<Readonly<{ stdout: string }>>
-
-export type GitHubClient = Readonly<{
-  get(
-    pullRequests: readonly PullRequestUrl[],
-    options?: Readonly<{ signal?: AbortSignal }>,
-  ): Promise<Result<GitHubBatch, GitHubFailure>>
-  getStack(
-    pullRequest: PullRequestUrl,
-    options?: Readonly<{ signal?: AbortSignal }>,
-  ): Promise<Result<NonEmptyPullRequests, GitHubFailure>>
-}>
+export type {
+  AvailablePullRequestStatus,
+  GitHubAuthenticationRequired,
+  GitHubBatch,
+  GitHubBatchLimitExceeded,
+  GitHubCancelled,
+  GitHubCliMissing,
+  GitHubClient,
+  GitHubFailure,
+  GitHubUnavailable,
+  InvalidGitHubResponse,
+  PullRequestBlocker,
+  PullRequestCi,
+  PullRequestDiagnostic,
+  PullRequestItemFailure,
+  PullRequestMergeability,
+  PullRequestNotFound,
+  PullRequestState,
+  PullRequestStatus,
+} from "./github-types.js"
+export { execFileRunner } from "./github-transport.js"
+export type { ProcessRunner } from "./github-transport.js"
 
 const invalidGitHubResponse: Result<never, InvalidGitHubResponse> = {
   ok: false,
@@ -194,35 +133,6 @@ type ParsedCheckContextPage = Readonly<{
   totalCount: number
   nextCursor?: string
 }>
-
-type ProcessExecutionFailed = Readonly<{
-  tag: "ProcessExecutionFailed"
-  code: string | number | null
-  stderr: string
-  stdout: string
-  cause: unknown
-}>
-
-function parseProcessExecutionFailed(value: unknown): ProcessExecutionFailed | undefined {
-  if (
-    !isRecord(value) ||
-    value.tag !== "ProcessExecutionFailed" ||
-    (value.code !== null && typeof value.code !== "string" && typeof value.code !== "number") ||
-    typeof value.stderr !== "string" ||
-    typeof value.stdout !== "string" ||
-    !("cause" in value)
-  ) {
-    return undefined
-  }
-
-  return {
-    tag: "ProcessExecutionFailed",
-    code: value.code,
-    stderr: value.stderr,
-    stdout: value.stdout,
-    cause: value.cause,
-  }
-}
 
 function parseNonBlankString(input: unknown): string | undefined {
   return typeof input === "string" && input.trim() !== "" ? input : undefined
@@ -977,75 +887,6 @@ function parseContinuationResponse(
   return parseCheckContexts(resource.statusCheckRollup.contexts)
 }
 
-function isCancellation(cause: unknown, signal: AbortSignal | undefined): boolean {
-  if (signal?.aborted) return true
-  const originalCause = parseProcessExecutionFailed(cause)?.cause ?? cause
-  return originalCause instanceof Error && originalCause.name === "AbortError"
-}
-
-const authenticationFailureMarkers = ["http 401", "bad credentials", "not logged into", "gh auth login"] as const
-
-function isAuthenticationFailure(failure: ProcessExecutionFailed): boolean {
-  if (failure.code === 4) return true
-  const stderr = failure.stderr.toLowerCase()
-  return authenticationFailureMarkers.some((marker) => stderr.includes(marker))
-}
-
-function classifyProcessFailure(cause: unknown): GitHubCliMissing | GitHubAuthenticationRequired | GitHubUnavailable {
-  const failure = parseProcessExecutionFailed(cause)
-  if (failure?.code === "ENOENT") {
-    return { tag: "GitHubCliMissing", message: "GitHub CLI is not installed", cause }
-  }
-  if (failure && isAuthenticationFailure(failure)) {
-    return { tag: "GitHubAuthenticationRequired", message: "GitHub CLI authentication required", cause }
-  }
-  return { tag: "GitHubUnavailable", message: "GitHub status unavailable", cause }
-}
-
-function processFailureStdout(cause: unknown): string | undefined {
-  if (!isRecord(cause) || typeof cause.stdout !== "string" || cause.stdout.trim() === "") return undefined
-  return cause.stdout
-}
-
-type ProcessFailure = GitHubCliMissing | GitHubAuthenticationRequired | GitHubUnavailable
-type DecodedProcessOutput = Readonly<{ decoded: unknown; processFailure?: ProcessFailure }>
-
-async function runAndDecode(
-  runner: ProcessRunner,
-  args: readonly string[],
-  options: Readonly<{ signal?: AbortSignal }>,
-): Promise<Result<DecodedProcessOutput, ProcessFailure | GitHubCancelled | InvalidGitHubResponse>> {
-  let stdout: string
-  let processFailure: ProcessFailure | undefined
-  try {
-    const output = await runner("gh", args, options)
-    stdout = output.stdout
-  } catch (cause) {
-    if (isCancellation(cause, options.signal)) {
-      return {
-        ok: false,
-        error: {
-          tag: "GitHubCancelled",
-          message: "GitHub status request cancelled",
-          cause,
-        },
-      }
-    }
-    processFailure = classifyProcessFailure(cause)
-    const partialStdout = processFailureStdout(cause)
-    if (partialStdout === undefined) return { ok: false, error: processFailure }
-    stdout = partialStdout
-  }
-
-  let decoded: unknown
-  try {
-    decoded = JSON.parse(stdout)
-  } catch {
-    return processFailure === undefined ? invalidGitHubResponse : { ok: false, error: processFailure }
-  }
-  return { ok: true, value: { decoded, ...(processFailure === undefined ? {} : { processFailure }) } }
-}
-
 type ContinuationOutcome =
   | Readonly<{ tag: "Item"; result: Result<AvailablePullRequestStatus, PullRequestItemFailure> }>
   | Readonly<{ tag: "Cancelled"; error: GitHubCancelled }>
@@ -1112,32 +953,6 @@ async function continuePullRequest(
   const status = finalizeResponse(initial.metadata, initial.pullRequest, classifyContexts(contexts))
   return { tag: "Item", result: status }
 }
-
-export const execFileRunner: ProcessRunner = (file, args, options) =>
-  new Promise((resolve, reject) => {
-    execFile(
-      file,
-      [...args],
-      {
-        encoding: "utf8",
-        ...(options.signal ? { signal: options.signal } : {}),
-        ...(options.cwd ? { cwd: options.cwd } : {}),
-      },
-      (error, stdout, stderr) => {
-        if (error) {
-          reject({
-            tag: "ProcessExecutionFailed",
-            code: error.code ?? null,
-            stderr,
-            stdout,
-            cause: error,
-          } satisfies ProcessExecutionFailed)
-          return
-        }
-        resolve({ stdout })
-      },
-    )
-  })
 
 export function createGitHubClient(runner: ProcessRunner = execFileRunner): GitHubClient {
   return {
