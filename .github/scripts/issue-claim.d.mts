@@ -12,6 +12,7 @@ export type IssueClaimAssignmentEvent = {
   id: number
   created_at: string
   assignee: { login: string } | null
+  actor: { login: string } | null
 }
 
 export type IssueClaimTimelineEvent =

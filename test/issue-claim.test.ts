@@ -17,6 +17,7 @@ type AssignmentEvent = {
   id: number
   created_at: string
   assignee: { login: string }
+  actor: { login: string }
 }
 
 type TimelineEvent = CommentEvent | AssignmentEvent
@@ -36,13 +37,18 @@ function comment(id: number, body: string, login: string, edited = false): Comme
   }
 }
 
-function assignment(id: number, event: "assigned" | "unassigned", login: string): AssignmentEvent {
+function assignment(id: number, event: "assigned" | "unassigned", login: string, actor = "hcrosse"): AssignmentEvent {
   return {
     event,
     id,
     created_at: timestamp(id),
     assignee: { login },
+    actor: { login: actor },
   }
+}
+
+function authorization(id: number, commentId: number): CommentEvent {
+  return comment(id, `<!-- issue-claim:authorized:${commentId} -->`, "github-actions[bot]")
 }
 
 function resolve(events: TimelineEvent[]): Promise<string[]> {
@@ -155,17 +161,15 @@ describe("resolveIssueClaim", () => {
 
 describe("authorizeIssueCommand", () => {
   test("rejects a claimant GitHub cannot assign", async () => {
-    let reacted = false
+    let marked = false
     const github = {
       rest: {
         issues: {
           checkUserCanBeAssigned: async () => {
             throw { status: 404 }
           },
-        },
-        reactions: {
-          createForIssueComment: async () => {
-            reacted = true
+          createComment: async () => {
+            marked = true
           },
         },
         repos: {},
@@ -180,19 +184,17 @@ describe("authorizeIssueCommand", () => {
     }
 
     expect(await authorizeIssueCommand({ github, context })).toBeFalse()
-    expect(reacted).toBeFalse()
+    expect(marked).toBeFalse()
   })
 
   test("marks an eligible claim as authorized", async () => {
-    const reactions: string[] = []
+    const markers: string[] = []
     const github = {
       rest: {
         issues: {
           checkUserCanBeAssigned: async () => ({ status: 204 }),
-        },
-        reactions: {
-          createForIssueComment: async ({ content }: { content: string }) => {
-            reactions.push(content)
+          createComment: async ({ body }: { body: string }) => {
+            markers.push(body)
           },
         },
         repos: {},
@@ -207,18 +209,17 @@ describe("authorizeIssueCommand", () => {
     }
 
     expect(await authorizeIssueCommand({ github, context })).toBeTrue()
-    expect(reactions).toEqual(["eyes"])
+    expect(markers).toEqual(["<!-- issue-claim:authorized:1 -->"])
   })
 
   test("authorizes clear only with write permission", async () => {
-    const reactions: string[] = []
+    const markers: string[] = []
     let permission = "read"
     const github = {
       rest: {
-        issues: {},
-        reactions: {
-          createForIssueComment: async ({ content }: { content: string }) => {
-            reactions.push(content)
+        issues: {
+          createComment: async ({ body }: { body: string }) => {
+            markers.push(body)
           },
         },
         repos: {
@@ -237,23 +238,29 @@ describe("authorizeIssueCommand", () => {
     expect(await authorizeIssueCommand({ github, context })).toBeFalse()
     permission = "write"
     expect(await authorizeIssueCommand({ github, context })).toBeTrue()
-    expect(reactions).toEqual(["eyes"])
+    expect(markers).toEqual(["<!-- issue-claim:authorized:1 -->"])
   })
 })
 
 describe("reconcileIssueClaim", () => {
   test("paginates timeline events and updates assignment only when it changes", async () => {
-    const events = [comment(1, "CLAIM", "alice"), comment(2, "UNCLAIM", "alice"), comment(3, "CLAIM", "bob")]
+    const events = [
+      comment(1, "CLAIM", "alice"),
+      authorization(11, 1),
+      comment(2, "UNCLAIM", "alice"),
+      authorization(12, 2),
+      comment(3, "CLAIM", "bob"),
+      authorization(13, 3),
+    ]
     const state = { assignees: [] as string[] }
     const additions: string[][] = []
     const removals: string[][] = []
     const paginated: unknown[] = []
     const timelineEndpoint = Symbol("listEventsForTimeline")
-    const reactionsEndpoint = Symbol("listForIssueComment")
     const github = {
       paginate: async (endpoint: unknown, options: unknown) => {
         paginated.push(endpoint, options)
-        return endpoint === timelineEndpoint ? events : [{ content: "eyes", user: { login: "github-actions[bot]" } }]
+        return events
       },
       rest: {
         issues: {
@@ -267,9 +274,6 @@ describe("reconcileIssueClaim", () => {
             state.assignees = state.assignees.filter((login) => !assignees.includes(login))
             removals.push([...assignees])
           },
-        },
-        reactions: {
-          listForIssueComment: reactionsEndpoint,
         },
       },
     }
@@ -285,19 +289,17 @@ describe("reconcileIssueClaim", () => {
     await reconcileIssueClaim({ github, context })
     await reconcileIssueClaim({ github, context })
 
-    expect(paginated).toHaveLength(16)
+    expect(paginated).toHaveLength(4)
     expect(additions).toEqual([["bob"]])
     expect(removals).toEqual([])
   })
 
   test("replays an authorized clear", async () => {
     const removals: string[][] = []
-    const events = [assignment(1, "assigned", "alice"), comment(2, "CLEAR", "maintainer")]
+    const events = [assignment(1, "assigned", "alice"), comment(2, "CLEAR", "maintainer"), authorization(12, 2)]
     const timelineEndpoint = Symbol("listEventsForTimeline")
-    const reactionsEndpoint = Symbol("listForIssueComment")
     const github = {
-      paginate: async (endpoint: unknown) =>
-        endpoint === timelineEndpoint ? events : [{ content: "eyes", user: { login: "github-actions[bot]" } }],
+      paginate: async () => events,
       rest: {
         issues: {
           listEventsForTimeline: timelineEndpoint,
@@ -306,9 +308,6 @@ describe("reconcileIssueClaim", () => {
           removeAssignees: async ({ assignees }: { assignees: string[] }) => {
             removals.push([...assignees])
           },
-        },
-        reactions: {
-          listForIssueComment: reactionsEndpoint,
         },
       },
     }
@@ -324,6 +323,76 @@ describe("reconcileIssueClaim", () => {
     await reconcileIssueClaim({ github, context })
 
     expect(removals).toEqual([["alice"]])
+  })
+
+  test("ignores a delayed workflow assignment after unclaim", async () => {
+    const removals: string[][] = []
+    const events = [
+      comment(1, "CLAIM", "alice"),
+      authorization(11, 1),
+      comment(2, "UNCLAIM", "alice"),
+      authorization(12, 2),
+      assignment(3, "assigned", "alice", "github-actions[bot]"),
+    ]
+    const github = {
+      paginate: async () => events,
+      rest: {
+        issues: {
+          listEventsForTimeline: Symbol("listEventsForTimeline"),
+          get: async () => ({ data: { assignees: [{ login: "alice" }] } }),
+          addAssignees: async () => undefined,
+          removeAssignees: async ({ assignees }: { assignees: string[] }) => {
+            removals.push([...assignees])
+          },
+        },
+      },
+    }
+    const context = {
+      repo: { owner: "hcrosse", repo: "opencode-pr-tracker" },
+      issue: { number: 99 },
+      payload: { comment: { id: 2, body: "UNCLAIM" }, issue: { number: 99 } },
+    }
+
+    await reconcileIssueClaim({ github, context })
+
+    expect(removals).toEqual([["alice"]])
+  })
+
+  test("ignores a delayed workflow assignment for a losing claimant", async () => {
+    const additions: string[][] = []
+    const removals: string[][] = []
+    const events = [
+      comment(1, "CLAIM", "alice"),
+      authorization(11, 1),
+      comment(2, "CLAIM", "bob"),
+      authorization(12, 2),
+      assignment(3, "assigned", "bob", "github-actions[bot]"),
+    ]
+    const github = {
+      paginate: async () => events,
+      rest: {
+        issues: {
+          listEventsForTimeline: Symbol("listEventsForTimeline"),
+          get: async () => ({ data: { assignees: [{ login: "bob" }] } }),
+          addAssignees: async ({ assignees }: { assignees: string[] }) => {
+            additions.push([...assignees])
+          },
+          removeAssignees: async ({ assignees }: { assignees: string[] }) => {
+            removals.push([...assignees])
+          },
+        },
+      },
+    }
+    const context = {
+      repo: { owner: "hcrosse", repo: "opencode-pr-tracker" },
+      issue: { number: 99 },
+      payload: { comment: { id: 2, body: "CLAIM" }, issue: { number: 99 } },
+    }
+
+    await reconcileIssueClaim({ github, context })
+
+    expect(additions).toEqual([["alice"]])
+    expect(removals).toEqual([["bob"]])
   })
 
   test("ignores commands on pull request conversations", async () => {

@@ -3,12 +3,12 @@ const UNCLAIM = "UNCLAIM"
 const CLEAR = "CLEAR"
 const COMMANDS = new Set([CLAIM, UNCLAIM, CLEAR])
 const CLEAR_PERMISSIONS = new Set(["write", "maintain", "admin"])
-const AUTHORIZATION_REACTION = "eyes"
 const ACTIONS_BOT = "github-actions[bot]"
+const AUTHORIZATION_PATTERN = /^<!-- issue-claim:authorized:(\d+) -->$/
 
 /**
  * @typedef {{ event: "commented", id: number, body: string, created_at: string, updated_at: string, user: { login: string } | null }} CommentEvent
- * @typedef {{ event: "assigned" | "unassigned", id: number, created_at: string, assignee: { login: string } | null }} AssignmentEvent
+ * @typedef {{ event: "assigned" | "unassigned", id: number, created_at: string, assignee: { login: string } | null, actor: { login: string } | null }} AssignmentEvent
  * @typedef {CommentEvent | AssignmentEvent | { event: string, id: number, created_at: string }} TimelineEvent
  */
 
@@ -113,30 +113,13 @@ export async function authorizeIssueCommand({ github, context }) {
   }
   if (!allowed) return false
 
-  await github.rest.reactions.createForIssueComment({
+  await github.rest.issues.createComment({
     owner,
     repo,
-    comment_id: comment.id,
-    content: AUTHORIZATION_REACTION,
+    issue_number: issue.number,
+    body: `<!-- issue-claim:authorized:${comment.id} -->`,
   })
   return true
-}
-
-/**
- * @param {any} github
- * @param {{ owner: string, repo: string }} repo
- * @param {number} commentId
- * @returns {Promise<boolean>}
- */
-async function isAuthorizedCommand(github, repo, commentId) {
-  const reactions = await github.paginate(github.rest.reactions.listForIssueComment, {
-    ...repo,
-    comment_id: commentId,
-    per_page: 100,
-  })
-  return reactions.some(
-    (reaction) => reaction.content === AUTHORIZATION_REACTION && reaction.user?.login === ACTIONS_BOT,
-  )
 }
 
 /**
@@ -159,17 +142,22 @@ export async function reconcileIssueClaim({ github, context }) {
   const current = issueResponse.data.assignees
     .map((assignee) => assignee.login)
     .filter((login) => typeof login === "string")
+  const authorizedComments = new Set()
+  for (const event of events) {
+    if (event.event !== "commented" || event.user?.login !== ACTIONS_BOT) continue
+
+    const match = AUTHORIZATION_PATTERN.exec(event.body)
+    if (match) authorizedComments.add(Number(match[1]))
+  }
   const authorizedEvents = []
   for (const event of events) {
     if (event.event !== "commented") {
-      authorizedEvents.push(event)
+      if ((event.event !== "assigned" && event.event !== "unassigned") || event.actor?.login !== ACTIONS_BOT) {
+        authorizedEvents.push(event)
+      }
       continue
     }
-    if (
-      event.updated_at === event.created_at &&
-      COMMANDS.has(event.body) &&
-      (await isAuthorizedCommand(github, { owner, repo }, event.id))
-    ) {
+    if (event.updated_at === event.created_at && COMMANDS.has(event.body) && authorizedComments.has(event.id)) {
       authorizedEvents.push(event)
     }
   }
