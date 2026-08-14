@@ -1,0 +1,64 @@
+name: Issue claim commands
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  authorize:
+    name: Authorize issue command
+    if: >-
+      !github.event.issue.pull_request &&
+      (github.event.comment.body == 'CLAIM' ||
+      github.event.comment.body == 'UNCLAIM' ||
+      github.event.comment.body == 'CLEAR')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      authorized: ${{ steps.authorize.outputs.result }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Authorize command
+        id: authorize
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          result-encoding: string
+          script: |
+            const modulePath = `${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-claim.mjs`
+            const { authorizeIssueCommand } = await import(modulePath)
+            return await authorizeIssueCommand({ github, context })
+
+  reconcile:
+    name: Reconcile issue claim
+    needs: authorize
+    if: needs.authorize.outputs.authorized == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: issue-claim-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Reconcile claim and assignment
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const modulePath = `${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-claim.mjs`
+            const { reconcileIssueClaim } = await import(modulePath)
+            await reconcileIssueClaim({ github, context })
