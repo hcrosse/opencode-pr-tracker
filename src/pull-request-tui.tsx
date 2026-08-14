@@ -533,9 +533,10 @@ export function PullRequestSidebar(
                     }}
                   >
                     <text fg={toneColor(props.api.theme.current, appearance.tone)} attributes={attributes}>
-                      <b>{formatPullRequestRef(item.attachment.pullRequest)}</b> {appearance.label}
+                      <b>• {formatPullRequestRef(item.attachment.pullRequest)}</b> {appearance.label}
                     </text>
                     <text fg={props.api.theme.current.textMuted} attributes={attributes}>
+                      {"  "}
                       {title}
                     </text>
                   </box>

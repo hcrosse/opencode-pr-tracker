@@ -155,11 +155,18 @@ describe("pull request TUI", () => {
       )
       const rows = frame.split("\n")
       const firstEntryRow = rows.findIndex((row) => row.includes("owner/repository#42"))
+      const firstReference = rows[firstEntryRow]!
+      const firstTitle = rows[firstEntryRow + 1]!
+      const secondReference = rows[firstEntryRow + 2]!
+      const secondTitle = rows[firstEntryRow + 3]!
+      const firstBulletColumn = firstReference.indexOf("•")
+      const secondBulletColumn = secondReference.indexOf("•")
 
       expect(firstEntryRow).toBeGreaterThanOrEqual(0)
-      expect(rows[firstEntryRow + 1]?.trim()).toBe("Track pull requests")
-      expect(rows[firstEntryRow + 2]).toContain("another/project#7")
-      expect(rows[firstEntryRow + 3]?.trim()).toBe("Track pull requests")
+      expect(firstReference.slice(firstBulletColumn)).toStartWith("• owner/repository#42")
+      expect(firstTitle.indexOf("Track pull requests")).toBe(firstBulletColumn + 2)
+      expect(secondReference.slice(secondBulletColumn)).toStartWith("• another/project#7")
+      expect(secondTitle.indexOf("Track pull requests")).toBe(secondBulletColumn + 2)
     } finally {
       await sidebar.cleanup()
     }
