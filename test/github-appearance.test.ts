@@ -88,7 +88,9 @@ describe("GitHub client", () => {
     { contexts: failedChecks, tone: "red", label: "checks failed" },
   ])("renders draft pull request CI as $label", async ({ contexts, tone, label }) => {
     const client = createGitHubClient(
-      runnerFor(batchResponse(response({ isDraft: true, statusCheckRollup: rollup(contexts) }))),
+      runnerFor(
+        batchResponse(response({ isDraft: true, mergeStateStatus: "BLOCKED", statusCheckRollup: rollup(contexts) })),
+      ),
     )
 
     expect(statusAppearance(await getOne(client))).toEqual({ tone, label, strikethrough: false })
