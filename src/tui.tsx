@@ -62,6 +62,7 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies, re
             dependencies={dependencies}
             refreshBus={refreshBus}
             updates={updates}
+            layout="default"
           />
         )
       },

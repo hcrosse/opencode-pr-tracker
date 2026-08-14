@@ -10,6 +10,7 @@ import {
   createPullRequestCommands,
   createRefreshBus,
   PullRequestSidebar,
+  type PullRequestSidebarLayout,
   type PullRequestTuiDependencies,
   type RefreshBus,
 } from "../src/pull-request-tui.js"
@@ -35,7 +36,11 @@ function registerPullRequestCommands(
 
 async function renderSidebar(
   items: readonly PullRequestAttachment[],
-  options: Readonly<{ followingText?: string; width?: number }> = {},
+  options: Readonly<{
+    followingText?: string
+    layout?: PullRequestSidebarLayout
+    width?: number
+  }> = {},
 ) {
   let githubCalls = 0
   const color = RGBA.fromHex("#ffffff")
@@ -81,6 +86,7 @@ async function renderSidebar(
             dependencies,
             refreshBus,
             updates: { current: () => undefined, subscribe: () => () => undefined },
+            layout: options.layout ?? "default",
           }),
           options.followingText ? jsx("text", { children: options.followingText }) : null,
         ],
@@ -167,6 +173,23 @@ describe("pull request TUI", () => {
       expect(firstTitle.indexOf("Track pull requests")).toBe(firstBulletColumn + 2)
       expect(secondReference.slice(secondBulletColumn)).toStartWith("• another/project#7")
       expect(secondTitle.indexOf("Track pull requests")).toBe(secondBulletColumn + 2)
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("renders compact pull request entries on consecutive rows without titles", async () => {
+    const sidebar = await renderSidebar([attachment, secondAttachment], { layout: "compact" })
+    try {
+      const frame = await sidebar.view.waitForFrame(
+        (value) => value.includes("owner/repository#42") && value.includes("another/project#7"),
+      )
+      const rows = frame.split("\n")
+      const firstEntryRow = rows.findIndex((row) => row.includes("owner/repository#42"))
+      const secondEntryRow = rows.findIndex((row) => row.includes("another/project#7"))
+
+      expect(frame).not.toContain("Track pull requests")
+      expect(secondEntryRow).toBe(firstEntryRow + 1)
     } finally {
       await sidebar.cleanup()
     }
