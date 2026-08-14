@@ -6,7 +6,7 @@ mergeability, and CI status in the TUI sidebar.
 
 ## Requirements
 
-- OpenCode `>=1.18.15 <2`
+- [OpenCode](https://opencode.ai/) `>=1.18.15 <2`
 - [GitHub CLI](https://cli.github.com/) installed and authenticated (`gh auth status`)
 - macOS or Linux to open pull requests by clicking their sidebar rows
 
