@@ -50,7 +50,18 @@ async function setup(github: GitHubClient = availableGitHub()) {
   const directory = await mkdtemp(join(tmpdir(), "opencode-pr-tracker-server-"))
   directories.push(directory)
   const store = createStateStore({ directory, now: () => new Date("2026-08-10T12:00:00.000Z") })
-  const hooks = createServerHooks(store, github)
+  const hooks = createServerHooks(store, github, {
+    createPreviewID: () => "preview-1",
+    async readDiagnostics() {
+      return {
+        pluginVersion: "0.3.0",
+        opencodeVersion: "1.18.15",
+        operatingSystem: "darwin/arm64",
+      }
+    },
+    platform: "darwin",
+    runner: async () => ({ stdout: "" }),
+  })
   return { directory, hooks, store, tools: hooks.tool! }
 }
 
