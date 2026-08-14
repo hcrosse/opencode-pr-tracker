@@ -18,7 +18,6 @@ const diagnostics: FeedbackDiagnostics = {
   pluginVersion: " 0.3.0 ",
   opencodeVersion: " 1.18.15 ",
   operatingSystem: " macOS 15.6 ",
-  installationSource: " npm ",
 }
 
 const boundedFeedbackText = generators.text({
@@ -97,10 +96,41 @@ describe("createFeedbackDraft", () => {
         "## Expected Behavior",
         "",
         "The current status appears.",
+        "",
+        "## Environment",
+        "",
+        "- OpenCode version: not provided",
+        "- Plugin version or commit: not provided",
+        "- Operating system: not provided",
       ].join("\n"),
       label: "bug",
       template: "bug_report.md",
     })
+  })
+
+  test("formats bug diagnostics and relevant output using the bug template", () => {
+    const input: FeedbackInput = {
+      kind: "bug",
+      title: "Sidebar status is stale",
+      problem: "The sidebar does not update.",
+      reproduction: "Attach a pull request.",
+      expectedBehavior: "The current status appears.",
+      relevantOutput: "Timeout while refreshing status.",
+    }
+
+    expect(expectDraft(createFeedbackDraft(input, diagnostics)).body).toContain(
+      [
+        "## Environment",
+        "",
+        "- OpenCode version: 1.18.15",
+        "- Plugin version or commit: 0.3.0",
+        "- Operating system: macOS 15.6",
+        "",
+        "## Relevant Output",
+        "",
+        "Timeout while refreshing status.",
+      ].join("\n"),
+    )
   })
 
   test("formats a feature request with constraints", () => {
@@ -221,7 +251,6 @@ describe("createFeedbackDraft", () => {
         "- Plugin version: 0.3.0",
         "- OpenCode version: 1.18.15",
         "- Operating system: macOS 15.6",
-        "- Installation source: npm",
       ].join("\n"),
     })
   })
@@ -230,7 +259,6 @@ describe("createFeedbackDraft", () => {
     { diagnostics: { ...diagnostics, pluginVersion: " " }, field: "pluginVersion" },
     { diagnostics: { ...diagnostics, opencodeVersion: "\n" }, field: "opencodeVersion" },
     { diagnostics: { ...diagnostics, operatingSystem: "\t" }, field: "operatingSystem" },
-    { diagnostics: { ...diagnostics, installationSource: " " }, field: "installationSource" },
   ])("rejects a blank diagnostic $field field", ({ diagnostics: invalidDiagnostics, field }) => {
     const input: FeedbackInput = {
       kind: "other",
@@ -397,6 +425,20 @@ describe("openFeedbackDraft", () => {
     })
   })
 
+  test("preserves browser cancellation without a retry message", async () => {
+    const controller = new AbortController()
+    const cancelled = new DOMException("cancelled", "AbortError")
+    const runner: ProcessRunner = (_file, _args, options) =>
+      new Promise((_resolve, reject) => {
+        options.signal?.addEventListener("abort", () => reject(cancelled), { once: true })
+      })
+
+    const opening = openFeedbackDraft(draft, { platform: "darwin", runner, signal: controller.signal })
+    controller.abort()
+
+    expect(await opening).toEqual({ ok: false, error: { tag: "OpenFeedbackCancelled" } })
+  })
+
   test("rejects a generated browser URL longer than 8000 characters before opening it", async () => {
     const calls: string[] = []
     const runner: ProcessRunner = async (file) => {
@@ -430,7 +472,7 @@ describe("submitFeedbackDraft", () => {
     template: "bug_report.md",
   }
 
-  test("submits a labeled draft without explicit label arguments and returns its trimmed URL", async () => {
+  test("submits a labeled draft with its label and returns its trimmed URL", async () => {
     const calls: Array<{
       file: string
       args: readonly string[]
@@ -458,6 +500,8 @@ describe("submitFeedbackDraft", () => {
           draft.title,
           "--body",
           draft.body,
+          "--label",
+          "bug",
         ],
         options: { signal },
       },
@@ -552,6 +596,21 @@ describe("submitFeedbackDraft", () => {
 
   test("rejects blank gh output", async () => {
     expect(await submitFeedbackDraft(draft, { runner: blankOutputRunner })).toEqual({
+      ok: false,
+      error: {
+        tag: "InvalidGitHubResponse",
+        message: "GitHub CLI did not return the created issue URL",
+      },
+    })
+  })
+
+  test.each([
+    "created",
+    "https://example.com/issues/1",
+    "https://github.com:444/hcrosse/opencode-pr-tracker/issues/1",
+    "https://github.com/hcrosse/opencode-pr-tracker/issues/1\nwarning",
+  ])("rejects invalid gh output %j", async (stdout) => {
+    expect(await submitFeedbackDraft(draft, { runner: async () => ({ stdout }) })).toEqual({
       ok: false,
       error: {
         tag: "InvalidGitHubResponse",

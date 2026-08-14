@@ -50,9 +50,18 @@ scope. The plugin never installs updates automatically.
 - `/pr-open` lets you select and open an attached pull request on macOS or Linux.
 - `/pr-detach` lets you select and remove one attached pull request. Stack members are detached individually; detaching one member does not detach the rest of its stack.
 - `/pr-sync` immediately refreshes attached pull request status.
-- `/pr-tracker-feedback` collects bug reports, feature requests, or other feedback and previews optional diagnostics. It opens a prefilled browser issue by default, with confirmed `gh` submission as an alternative. Diagnostics never automatically include session content, local paths, repository names, or pull request URLs.
 - `/pr-tracker-plugin-update` checks for a compatible plugin release and shows the update command.
-- Agents can use the `pr_list`, `pr_attach`, and `pr_detach` tools when the server plugin is enabled.
+- Agents can use the `pr_list`, `pr_attach`, `pr_detach`, and `pr_feedback` tools when the server plugin is enabled.
+
+The `pr_feedback` tool first returns an exact preview following the repository's
+[bug](.github/ISSUE_TEMPLATE/bug_report.md) or
+[feature](.github/ISSUE_TEMPLATE/feature_request.md) template. The agent must
+show that preview with OpenCode's native question tool before opening the
+prefilled browser issue or submitting it with GitHub CLI. Optional diagnostics
+contain only plugin version, OpenCode version, and operating system. The tool
+never automatically reads session content, attachments, local paths,
+repository names, or pull request URLs. After approved delivery, the agent
+returns the resulting URL in chat.
 
 The `pr_detach` tool also accepts a positive pull request number when exactly
 one session attachment has that number. Use a pull request URL when repositories

@@ -5,7 +5,8 @@ import { join } from "node:path"
 
 import { tool, type Hooks, type ToolContext } from "@opencode-ai/plugin"
 
-import serverModule, { createServerHooks, PrToolError } from "../src/server.js"
+import serverModule, { createServerHooks, PrToolError, readFeedbackDiagnostics } from "../src/server.js"
+import { FeedbackToolError } from "../src/feedback-tool.js"
 import type { GitHubClient } from "../src/github.js"
 import { createStateStore } from "../src/state.js"
 import { parsePullRequestUrl, type PullRequestUrl } from "../src/url.js"
@@ -96,6 +97,12 @@ describe("server tools", () => {
     expect(createServerHooks.length).toBe(1)
   })
 
+  test("registers the agent-facing feedback tool", async () => {
+    const { tools } = await setup()
+
+    expect(tools).toHaveProperty("pr_feedback")
+  })
+
   test("attaches idempotently to the invoking session only", async () => {
     const { store, tools } = await setup()
 
@@ -180,12 +187,38 @@ describe("server tools", () => {
     const { hooks, store, tools } = await setup()
     await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/1" }, context("deleted"))
     await tools.pr_attach!.execute({ url: "https://github.com/owner/repository/pull/2" }, context("active"))
+    const preview = await tools.pr_feedback!.execute(
+      {
+        request: {
+          action: "preview",
+          feedback: { kind: "other", title: "Feedback", details: "Details" },
+          include_diagnostics: false,
+        },
+      },
+      context("deleted"),
+    )
+    if (typeof preview !== "string") throw new Error("expected feedback preview")
+    const previewID = preview.match(/Preview ID: (.+)$/)?.[1]
+    if (previewID === undefined) throw new Error("expected feedback preview ID")
 
     await hooks.event!(sessionDeleted("deleted"))
 
     expect(await store.list("deleted")).toEqual({ ok: true, value: [] })
     const active = await store.list("active")
     expect(active.ok && active.value.map((item) => item.pullRequest.number)).toEqual([2])
+    expect(
+      tools.pr_feedback!.execute(
+        {
+          request: {
+            action: "deliver",
+            preview_id: previewID,
+            delivery: "browser",
+            approval: "approved_via_question",
+          },
+        },
+        context("deleted"),
+      ),
+    ).rejects.toEqual(new FeedbackToolError("FeedbackPreviewNotFound", "Preview feedback again before delivery"))
   })
 
   test("surfaces corrupt state without removing it on session deletion", async () => {
@@ -294,5 +327,84 @@ describe("server tools", () => {
         "Expected https://github.com/<owner>/<repository>/pull/<positive-integer> or github.com/<owner>/<repository>/pull/<positive-integer>",
       ),
     )
+  })
+})
+
+describe("feedback diagnostics", () => {
+  const serverUrl = new URL("http://127.0.0.1:4096")
+
+  test("reads the OpenCode version from the local health endpoint", async () => {
+    let requestUrl: string | undefined
+    let requestSignal: AbortSignal | undefined
+    const signal = new AbortController().signal
+
+    const result = await readFeedbackDiagnostics(serverUrl, {
+      pluginVersion: "0.3.0",
+      platform: "darwin",
+      arch: "arm64",
+      signal,
+      fetcher: async (input, init) => {
+        requestUrl = String(input)
+        requestSignal = init?.signal ?? undefined
+        return Response.json({ healthy: true, version: "1.18.15" })
+      },
+    })
+
+    expect(requestUrl).toBe("http://127.0.0.1:4096/global/health")
+    expect(requestSignal).toBe(signal)
+    expect(result).toEqual({
+      pluginVersion: "0.3.0",
+      opencodeVersion: "1.18.15",
+      operatingSystem: "darwin/arm64",
+    })
+  })
+
+  test.each([
+    {
+      name: "non-OK response",
+      fetcher: async () => new Response("unavailable", { status: 503 }),
+    },
+    {
+      name: "malformed response",
+      fetcher: async () => Response.json({ healthy: true, version: 11815 }),
+    },
+    {
+      name: "request failure",
+      fetcher: async () => {
+        throw new Error("connection failed")
+      },
+    },
+  ])("uses an unavailable OpenCode version after a $name", async ({ fetcher }) => {
+    expect(
+      await readFeedbackDiagnostics(serverUrl, {
+        pluginVersion: "0.3.0",
+        platform: "linux",
+        arch: "x64",
+        signal: new AbortController().signal,
+        fetcher,
+      }),
+    ).toEqual({
+      pluginVersion: "0.3.0",
+      opencodeVersion: "unavailable",
+      operatingSystem: "linux/x64",
+    })
+  })
+
+  test("preserves health request cancellation", async () => {
+    const controller = new AbortController()
+    const cancelled = new DOMException("cancelled", "AbortError")
+    controller.abort(cancelled)
+
+    expect(
+      readFeedbackDiagnostics(serverUrl, {
+        pluginVersion: "0.3.0",
+        platform: "darwin",
+        arch: "arm64",
+        signal: controller.signal,
+        fetcher: async () => {
+          throw cancelled
+        },
+      }),
+    ).rejects.toBe(cancelled)
   })
 })
