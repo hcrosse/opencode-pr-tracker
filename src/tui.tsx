@@ -1,4 +1,5 @@
 /** @jsxImportSource @opentui/solid */
+import type { PluginOptions } from "@opencode-ai/plugin"
 import type { TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 
 import { createGitHubClient } from "./github.js"
@@ -11,6 +12,7 @@ import {
   createPullRequestCommands,
   createRefreshBus,
   PullRequestSidebar,
+  type PullRequestSidebarLayout,
   type PullRequestTuiDependencies,
   type RefreshBus,
 } from "./pull-request-tui.js"
@@ -33,7 +35,16 @@ type TuiDependencies = PullRequestTuiDependencies &
     refreshBus?: RefreshBus
   }>
 
-export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies, release?: PluginReleaseContext): void {
+export function parseSidebarLayout(options: PluginOptions | undefined): PullRequestSidebarLayout {
+  return options?.layout === "compact" ? "compact" : "default"
+}
+
+export function registerTui(
+  api: TuiPluginApi,
+  dependencies: TuiDependencies,
+  release?: PluginReleaseContext,
+  layout: PullRequestSidebarLayout = "default",
+): void {
   const refreshBus = dependencies.refreshBus ?? createRefreshBus()
   const updates = createPluginUpdateController(api, dependencies, release)
   const disposeEvents = [
@@ -62,6 +73,7 @@ export function registerTui(api: TuiPluginApi, dependencies: TuiDependencies, re
             dependencies={dependencies}
             refreshBus={refreshBus}
             updates={updates}
+            layout={layout}
           />
         )
       },
@@ -80,6 +92,7 @@ const plugin: TuiPluginModule & { id: string } = {
         github: createGitHubClient(),
       },
       meta,
+      parseSidebarLayout(options),
     )
   },
 }

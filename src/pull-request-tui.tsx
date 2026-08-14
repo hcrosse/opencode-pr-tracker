@@ -429,6 +429,8 @@ function toneColor(theme: TuiPluginApi["theme"]["current"], tone: ReturnType<typ
   return colors[tone]
 }
 
+export type PullRequestSidebarLayout = "default" | "compact"
+
 export function PullRequestSidebar(
   props: Readonly<{
     api: TuiPluginApi
@@ -436,6 +438,7 @@ export function PullRequestSidebar(
     dependencies: PullRequestTuiDependencies
     refreshBus: RefreshBus
     updates: PluginUpdateState
+    layout: PullRequestSidebarLayout
   }>,
 ): JSX.Element {
   const [items, setItems] = createSignal<readonly SidebarPullRequest[]>([])
@@ -546,9 +549,11 @@ export function PullRequestSidebar(
                           </text>
                         ) : null}
                       </box>
-                      <text fg={props.api.theme.current.textMuted} attributes={attributes}>
-                        {title}
-                      </text>
+                      {props.layout !== "compact" ? (
+                        <text fg={props.api.theme.current.textMuted} attributes={attributes}>
+                          {title}
+                        </text>
+                      ) : null}
                     </box>
                   </box>
                 )
