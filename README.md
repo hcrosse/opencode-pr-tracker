@@ -71,6 +71,21 @@ The plugin accepts pull request URLs in the forms
 `https://github.com/<owner>/<repository>/pull/<number>` and
 `github.com/<owner>/<repository>/pull/<number>`.
 
+## Compact layout
+
+Set the TUI plugin's `layout` option in `tui.json` to show compact sidebar
+entries:
+
+```json
+{
+  "plugin": [["@hcrosse/opencode-pr-tracker/tui", { "layout": "compact" }]]
+}
+```
+
+Omitting `layout` keeps the default two-line entries with pull request titles.
+The `"compact"` layout shows only the pull request reference and status on one
+line.
+
 ## Sidebar
 
 Each attached pull request appears with its repository, number, title, and
