@@ -115,9 +115,9 @@ Do not expose whole-list replacement. Numeric positions may be presented inside 
 
 Every move must acquire the existing per-session lock and reread state before validation. This makes each move linearizable with attach, detach, cleanup, and other moves according to lock acquisition order.
 
-The membership resolver computes a revision from the complete ordered URL list. The locked operation compares that revision with the current state before moving. If any attachment, detachment, or reorder occurred after resolution, the move fails without mutation and the caller refreshes membership before retrying. Concurrent moves serialize; only a move based on the current revision succeeds.
+The membership resolver computes a revision from the complete ordered URL list. The locked operation compares that revision with the current state before moving. If the current ordered URL list differs from the resolved list, the move fails without mutation and the caller refreshes membership before retrying. Concurrent moves serialize; only a move based on the current list succeeds.
 
-The revision is derived rather than persisted, so this safety check does not require a state schema migration. A future bulk-order operation would still require exact membership validation and is outside the recommendation.
+The derived revision intentionally detects current-state differences, not every intervening mutation. A detach and reattach or multiple moves may restore the same list, but the identity-relative operation remains valid against that restored state. Detecting such ABA changes would require a persisted monotonic generation, which is unnecessary for this move contract. A future bulk-order operation would still require exact membership validation and is outside the recommendation.
 
 ## GitHub Stack Semantics
 
@@ -127,7 +127,7 @@ GitHub Stack order and contiguity are invariants for attached Stack members.
 - Reordering any member moves every attached member of that Stack as one contiguous unit in GitHub order.
 - Attaching any member of a fully attached Stack is idempotent. Attaching a missing member reconstructs the attached subset as one ordered unit at its existing earliest position.
 - Detaching remains scoped to the selected pull request. The remaining attached subset stays one move unit and retains the gaps implied by remote Stack positions.
-- A batched membership resolver should project all attached URLs into standalone or Stack units in one bounded request before opening the reorder dialog. If membership cannot be resolved safely, the dialog and tool fail without mutation rather than splitting a possible Stack.
+- One bounded membership resolver operation should project all attached URLs into standalone or Stack units before opening the reorder dialog. It may issue validated continuation requests to exhaust paginated Stack entries. If membership cannot be resolved safely, the dialog and tool fail without mutation rather than splitting a possible Stack.
 - No Stack identifier or manual-order flag needs to be persisted for reordering.
 
 Visual Stack linkage is useful but independent of ordering semantics. [#111](https://github.com/hcrosse/opencode-pr-tracker/issues/111) defines light box-drawing markers for complete Stacks, incomplete outer boundaries, and internal unattached ranges. It can reuse the same bounded membership projection.
@@ -142,6 +142,15 @@ The selected concise treatment uses `┌─` and `└─` only for complete visi
 │  API update
 ├─ owner/repo#15 draft
 ┊  Client wiring
+```
+
+Compact layout omits title connector rows. It retains boundary and gap markers, with the final `├─` alone indicating that the Stack continues beyond the last attached member:
+
+```text
+├─ owner/repo#12 passed
+├┄ 1 PR not attached
+├─ owner/repo#14 pending
+├─ owner/repo#15 draft
 ```
 
 ## Follow-Up Work
