@@ -171,7 +171,7 @@ export function createFeedbackTool(dependencies: FeedbackToolDependencies): Feed
     timer: ReturnType<typeof setTimeout>
   }>
   const previews = new Map<string, Preview>()
-  const sessionGenerations = new Map<string, number>()
+  const pendingPreviews = new Map<string, Set<symbol>>()
   const now = dependencies.now ?? Date.now
   const clearPreview = (id: string) => {
     const preview = previews.get(id)
@@ -196,9 +196,21 @@ export function createFeedbackTool(dependencies: FeedbackToolDependencies): Feed
     async execute({ request }, context) {
       clearExpired()
       if (request.action === "preview") {
-        const sessionGeneration = sessionGenerations.get(context.sessionID) ?? 0
-        const diagnostics = request.include_diagnostics ? await dependencies.readDiagnostics(context.abort) : undefined
-        if ((sessionGenerations.get(context.sessionID) ?? 0) !== sessionGeneration) {
+        const pending = pendingPreviews.get(context.sessionID) ?? new Set<symbol>()
+        pendingPreviews.set(context.sessionID, pending)
+        const pendingID = Symbol()
+        pending.add(pendingID)
+        let sessionActive = false
+        const diagnostics = await Promise.resolve(
+          request.include_diagnostics ? dependencies.readDiagnostics(context.abort) : undefined,
+        ).finally(() => {
+          sessionActive = pending.has(pendingID)
+          pending.delete(pendingID)
+          if (pending.size === 0 && pendingPreviews.get(context.sessionID) === pending) {
+            pendingPreviews.delete(context.sessionID)
+          }
+        })
+        if (!sessionActive) {
           throw new FeedbackToolError("FeedbackPreviewNotFound", "Preview feedback again before delivery")
         }
         const draft = createFeedbackDraft(toFeedbackInput(request.feedback), diagnostics)
@@ -255,7 +267,8 @@ export function createFeedbackTool(dependencies: FeedbackToolDependencies): Feed
   })
   return Object.assign(definition, {
     clearSession(sessionID: string) {
-      sessionGenerations.set(sessionID, (sessionGenerations.get(sessionID) ?? 0) + 1)
+      pendingPreviews.get(sessionID)?.clear()
+      pendingPreviews.delete(sessionID)
       for (const [id, preview] of previews) {
         if (preview.sessionID === sessionID) clearPreview(id)
       }
