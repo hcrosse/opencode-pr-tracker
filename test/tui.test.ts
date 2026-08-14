@@ -1,15 +1,30 @@
 import { describe, expect, test } from "bun:test"
 
+import type { PluginOptions } from "@opencode-ai/plugin"
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 
 import * as tui from "../src/tui.jsx"
 import { openPullRequest } from "../src/external-url.js"
 import { updateStatusLabel } from "../src/plugin-update-tui.js"
 import { startSessionPolling } from "../src/polling.js"
-import { attachPullRequest } from "../src/pull-request-tui.js"
+import { attachPullRequest, type PullRequestSidebarLayout } from "../src/pull-request-tui.js"
 import { githubStatuses, stateStore } from "./tui-fixtures.js"
 
 describe("TUI composition root", () => {
+  test.each([
+    [undefined, "default"],
+    [{}, "default"],
+    [{ layout: "default" }, "default"],
+    [{ layout: "compact" }, "compact"],
+    [{ layout: "dense" }, "default"],
+    [{ layout: true }, "default"],
+  ] satisfies Array<[PluginOptions | undefined, PullRequestSidebarLayout]>)(
+    "parses sidebar layout option %#",
+    (options, expected) => {
+      expect(tui.parseSidebarLayout(options)).toBe(expected)
+    },
+  )
+
   test("re-exports the domain compatibility surface", () => {
     expect(tui.attachPullRequest).toBe(attachPullRequest)
     expect(tui.openPullRequest).toBe(openPullRequest)
