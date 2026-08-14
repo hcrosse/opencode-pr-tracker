@@ -86,7 +86,7 @@ describe("GitHub client", () => {
     { contexts: {}, tone: "gray", label: "draft" },
     { contexts: successChecks, tone: "gray", label: "draft" },
     { contexts: pendingChecks, tone: "gray", label: "draft" },
-    { contexts: failedChecks, tone: "red", label: "checks failed" },
+    { contexts: failedChecks, tone: "red", label: "failed" },
   ])("renders draft pull request CI as $label", async ({ contexts, tone, label }) => {
     const client = createGitHubClient(
       runnerFor(
@@ -94,7 +94,7 @@ describe("GitHub client", () => {
       ),
     )
 
-    expect(statusAppearance(await getOne(client))).toEqual({ tone, label, strikethrough: false })
+    expect(statusAppearance(await getOne(client))).toEqual({ tone, label, strikethrough: false, stale: false })
   })
 
   test("gives a draft merge conflict precedence over draft appearance", async () => {
@@ -102,8 +102,9 @@ describe("GitHub client", () => {
 
     expect(statusAppearance(await getOne(client))).toEqual({
       tone: "red",
-      label: "merge conflict",
+      label: "conflict",
       strikethrough: false,
+      stale: false,
     })
   })
 
@@ -122,7 +123,12 @@ describe("GitHub client", () => {
       ),
     )
 
-    expect(statusAppearance(await getOne(client))).toEqual({ tone: "gray", label: "draft", strikethrough: false })
+    expect(statusAppearance(await getOne(client))).toEqual({
+      tone: "gray",
+      label: "draft",
+      strikethrough: false,
+      stale: false,
+    })
   })
 
   test.each([
