@@ -16,7 +16,9 @@ import { attachPullRequest, type PullRequestSidebarLayout } from "../src/pull-re
 import { createStateStore } from "../src/state.js"
 import { attachment, githubStatuses, stateStore } from "./tui-fixtures.js"
 
-async function renderPluginSidebar(options: PluginOptions | undefined): Promise<string> {
+async function renderComposedSidebar(
+  register: (api: TuiPluginApi, meta: TuiPluginMeta) => void | Promise<void>,
+): Promise<string> {
   const dataHome = await mkdtemp(join(tmpdir(), "opencode-pr-tracker-tui-"))
   const previousDataHome = process.env.XDG_DATA_HOME
   const previousPath = process.env.PATH
@@ -83,7 +85,7 @@ async function renderPluginSidebar(options: PluginOptions | undefined): Promise<
       state: "same",
     } satisfies TuiPluginMeta
 
-    await tui.default.tui(api, options, meta)
+    await register(api, meta)
     if (sidebarContent === undefined) throw new Error("sidebar slot was not registered")
     view = await testRender(() => sidebarContent!({}, { session_id: "session" }), { width: 80, height: 10 })
     return await view.waitForFrame((frame) => frame.includes("owner/repository#42"))
@@ -121,11 +123,19 @@ describe("TUI composition root", () => {
   })
 
   test("composes the default and parsed compact layouts into the sidebar", async () => {
-    const defaultFrame = await renderPluginSidebar(undefined)
-    const compactFrame = await renderPluginSidebar({ layout: "compact" })
+    const defaultFrame = await renderComposedSidebar((api, meta) => tui.default.tui(api, undefined, meta))
+    const compactFrame = await renderComposedSidebar((api, meta) => tui.default.tui(api, { layout: "compact" }, meta))
 
     expect(defaultFrame).toContain("Title unavailable")
     expect(compactFrame).not.toContain("Title unavailable")
+  })
+
+  test("renders the default sidebar layout when registerTui omits layout", async () => {
+    const frame = await renderComposedSidebar((api) =>
+      tui.registerTui(api, { store: stateStore(), github: githubStatuses() }),
+    )
+
+    expect(frame).toContain("Track pull requests")
   })
 
   test("registers model-free slash commands and the sidebar slot", () => {
