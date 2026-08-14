@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { RGBA } from "@opentui/core"
 import { testRender } from "@opentui/solid"
+import { jsx } from "@opentui/solid/jsx-runtime"
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 
 import {
@@ -32,7 +33,10 @@ function registerPullRequestCommands(
   api.keymap.registerLayer({ commands: [...createPullRequestCommands(api, dependencies, refreshBus)], bindings: [] })
 }
 
-async function renderSidebar(items: readonly PullRequestAttachment[]) {
+async function renderSidebar(
+  items: readonly PullRequestAttachment[],
+  options: Readonly<{ followingText?: string }> = {},
+) {
   let githubCalls = 0
   const color = RGBA.fromHex("#ffffff")
   const github = githubStatuses()
@@ -68,17 +72,23 @@ async function renderSidebar(items: readonly PullRequestAttachment[]) {
 
   const view = await testRender(
     () =>
-      PullRequestSidebar({
-        api,
-        sessionID: "session",
-        dependencies,
-        refreshBus,
-        updates: { current: () => undefined, subscribe: () => () => undefined },
+      jsx("box", {
+        flexDirection: "column",
+        children: [
+          PullRequestSidebar({
+            api,
+            sessionID: "session",
+            dependencies,
+            refreshBus,
+            updates: { current: () => undefined, subscribe: () => () => undefined },
+          }),
+          options.followingText ? jsx("text", { children: options.followingText }) : null,
+        ],
       }),
     { width: 80, height: 20 },
   )
   await view.waitForFrame((frame) => frame.includes("Pull requests"))
-  await view.waitFor(() => githubCalls === 1)
+  if (items.length > 0) await view.waitFor(() => githubCalls === 1)
   await view.renderOnce()
 
   return {
@@ -132,6 +142,40 @@ describe("pull request TUI", () => {
       await sidebar.view.mockMouse.pressDown(1, 0)
       await sidebar.view.flush()
       expect(sidebar.view.captureCharFrame()).toContain("owner/repository#42")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("renders consecutive pull request entries without a blank row", async () => {
+    const sidebar = await renderSidebar([attachment, secondAttachment])
+    try {
+      const frame = await sidebar.view.waitForFrame(
+        (value) => value.includes("owner/repository#42") && value.includes("another/project#7"),
+      )
+      const rows = frame.split("\n")
+      const firstEntryRow = rows.findIndex((row) => row.includes("owner/repository#42"))
+
+      expect(firstEntryRow).toBeGreaterThanOrEqual(0)
+      expect(rows[firstEntryRow + 1]?.trim()).toBe("Track pull requests")
+      expect(rows[firstEntryRow + 2]).toContain("another/project#7")
+      expect(rows[firstEntryRow + 3]?.trim()).toBe("Track pull requests")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("does not add space after an empty pull request list", async () => {
+    const sidebar = await renderSidebar([], { followingText: "Following content" })
+    try {
+      const frame = await sidebar.view.waitForFrame(
+        (value) => value.includes("No pull requests attached") && value.includes("Following content"),
+      )
+      const rows = frame.split("\n")
+      const emptyStateRow = rows.findIndex((row) => row.includes("No pull requests attached"))
+      const followingContentRow = rows.findIndex((row) => row.includes("Following content"))
+
+      expect(followingContentRow).toBe(emptyStateRow + 1)
     } finally {
       await sidebar.cleanup()
     }
