@@ -179,7 +179,7 @@ describe("session polling", () => {
             {
               ok: true,
               value: available(
-                { tag: "Open", ci: "failed", mergeability: "mergeable", blocker: "none" },
+                { tag: "Open", ci: "failed", isDraft: false, mergeability: "mergeable", blocker: "none" },
                 pullRequests[0],
               ),
             },
@@ -339,7 +339,9 @@ describe("session polling", () => {
       github: githubStatuses(() => {
         calls += 1
         return available(
-          calls === 1 ? { tag: "Closed" } : { tag: "Open", ci: "pending", mergeability: "mergeable", blocker: "none" },
+          calls === 1
+            ? { tag: "Closed" }
+            : { tag: "Open", ci: "pending", isDraft: false, mergeability: "mergeable", blocker: "none" },
         )
       }),
       scheduler: new RecordingScheduler(),
@@ -357,7 +359,13 @@ describe("session polling", () => {
     await polling.refresh()
 
     expect(calls).toBe(2)
-    expect(latestState).toEqual({ tag: "Open", ci: "pending", mergeability: "mergeable", blocker: "none" })
+    expect(latestState).toEqual({
+      tag: "Open",
+      ci: "pending",
+      isDraft: false,
+      mergeability: "mergeable",
+      blocker: "none",
+    })
   })
 
   test("queues one trailing refresh requested during an active poll", async () => {
