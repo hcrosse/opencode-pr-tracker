@@ -187,9 +187,26 @@ describe("pull request TUI", () => {
       const rows = frame.split("\n")
       const firstEntryRow = rows.findIndex((row) => row.includes("owner/repository#42"))
       const secondEntryRow = rows.findIndex((row) => row.includes("another/project#7"))
+      const firstEntry = rows[firstEntryRow]!
+      const secondEntry = rows[secondEntryRow]!
 
       expect(frame).not.toContain("Track pull requests")
+      expect(firstEntry.trimStart()).toStartWith("• owner/repository#42 checks passed")
+      expect(secondEntry.trimStart()).toStartWith("• another/project#7 checks passed")
       expect(secondEntryRow).toBe(firstEntryRow + 1)
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("preserves pull request titles for unexpected runtime layout values", async () => {
+    const sidebar = await renderSidebar([attachment], {
+      layout: "unexpected" as PullRequestSidebarLayout,
+    })
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("owner/repository#42"))
+
+      expect(frame).toContain("Track pull requests")
     } finally {
       await sidebar.cleanup()
     }
