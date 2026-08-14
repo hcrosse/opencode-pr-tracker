@@ -41,7 +41,7 @@ function availableGitHubItem(value: PullRequestUrl) {
       tag: "Available",
       pullRequest: value,
       title: "Pull request",
-      state: { tag: "Open", ci: "none", mergeability: "unknown", blocker: "none" },
+      state: { tag: "Open", ci: "none", isDraft: false, mergeability: "unknown", blocker: "none" },
       stale: false,
     },
   } as const

@@ -179,7 +179,7 @@ describe("session polling", () => {
             {
               ok: true,
               value: available(
-                { tag: "Open", ci: "failed", mergeability: "mergeable", blocker: "none" },
+                { tag: "Open", ci: "failed", isDraft: false, mergeability: "mergeable", blocker: "none" },
                 pullRequests[0],
               ),
             },
@@ -339,7 +339,9 @@ describe("session polling", () => {
       github: githubStatuses(() => {
         calls += 1
         return available(
-          calls === 1 ? { tag: "Closed" } : { tag: "Open", ci: "pending", mergeability: "mergeable", blocker: "none" },
+          calls === 1
+            ? { tag: "Closed" }
+            : { tag: "Open", ci: "pending", isDraft: false, mergeability: "mergeable", blocker: "none" },
         )
       }),
       scheduler: new RecordingScheduler(),
@@ -357,7 +359,13 @@ describe("session polling", () => {
     await polling.refresh()
 
     expect(calls).toBe(2)
-    expect(latestState).toEqual({ tag: "Open", ci: "pending", mergeability: "mergeable", blocker: "none" })
+    expect(latestState).toEqual({
+      tag: "Open",
+      ci: "pending",
+      isDraft: false,
+      mergeability: "mergeable",
+      blocker: "none",
+    })
   })
 
   test("queues one trailing refresh requested during an active poll", async () => {
@@ -496,6 +504,7 @@ describe("session polling", () => {
 
   test("retains stale diagnostics and clears them after a successful refresh", async () => {
     let availableResponse = true
+    let currentTime = 0
     let latest: readonly SidebarPullRequest[] = []
     const polling = startSessionPolling({
       sessionID: "session",
@@ -521,6 +530,7 @@ describe("session polling", () => {
         },
       },
       scheduler: new RecordingScheduler(),
+      now: () => currentTime,
       publish: (items) => {
         latest = items
       },
@@ -540,10 +550,85 @@ describe("session polling", () => {
       diagnostic: "GitHubAuthenticationRequired",
     })
 
+    currentTime = 299_999
+    await polling.refresh()
+    expect(latest[0]?.status.tag).toBe("Available")
+
+    currentTime = 300_000
+    await polling.refresh()
+    expect(latest[0]?.status).toEqual({
+      tag: "Unavailable",
+      diagnostic: "GitHubAuthenticationRequired",
+    })
+
     availableResponse = true
     await polling.refresh()
 
     expect(latest[0]?.status).toEqual(available())
+  })
+
+  test("clears failure age when an attachment is removed", async () => {
+    let attached = true
+    let availableResponse = true
+    let currentTime = 0
+    let latest: readonly SidebarPullRequest[] = []
+    const polling = startSessionPolling({
+      sessionID: "session",
+      store: {
+        ...stateStore(),
+        async list() {
+          return { ok: true, value: attached ? [attachment] : [] }
+        },
+      },
+      github: {
+        async getStack(requested) {
+          return { ok: true, value: [requested] }
+        },
+        async get(pullRequests) {
+          return availableResponse
+            ? {
+                ok: true,
+                value: pullRequests.map((value) => ({ ok: true, value: available(undefined, value) })),
+              }
+            : {
+                ok: false,
+                error: {
+                  tag: "GitHubAuthenticationRequired",
+                  message: "GitHub CLI authentication required",
+                  cause: new Error(),
+                },
+              }
+        },
+      },
+      scheduler: new RecordingScheduler(),
+      now: () => currentTime,
+      publish: (items) => {
+        latest = items
+      },
+      onStateFailure: () => undefined,
+      onError: (error) => {
+        throw error
+      },
+    })
+
+    await polling.start()
+    availableResponse = false
+    await polling.refresh()
+
+    attached = false
+    await polling.refresh()
+    currentTime = 300_000
+    attached = true
+    availableResponse = true
+    await polling.refresh()
+    availableResponse = false
+    await polling.refresh()
+
+    expect(latest[0]?.status).toEqual({
+      ...available(),
+      stale: true,
+      diagnostic: "GitHubAuthenticationRequired",
+    })
   })
 
   test("clears published rows when persisted state becomes unreadable", async () => {

@@ -33,6 +33,7 @@ export function response(overrides: Record<string, unknown> = {}): Record<string
     state: "OPEN",
     url: pullRequest.url,
     mergedAt: null,
+    isDraft: false,
     mergeable: "MERGEABLE",
     mergeStateStatus: "CLEAN",
     baseRef: baseRefPolicy(),

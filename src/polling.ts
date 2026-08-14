@@ -22,6 +22,7 @@ export type SessionPolling = Readonly<{
 export type SessionRefreshResult = Result<"refreshed" | "no_attachments" | "stopped", StateFailure | GitHubFailure>
 
 const pollIntervalMilliseconds = 60_000
+const staleEscalationMilliseconds = 5 * 60_000
 
 const defaultScheduler: PollScheduler = {
   setInterval: (task, delay) => globalThis.setInterval(task, delay),
@@ -36,13 +37,16 @@ export function startSessionPolling(
     store: StateStore
     github: GitHubClient
     scheduler?: PollScheduler
+    now?: () => number
     publish(items: readonly SidebarPullRequest[]): void
     onStateFailure(failure: StateFailure): void
     onError(error: unknown): void
   }>,
 ): SessionPolling {
   const scheduler = input.scheduler ?? defaultScheduler
+  const now = input.now ?? Date.now
   const statuses = new Map<CanonicalPullRequestUrl, PullRequestStatus>()
+  const failureStartedAt = new Map<CanonicalPullRequestUrl, number>()
   const controller = new AbortController()
   let timer: unknown
   let timerRegistered = false
@@ -76,7 +80,10 @@ export function startSessionPolling(
       attachments.value.map((attachment) => attachment.pullRequest.url),
     )
     for (const url of statuses.keys()) {
-      if (!attachedUrls.has(url)) statuses.delete(url)
+      if (!attachedUrls.has(url)) {
+        statuses.delete(url)
+        failureStartedAt.delete(url)
+      }
     }
     input.publish(project(attachments.value))
     if (attachments.value.length === 0) return { ok: true, value: "no_attachments" }
@@ -103,13 +110,24 @@ export function startSessionPolling(
       const result = batch.ok ? batch.value[index] : undefined
       if (result?.ok) {
         statuses.set(attachment.pullRequest.url, result.value)
+        failureStartedAt.delete(attachment.pullRequest.url)
         continue
       }
       const diagnostic = result === undefined ? (batchDiagnostic ?? "GitHubUnavailable") : result.error.tag
       if (result !== undefined && !result.ok) failure ??= result.error
+      if (previous?.tag !== "Available") {
+        statuses.set(attachment.pullRequest.url, { tag: "Unavailable", diagnostic })
+        continue
+      }
+
+      const failedAt = failureStartedAt.get(attachment.pullRequest.url)
+      const failedNow = now()
+      if (failedAt === undefined) failureStartedAt.set(attachment.pullRequest.url, failedNow)
       statuses.set(
         attachment.pullRequest.url,
-        previous?.tag === "Available" ? { ...previous, stale: true, diagnostic } : { tag: "Unavailable", diagnostic },
+        failedAt !== undefined && failedNow - failedAt >= staleEscalationMilliseconds
+          ? { tag: "Unavailable", diagnostic }
+          : { ...previous, stale: true, diagnostic },
       )
     }
 

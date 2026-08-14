@@ -44,7 +44,7 @@ const maximumCheckContextsPerPage = 100
 const statusContextOnlyFields = ["context", "state", "createdAt"] as const
 const checkRunOnlyFields = ["name", "status", "conclusion", "checkSuite"] as const
 const checkContextSelection = `nodes { __typename ... on StatusContext { id context state createdAt } ... on CheckRun { id name status conclusion checkSuite { id createdAt app { id } workflowRun { event runNumber runAttempt workflow { id } } } } } totalCount pageInfo { hasNextPage endCursor }`
-const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt mergeable mergeStateStatus baseRef { branchProtectionRule { requiresStatusChecks requiresStrictStatusChecks } refUpdateRule { requiredStatusCheckContexts } rules(first: 100) { nodes { parameters { __typename ... on RequiredStatusChecksParameters { strictRequiredStatusChecksPolicy requiredStatusChecks { context } } } } totalCount pageInfo { hasNextPage } } } statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}) { ${checkContextSelection} } } }`
+const pullRequestSelection = `__typename ... on PullRequest { title state url mergedAt isDraft mergeable mergeStateStatus baseRef { branchProtectionRule { requiresStatusChecks requiresStrictStatusChecks } refUpdateRule { requiredStatusCheckContexts } rules(first: 100) { nodes { parameters { __typename ... on RequiredStatusChecksParameters { strictRequiredStatusChecksPolicy requiredStatusChecks { context } } } } totalCount pageInfo { hasNextPage } } } statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}) { ${checkContextSelection} } } }`
 const continuationQuery = `query PullRequestContexts($url: URI!, $cursor: String!) { resource(url: $url) { __typename ... on PullRequest { url statusCheckRollup { contexts(first: ${maximumCheckContextsPerPage}, after: $cursor) { ${checkContextSelection} } } } } }`
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -569,6 +569,7 @@ function parseBlocker(
 type ParsedPullRequestMetadata = Readonly<{
   title: string
   state: "OPEN" | "CLOSED" | "MERGED"
+  isDraft: boolean
   mergeability: PullRequestMergeability
   mergeStateStatus: unknown
   baseRef: unknown
@@ -589,6 +590,7 @@ function parsePullRequestMetadata(
   if (input.state !== "OPEN" && input.state !== "CLOSED" && input.state !== "MERGED") {
     return invalidGitHubResponse
   }
+  if (typeof input.isDraft !== "boolean") return invalidGitHubResponse
   if (input.mergedAt !== null && typeof input.mergedAt !== "string") return invalidGitHubResponse
   if (typeof input.mergedAt === "string" && Number.isNaN(new Date(input.mergedAt).valueOf())) {
     return invalidGitHubResponse
@@ -608,6 +610,7 @@ function parsePullRequestMetadata(
     value: {
       title: input.title,
       state: input.state,
+      isDraft: input.isDraft,
       mergeability: mergeability.value,
       mergeStateStatus: input.mergeStateStatus,
       baseRef: input.baseRef,
@@ -629,7 +632,7 @@ function finalizeResponse(
         if (!parsedBlocker.ok) return parsedBlocker
         blocker = parsedBlocker.value
       }
-      state = { tag: "Open", ci, mergeability: metadata.mergeability, blocker }
+      state = { tag: "Open", ci, isDraft: metadata.isDraft, mergeability: metadata.mergeability, blocker }
       break
     }
     case "MERGED":

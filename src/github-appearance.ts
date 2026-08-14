@@ -5,40 +5,45 @@ export type StatusAppearance = Readonly<{
   tone: "green" | "yellow" | "red" | "purple" | "gray"
   label: string
   strikethrough: boolean
+  stale: boolean
 }>
 
+type BaseStatusAppearance = Omit<StatusAppearance, "stale">
+
 const openAppearances = {
-  passed: { tone: "green", label: "checks passed", strikethrough: false },
-  pending: { tone: "yellow", label: "checks pending", strikethrough: false },
-  failed: { tone: "red", label: "checks failed", strikethrough: false },
+  passed: { tone: "green", label: "passed", strikethrough: false },
+  pending: { tone: "yellow", label: "pending", strikethrough: false },
+  failed: { tone: "red", label: "failed", strikethrough: false },
   none: { tone: "gray", label: "no checks", strikethrough: false },
-} satisfies Record<PullRequestCi, StatusAppearance>
+} satisfies Record<PullRequestCi, BaseStatusAppearance>
 
 const diagnosticLabels = {
   GitHubCliMissing: "install gh",
-  GitHubAuthenticationRequired: "run gh auth login",
+  GitHubAuthenticationRequired: "authenticate",
   GitHubUnavailable: "GitHub unavailable",
-  PullRequestNotFound: "not found or inaccessible",
-  InvalidGitHubResponse: "invalid GitHub response",
+  PullRequestNotFound: "inaccessible",
+  InvalidGitHubResponse: "invalid response",
 } satisfies Record<PullRequestDiagnostic, string>
 
-function stateAppearance(state: PullRequestState): StatusAppearance {
+function stateAppearance(state: PullRequestState): BaseStatusAppearance {
   switch (state.tag) {
     case "Open": {
       switch (state.mergeability) {
         case "conflicting":
-          return { tone: "red", label: "merge conflict", strikethrough: false }
+          return { tone: "red", label: "conflict", strikethrough: false }
         case "mergeable":
         case "unknown":
           switch (state.ci) {
             case "failed":
-            case "pending":
               return openAppearances[state.ci]
+            case "pending":
+              return state.isDraft ? { tone: "gray", label: "draft", strikethrough: false } : openAppearances[state.ci]
             case "none":
             case "passed":
+              if (state.isDraft) return { tone: "gray", label: "draft", strikethrough: false }
               switch (state.blocker) {
                 case "behind":
-                  return { tone: "yellow", label: "branch behind", strikethrough: false }
+                  return { tone: "yellow", label: "behind", strikethrough: false }
                 case "none":
                   return openAppearances[state.ci]
                 default:
@@ -64,13 +69,11 @@ export function statusAppearance(status: PullRequestStatus): StatusAppearance {
   if (status.tag === "Unavailable") {
     return {
       tone: "gray",
-      label: status.diagnostic === undefined ? "status unavailable" : diagnosticLabels[status.diagnostic],
+      label: status.diagnostic === undefined ? "unavailable" : diagnosticLabels[status.diagnostic],
       strikethrough: false,
+      stale: false,
     }
   }
 
-  const appearance = stateAppearance(status.state)
-  return status.stale
-    ? { ...appearance, label: `${appearance.label} (stale; ${diagnosticLabels[status.diagnostic]})` }
-    : appearance
+  return { ...stateAppearance(status.state), stale: status.stale }
 }

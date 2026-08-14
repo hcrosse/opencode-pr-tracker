@@ -508,7 +508,7 @@ export function PullRequestSidebar(
                 const title = item.status.tag === "Available" ? item.status.title : "Title unavailable"
                 return (
                   <box
-                    flexDirection="column"
+                    flexDirection="row"
                     onMouseUp={() => {
                       openPullRequest(item.attachment.pullRequest, {
                         ...(props.dependencies.runner ? { runner: props.dependencies.runner } : {}),
@@ -533,11 +533,23 @@ export function PullRequestSidebar(
                     }}
                   >
                     <text fg={toneColor(props.api.theme.current, appearance.tone)} attributes={attributes}>
-                      <b>{formatPullRequestRef(item.attachment.pullRequest)}</b> {appearance.label}
+                      •{" "}
                     </text>
-                    <text fg={props.api.theme.current.textMuted} attributes={attributes}>
-                      {title}
-                    </text>
+                    <box flexDirection="column" flexGrow={1}>
+                      <box flexDirection="row" width="100%">
+                        <text fg={toneColor(props.api.theme.current, appearance.tone)} attributes={attributes}>
+                          <b>{formatPullRequestRef(item.attachment.pullRequest)}</b> {appearance.label}
+                        </text>
+                        {appearance.stale ? (
+                          <text fg={props.api.theme.current.textMuted} attributes={TextAttributes.ITALIC}>
+                            {" · stale"}
+                          </text>
+                        ) : null}
+                      </box>
+                      <text fg={props.api.theme.current.textMuted} attributes={attributes}>
+                        {title}
+                      </text>
+                    </box>
                   </box>
                 )
               })}
