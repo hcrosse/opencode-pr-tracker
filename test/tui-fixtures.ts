@@ -54,7 +54,13 @@ export function stateStore(items: readonly PullRequestAttachment[] = [attachment
 }
 
 export function available(
-  state: PullRequestState = { tag: "Open", ci: "passed", mergeability: "mergeable", blocker: "none" },
+  state: PullRequestState = {
+    tag: "Open",
+    ci: "passed",
+    isDraft: false,
+    mergeability: "mergeable",
+    blocker: "none",
+  },
   value: PullRequestUrl = pullRequest,
 ): AvailablePullRequestStatus {
   return {

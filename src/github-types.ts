@@ -8,6 +8,7 @@ export type PullRequestState =
   | Readonly<{
       tag: "Open"
       ci: PullRequestCi
+      isDraft: boolean
       mergeability: PullRequestMergeability
       blocker: PullRequestBlocker
     }>

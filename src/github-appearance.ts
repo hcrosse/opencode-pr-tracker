@@ -32,10 +32,12 @@ function stateAppearance(state: PullRequestState): StatusAppearance {
         case "unknown":
           switch (state.ci) {
             case "failed":
-            case "pending":
               return openAppearances[state.ci]
+            case "pending":
+              return state.isDraft ? { tone: "gray", label: "draft", strikethrough: false } : openAppearances[state.ci]
             case "none":
             case "passed":
+              if (state.isDraft) return { tone: "gray", label: "draft", strikethrough: false }
               switch (state.blocker) {
                 case "behind":
                   return { tone: "yellow", label: "branch behind", strikethrough: false }

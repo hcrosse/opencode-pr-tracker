@@ -82,6 +82,47 @@ describe("GitHub client", () => {
   })
 
   test.each([
+    { contexts: {}, tone: "gray", label: "draft" },
+    { contexts: successChecks, tone: "gray", label: "draft" },
+    { contexts: pendingChecks, tone: "gray", label: "draft" },
+    { contexts: failedChecks, tone: "red", label: "checks failed" },
+  ])("renders draft pull request CI as $label", async ({ contexts, tone, label }) => {
+    const client = createGitHubClient(
+      runnerFor(batchResponse(response({ isDraft: true, statusCheckRollup: rollup(contexts) }))),
+    )
+
+    expect(statusAppearance(await getOne(client))).toEqual({ tone, label, strikethrough: false })
+  })
+
+  test("gives a draft merge conflict precedence over draft appearance", async () => {
+    const client = createGitHubClient(runnerFor(batchResponse(response({ isDraft: true, mergeable: "CONFLICTING" }))))
+
+    expect(statusAppearance(await getOne(client))).toEqual({
+      tone: "red",
+      label: "merge conflict",
+      strikethrough: false,
+    })
+  })
+
+  test("gives draft appearance precedence over a behind branch", async () => {
+    const client = createGitHubClient(
+      runnerFor(
+        batchResponse(
+          response({
+            isDraft: true,
+            mergeStateStatus: "BEHIND",
+            baseRef: baseRefPolicy({
+              branchProtectionRule: { requiresStatusChecks: true, requiresStrictStatusChecks: true },
+            }),
+          }),
+        ),
+      ),
+    )
+
+    expect(statusAppearance(await getOne(client))).toEqual({ tone: "gray", label: "draft", strikethrough: false })
+  })
+
+  test.each([
     {
       contexts: pendingChecks,
       policy: baseRefPolicy({ refUpdateRule: { requiredStatusCheckContexts: ["Build"] } }),
@@ -160,7 +201,7 @@ describe("GitHub client", () => {
         tag: "Available",
         pullRequest,
         title: "Title",
-        state: { tag: "Open", ci: "pending", mergeability: "mergeable", blocker: "none" },
+        state: { tag: "Open", ci: "pending", isDraft: false, mergeability: "mergeable", blocker: "none" },
         stale: true,
         diagnostic,
       }),
@@ -173,7 +214,7 @@ describe("GitHub client", () => {
         tag: "Available",
         pullRequest,
         title: "Title",
-        state: { tag: "Open", ci: "pending", mergeability: "conflicting", blocker: "none" },
+        state: { tag: "Open", ci: "pending", isDraft: false, mergeability: "conflicting", blocker: "none" },
         stale: true,
         diagnostic: "GitHubUnavailable",
       }),

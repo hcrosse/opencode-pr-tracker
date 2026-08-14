@@ -112,7 +112,7 @@ describe("GitHub client", () => {
     expect(calls[0]?.args[5]).toContain("query BatchPullRequests($url0: URI!, $url1: URI!)")
     expect(calls[0]?.args[5]).toContain("pr0: resource(url: $url0)")
     expect(calls[0]?.args[5]).toContain("pr1: resource(url: $url1)")
-    expect(calls[0]?.args[5]).toContain("title state url mergedAt mergeable mergeStateStatus")
+    expect(calls[0]?.args[5]).toContain("title state url mergedAt isDraft mergeable mergeStateStatus")
     expect(calls[0]?.args[5]).toContain("statusCheckRollup { contexts(first: 100)")
     expect(calls[0]?.args[5]).toContain("nodes { __typename ... on StatusContext { id context state createdAt }")
     expect(calls[0]?.args[5]).toContain("... on CheckRun { id name status conclusion")
@@ -298,6 +298,7 @@ describe("GitHub client", () => {
     expect((await getOne(client)).state).toEqual({
       tag: "Open",
       ci: expected,
+      isDraft: false,
       mergeability: "mergeable",
       blocker: "none",
     })
@@ -349,6 +350,7 @@ describe("GitHub client", () => {
     expect((await getOne(client)).state).toEqual({
       tag: "Open",
       ci: "pending",
+      isDraft: false,
       mergeability: "mergeable",
       blocker: "none",
     })
@@ -1065,7 +1067,19 @@ describe("GitHub client", () => {
   ])("parses $raw mergeability", async ({ raw, expected }) => {
     const client = createGitHubClient(runnerFor(batchResponse(response({ mergeable: raw }))))
 
-    expect((await getOne(client)).state).toEqual({ tag: "Open", ci: "none", mergeability: expected, blocker: "none" })
+    expect((await getOne(client)).state).toEqual({
+      tag: "Open",
+      ci: "none",
+      isDraft: false,
+      mergeability: expected,
+      blocker: "none",
+    })
+  })
+
+  test.each([true, false])("parses isDraft=$isDraft", async (isDraft) => {
+    const client = createGitHubClient(runnerFor(batchResponse(response({ isDraft }))))
+
+    expect((await getOne(client)).state).toMatchObject({ tag: "Open", isDraft })
   })
 
   test.each([
@@ -1145,6 +1159,7 @@ describe("GitHub client", () => {
     expect((await getOne(client)).state).toEqual({
       tag: "Open",
       ci: "none",
+      isDraft: false,
       mergeability: "mergeable",
       blocker: expected,
     })
@@ -1279,6 +1294,8 @@ describe("GitHub client", () => {
   })
 
   test.each([
+    response({ isDraft: undefined }),
+    response({ isDraft: "true" }),
     response({ state: "UNKNOWN" }),
     response({ state: "CLOSED", mergedAt: "2026-08-10T12:00:00Z" }),
     response({ statusCheckRollup: rollup({ nodes: [statusContext({ state: "UNKNOWN" })] }) }),
@@ -1498,6 +1515,7 @@ describe("GitHub client", () => {
     expect((await getOne(client)).state).toEqual({
       tag: "Open",
       ci: "none",
+      isDraft: false,
       mergeability: "mergeable",
       blocker: "none",
     })
