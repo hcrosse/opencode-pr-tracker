@@ -137,6 +137,24 @@ describe("pull request TUI", () => {
     }
   })
 
+  test("renders consecutive pull request entries without a blank row", async () => {
+    const sidebar = await renderSidebar([attachment, secondAttachment])
+    try {
+      const frame = await sidebar.view.waitForFrame(
+        (value) => value.includes("owner/repository#42") && value.includes("another/project#7"),
+      )
+      const rows = frame.split("\n")
+      const firstEntryRow = rows.findIndex((row) => row.includes("owner/repository#42"))
+
+      expect(firstEntryRow).toBeGreaterThanOrEqual(0)
+      expect(rows[firstEntryRow + 1]?.trim()).toBe("Track pull requests")
+      expect(rows[firstEntryRow + 2]).toContain("another/project#7")
+      expect(rows[firstEntryRow + 3]?.trim()).toBe("Track pull requests")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
   test("preserves the attach helper while rejecting an unresolved pull request without mutation", async () => {
     const store = stateStore([])
     let requestSignal: AbortSignal | undefined

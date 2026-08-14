@@ -487,45 +487,47 @@ export function PullRequestSidebar(
           {!failure() && items().length === 0 ? (
             <text fg={props.api.theme.current.textMuted}>No pull requests attached</text>
           ) : null}
-          {items().map((item) => {
-            const appearance = statusAppearance(item.status)
-            const attributes = appearance.strikethrough ? TextAttributes.STRIKETHROUGH : TextAttributes.NONE
-            const title = item.status.tag === "Available" ? item.status.title : "Title unavailable"
-            return (
-              <box
-                flexDirection="column"
-                onMouseUp={() => {
-                  openPullRequest(item.attachment.pullRequest, {
-                    ...(props.dependencies.runner ? { runner: props.dependencies.runner } : {}),
-                    signal: props.api.lifecycle.signal,
-                  })
-                    .then((result) => {
-                      if (!result.ok) {
+          <box flexDirection="column" gap={0}>
+            {items().map((item) => {
+              const appearance = statusAppearance(item.status)
+              const attributes = appearance.strikethrough ? TextAttributes.STRIKETHROUGH : TextAttributes.NONE
+              const title = item.status.tag === "Available" ? item.status.title : "Title unavailable"
+              return (
+                <box
+                  flexDirection="column"
+                  onMouseUp={() => {
+                    openPullRequest(item.attachment.pullRequest, {
+                      ...(props.dependencies.runner ? { runner: props.dependencies.runner } : {}),
+                      signal: props.api.lifecycle.signal,
+                    })
+                      .then((result) => {
+                        if (!result.ok) {
+                          props.api.ui.toast({
+                            variant: "error",
+                            title: "Pull request tracker",
+                            message: result.error.message,
+                          })
+                        }
+                      })
+                      .catch(() => {
                         props.api.ui.toast({
                           variant: "error",
                           title: "Pull request tracker",
-                          message: result.error.message,
+                          message: "Unable to open the pull request",
                         })
-                      }
-                    })
-                    .catch(() => {
-                      props.api.ui.toast({
-                        variant: "error",
-                        title: "Pull request tracker",
-                        message: "Unable to open the pull request",
                       })
-                    })
-                }}
-              >
-                <text fg={toneColor(props.api.theme.current, appearance.tone)} attributes={attributes}>
-                  <b>{formatPullRequestRef(item.attachment.pullRequest)}</b> {appearance.label}
-                </text>
-                <text fg={props.api.theme.current.textMuted} attributes={attributes}>
-                  {title}
-                </text>
-              </box>
-            )
-          })}
+                  }}
+                >
+                  <text fg={toneColor(props.api.theme.current, appearance.tone)} attributes={attributes}>
+                    <b>{formatPullRequestRef(item.attachment.pullRequest)}</b> {appearance.label}
+                  </text>
+                  <text fg={props.api.theme.current.textMuted} attributes={attributes}>
+                    {title}
+                  </text>
+                </box>
+              )
+            })}
+          </box>
         </box>
       ) : null}
     </box>
