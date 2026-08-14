@@ -539,9 +539,16 @@ export function PullRequestSidebar(
                       •{" "}
                     </text>
                     <box flexDirection="column" flexGrow={1}>
-                      <text fg={toneColor(props.api.theme.current, appearance.tone)} attributes={attributes}>
-                        <b>{formatPullRequestRef(item.attachment.pullRequest)}</b> {appearance.label}
-                      </text>
+                      <box flexDirection="row" width="100%">
+                        <text fg={toneColor(props.api.theme.current, appearance.tone)} attributes={attributes}>
+                          <b>{formatPullRequestRef(item.attachment.pullRequest)}</b> {appearance.label}
+                        </text>
+                        {appearance.stale ? (
+                          <text fg={props.api.theme.current.textMuted} attributes={TextAttributes.ITALIC}>
+                            {" · stale"}
+                          </text>
+                        ) : null}
+                      </box>
                       {props.layout !== "compact" ? (
                         <text fg={props.api.theme.current.textMuted} attributes={attributes}>
                           {title}

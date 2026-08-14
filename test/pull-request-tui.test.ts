@@ -17,7 +17,7 @@ import {
 import type { GitHubClient, ProcessRunner } from "../src/github.js"
 import type { PullRequestAttachment, StateStore } from "../src/state.js"
 import { parsePullRequestUrl, type PullRequestUrl } from "../src/url.js"
-import { attachment, githubStatuses, pullRequest, secondAttachment, stateStore } from "./tui-fixtures.js"
+import { attachment, available, githubStatuses, pullRequest, secondAttachment, stateStore } from "./tui-fixtures.js"
 
 const thirdParsed = parsePullRequestUrl("https://github.com/third/example/pull/9")
 if (!thirdParsed.ok) throw new Error("third test fixture URL is invalid")
@@ -38,13 +38,14 @@ async function renderSidebar(
   items: readonly PullRequestAttachment[],
   options: Readonly<{
     followingText?: string
+    github?: GitHubClient
     layout?: PullRequestSidebarLayout
     width?: number
   }> = {},
 ) {
   let githubCalls = 0
   const color = RGBA.fromHex("#ffffff")
-  const github = githubStatuses()
+  const github = options.github ?? githubStatuses()
   const refreshBus = createRefreshBus()
   const api = {
     lifecycle: {
@@ -191,8 +192,8 @@ describe("pull request TUI", () => {
       const secondEntry = rows[secondEntryRow]!
 
       expect(frame).not.toContain("Track pull requests")
-      expect(firstEntry.trimStart()).toStartWith("• owner/repository#42 checks passed")
-      expect(secondEntry.trimStart()).toStartWith("• another/project#7 checks passed")
+      expect(firstEntry.trimStart()).toStartWith("• owner/repository#42 passed")
+      expect(secondEntry.trimStart()).toStartWith("• another/project#7 passed")
       expect(secondEntryRow).toBe(firstEntryRow + 1)
     } finally {
       await sidebar.cleanup()
@@ -213,7 +214,7 @@ describe("pull request TUI", () => {
   })
 
   test("aligns wrapped status text and the title after the list bullet", async () => {
-    const sidebar = await renderSidebar([attachment], { width: 30 })
+    const sidebar = await renderSidebar([attachment], { width: 24 })
     try {
       const frame = await sidebar.view.waitForFrame(
         (value) => value.includes("owner/repository#42") && value.includes("Track pull requests"),
@@ -244,6 +245,42 @@ describe("pull request TUI", () => {
       const followingContentRow = rows.findIndex((row) => row.includes("Following content"))
 
       expect(followingContentRow).toBe(emptyStateRow + 1)
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("renders stale status as a separate soft-failure marker", async () => {
+    let availableResponse = true
+    const github: GitHubClient = {
+      async getStack(requested) {
+        return { ok: true, value: [requested] }
+      },
+      async get(pullRequests) {
+        return availableResponse
+          ? {
+              ok: true,
+              value: pullRequests.map((value) => ({ ok: true, value: available(undefined, value) })),
+            }
+          : {
+              ok: false,
+              error: {
+                tag: "GitHubUnavailable",
+                message: "GitHub status unavailable",
+                cause: new Error("offline"),
+              },
+            }
+      },
+    }
+    const sidebar = await renderSidebar([attachment], { github })
+    try {
+      availableResponse = false
+      sidebar.emitSessionUpdated()
+      await sidebar.view.waitFor(() => sidebar.githubCalls() === 2)
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("passed · stale"))
+
+      expect(frame).toContain("owner/repository#42 passed · stale")
+      expect(frame).not.toContain("GitHub unavailable")
     } finally {
       await sidebar.cleanup()
     }
