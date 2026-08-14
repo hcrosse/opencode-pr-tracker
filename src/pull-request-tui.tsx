@@ -181,6 +181,7 @@ function selectPullRequest(
   api: TuiPluginApi,
   title: "Open pull request" | "Detach pull request",
   attachments: readonly PullRequestAttachment[],
+  showDescriptions: boolean,
   signal: AbortSignal,
 ): Promise<PullRequestUrl | undefined> {
   return new Promise((resolve) => {
@@ -210,7 +211,7 @@ function selectPullRequest(
             options={attachments.map((attachment) => ({
               title: formatPullRequestRef(attachment.pullRequest),
               value: attachment.pullRequest,
-              description: attachment.pullRequest.url,
+              ...(showDescriptions ? { description: attachment.pullRequest.url } : {}),
             }))}
             onSelect={(option) => finish(option.value)}
           />
@@ -291,7 +292,13 @@ export function createPullRequestCommands(
           return
         }
 
-        const pullRequest = await selectPullRequest(api, "Open pull request", attachments.value, api.lifecycle.signal)
+        const pullRequest = await selectPullRequest(
+          api,
+          "Open pull request",
+          attachments.value,
+          true,
+          api.lifecycle.signal,
+        )
         if (pullRequest === undefined) return
         const result = await openPullRequest(pullRequest, {
           ...(dependencies.runner ? { runner: dependencies.runner } : {}),
@@ -324,7 +331,13 @@ export function createPullRequestCommands(
           return
         }
 
-        const pullRequest = await selectPullRequest(api, "Detach pull request", attachments.value, api.lifecycle.signal)
+        const pullRequest = await selectPullRequest(
+          api,
+          "Detach pull request",
+          attachments.value,
+          false,
+          api.lifecycle.signal,
+        )
         if (pullRequest === undefined) return
         const result = await dependencies.store.detach(sessionID, pullRequest)
         if (!result.ok) {

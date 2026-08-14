@@ -557,6 +557,7 @@ describe("pull request TUI", () => {
     const commands = new Map<string, Command>()
     const toasts: string[] = []
     const dialogTitles: string[] = []
+    const dialogOptions = new Map<string, readonly { title: string; value: PullRequestUrl; description?: string }[]>()
     const processCalls: Array<{ file: string; args: readonly string[]; signal: AbortSignal | undefined }> = []
     let attachCalls = 0
     let detachCalls = 0
@@ -604,10 +605,11 @@ describe("pull request TUI", () => {
         },
         DialogSelect(props: {
           title: string
-          options: readonly { value: PullRequestUrl }[]
+          options: readonly { title: string; value: PullRequestUrl; description?: string }[]
           onSelect(value: { value: PullRequestUrl }): void
         }) {
           dialogTitles.push(props.title)
+          dialogOptions.set(props.title, props.options)
           props.onSelect(props.options[0]!)
           return null
         },
@@ -637,6 +639,10 @@ describe("pull request TUI", () => {
     await commands.get("pr.detach")!.run()
 
     expect(dialogTitles).toEqual(["Open pull request", "Detach pull request", "Detach pull request"])
+    expect(dialogOptions.get("Open pull request")).toEqual([
+      { title: "owner/repository#42", value: pullRequest, description: pullRequest.url },
+    ])
+    expect(dialogOptions.get("Detach pull request")).toEqual([{ title: "owner/repository#42", value: pullRequest }])
     expect(processCalls).toEqual([
       {
         file: process.platform === "darwin" ? "open" : "xdg-open",
