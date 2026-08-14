@@ -257,6 +257,12 @@ export function createFeedbackTool(dependencies: FeedbackToolDependencies): Feed
         signal: context.abort,
       })
       if (!result.ok) {
+        if (result.error.tag === "InvalidGitHubResponse") {
+          throw new FeedbackToolError(
+            result.error.tag,
+            "GitHub CLI may have created the issue but did not return a valid URL. Verify GitHub before previewing and approving a retry.",
+          )
+        }
         throw new FeedbackToolError(
           result.error.tag,
           `${failureMessage(result.error)}. Preview and approve again before retry.`,

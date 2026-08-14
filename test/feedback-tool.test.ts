@@ -224,6 +224,33 @@ describe("pr_feedback tool", () => {
     })
   })
 
+  test("warns that invalid GitHub CLI output may still have created the issue", async () => {
+    const harness = createHarness({ runner: async () => ({ stdout: "created with warning" }) })
+    await harness.feedbackTool.execute(
+      { request: { action: "preview", feedback: bugFeedback, include_diagnostics: false } },
+      harness.toolContext,
+    )
+
+    expect(
+      harness.feedbackTool.execute(
+        {
+          request: {
+            action: "deliver",
+            preview_id: "preview-1",
+            delivery: "github_cli",
+            approval: "approved_via_question",
+          },
+        },
+        harness.toolContext,
+      ),
+    ).rejects.toEqual(
+      new FeedbackToolError(
+        "InvalidGitHubResponse",
+        "GitHub CLI may have created the issue but did not return a valid URL. Verify GitHub before previewing and approving a retry.",
+      ),
+    )
+  })
+
   test("advertises template guidance and question-tool approval", () => {
     const { feedbackTool } = createHarness()
 
