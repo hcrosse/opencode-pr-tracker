@@ -6,7 +6,7 @@ Proceed with persisted, user-controlled pull request ordering.
 
 The first implementation should provide a keyboard-driven reorder dialog and a structured agent tool backed by one atomic state operation. It should not include drag and drop. Drag and drop is feasible with the pinned OpenTUI APIs, but it should remain an optional follow-up because it adds terminal-specific mouse behavior without replacing the required keyboard path.
 
-Manual order is authoritative after attachment. GitHub Stack order supplies an initial default when members are discovered, but later attachment must not silently undo manual moves.
+Standalone pull requests are individual move units. The attached subset of a GitHub Stack is one move unit that always retains GitHub's bottom-to-top review order. Manual ordering positions that complete unit among other standalone pull requests and Stacks.
 
 ## Current Behavior
 
@@ -14,7 +14,7 @@ The persisted `pullRequests` array already defines display order. `StateStore.li
 
 State mutations use a per-session file lock, reread the current file after acquiring the lock, write a temporary file, and atomically rename it. The same boundary can serialize moves with attach, detach, and cleanup operations.
 
-GitHub Stack attachment currently removes discovered members and reinserts the complete group in GitHub position order at the earliest existing member. This correctly establishes the initial bottom-to-top order, but repeating it after a manual move would overwrite the user's choice.
+GitHub Stack attachment already removes discovered members and reinserts the complete group in GitHub position order at the earliest existing member. Stack membership is not persisted, so reorder clients need a remote-authoritative membership projection before presenting or moving units.
 
 Relevant code:
 
@@ -54,18 +54,18 @@ This evidence is sufficient to establish feasibility without a throwaway product
 
 Add a `Reorder pull requests` palette command with slash name `/pr-reorder`.
 
-1. Open a medium dialog containing the current attachment order.
+1. Resolve current Stack membership and open a medium dialog containing the ordered standalone and Stack move units.
 2. Move the highlight with the existing selection keys.
-3. Press Enter to enter move mode for the highlighted pull request.
-4. Use Up and Down to preview adjacent moves, or Home and End to preview top and bottom.
+3. Press Enter to enter move mode for the highlighted unit.
+4. Use Up and Down to preview adjacent moves. Use Shift+Up and Shift+Down to move directly to top and bottom; Home and End may provide equivalent bindings.
 5. Press Enter to commit one move, or Escape to cancel without writing.
-6. Keep the moved pull request highlighted and show a success or conflict toast.
+6. Keep the moved unit highlighted and show a success or conflict toast.
 
 The dialog should display a clear move-mode instruction and a non-color marker on the selected row. The initial implementation should not add hidden modifier-only shortcuts or require mouse support.
 
 ## Agent Tool Contract
 
-Add a `pr_move` tool that identifies pull requests by canonical GitHub URL. Number-only identity is unsafe because one session may contain the same pull request number from multiple repositories.
+Add a `pr_move` tool that identifies pull requests by canonical GitHub URL. Number-only identity is unsafe because one session may contain the same pull request number from multiple repositories. Naming any attached Stack member selects the attached subset of that Stack as one move unit. An anchor that names a member of another Stack targets that complete unit.
 
 ```ts
 type MoveDestination =
@@ -74,21 +74,28 @@ type MoveDestination =
   | Readonly<{ placement: "before"; anchor: PullRequestUrl }>
   | Readonly<{ placement: "after"; anchor: PullRequestUrl }>
 
+type ResolvedMoveDestination =
+  | Readonly<{ placement: "top" }>
+  | Readonly<{ placement: "bottom" }>
+  | Readonly<{ placement: "before"; anchor: NonEmptyPullRequests }>
+  | Readonly<{ placement: "after"; anchor: NonEmptyPullRequests }>
+
 type MoveOutcome = Readonly<{
   status: "moved" | "unchanged"
-  pullRequest: PullRequestUrl
-  previous?: PullRequestUrl
-  next?: PullRequestUrl
+  pullRequests: NonEmptyPullRequests
+  previous?: NonEmptyPullRequests
+  next?: NonEmptyPullRequests
 }>
 
 move(
   sessionID: string,
-  pullRequest: PullRequestUrl,
-  destination: MoveDestination,
+  expectedRevision: string,
+  pullRequests: NonEmptyPullRequests,
+  destination: ResolvedMoveDestination,
 ): Promise<Result<MoveOutcome, StateFailure | MoveFailure>>
 ```
 
-The tool schema should model the destination as a tagged union rather than accepting an optional anchor whose validity depends on another field. The result should name the moved pull request and its final neighbors so an agent can report the actual outcome.
+The public tool schema should model the destination as a tagged union rather than accepting an optional anchor whose validity depends on another field. Before calling the state operation, the server resolves the selected and anchor URLs into current move units and derives an order revision from the complete ordered URL list. The result should name every moved pull request and the unit's final neighbors so an agent can report the actual outcome.
 
 Do not expose whole-list replacement. Numeric positions may be presented inside the human dialog, but they should not be the persisted or agent-facing operation.
 
@@ -96,43 +103,56 @@ Do not expose whole-list replacement. Numeric positions may be presented inside 
 
 - The array order is the sole persisted order; no schema migration or per-item position field is needed.
 - A move changes only array position. It preserves canonical URL, `attachedAt`, status cache identity, and attachment count.
+- A standalone pull request is one move unit. Every currently attached member of the same remotely resolved GitHub Stack forms one ordered move unit, including partial Stacks with internal gaps or unattached outer members.
 - `top` and `bottom` target the complete session list across repositories.
-- `before` and `after` use a canonical URL anchor from the same session. Repositories do not form implicit groups.
-- Moving relative to the same pull request is invalid and does not write.
+- `before` and `after` use a canonical URL anchor from the same session and resolve it to its complete move unit. Repositories do not form implicit groups.
+- Moving relative to the same move unit is invalid and does not write.
 - Moving to the existing destination returns `unchanged` and does not write.
-- A missing subject or anchor returns a specific conflict and does not write.
+- A missing subject, missing anchor, or changed attachment order returns a specific conflict and does not write.
 - Polling and sidebar refresh continue to consume the stored order without additional sorting.
 
 ## Concurrent Updates
 
 Every move must acquire the existing per-session lock and reread state before validation. This makes each move linearizable with attach, detach, cleanup, and other moves according to lock acquisition order.
 
-Identity-relative destinations remain stable when an unrelated pull request is attached or detached. If the subject or anchor disappears before the move acquires the lock, the move fails without mutation and the caller refreshes before retrying. Concurrent moves of the same subject serialize; the later successful move becomes the visible order.
+The membership resolver computes a revision from the complete ordered URL list. The locked operation compares that revision with the current state before moving. If any attachment, detachment, or reorder occurred after resolution, the move fails without mutation and the caller refreshes membership before retrying. Concurrent moves serialize; only a move based on the current revision succeeds.
 
-The initial implementation does not need a persisted revision. A revision would add state-format and migration cost while the proposed operation already rejects missing identities and does not replace the complete list. A future bulk-order operation would require an expected revision and exact membership validation.
+The revision is derived rather than persisted, so this safety check does not require a state schema migration. A future bulk-order operation would still require exact membership validation and is outside the recommendation.
 
 ## GitHub Stack Semantics
 
-GitHub Stack order is an automatic default, not a permanent invariant.
+GitHub Stack order and contiguity are invariants for attached Stack members.
 
 - Initial Stack discovery attaches new members in GitHub bottom-to-top order.
-- Manual moves may separate or reverse individual Stack members.
-- Attaching any member of a fully attached Stack is idempotent and must not normalize existing order.
-- Discovering missing members preserves the relative and absolute order of every existing attachment. Process missing members in GitHub bottom-to-top order: insert after the nearest attached predecessor in that Stack, otherwise before the nearest attached successor, otherwise append the complete new Stack. This may leave manually separated Stack members noncontiguous, which is preferable to undoing manual order.
-- Detaching remains scoped to the selected pull request.
+- Reordering any member moves every attached member of that Stack as one contiguous unit in GitHub order.
+- Attaching any member of a fully attached Stack is idempotent. Attaching a missing member reconstructs the attached subset as one ordered unit at its existing earliest position.
+- Detaching remains scoped to the selected pull request. The remaining attached subset stays one move unit and retains the gaps implied by remote Stack positions.
+- A batched membership resolver should project all attached URLs into standalone or Stack units in one bounded request before opening the reorder dialog. If membership cannot be resolved safely, the dialog and tool fail without mutation rather than splitting a possible Stack.
 - No Stack identifier or manual-order flag needs to be persisted for reordering.
 
-Visual Stack linkage is useful but independent of ordering semantics. It requires trustworthy Stack membership at render time and is tracked separately in [#111](https://github.com/hcrosse/opencode-pr-tracker/issues/111).
+Visual Stack linkage is useful but independent of ordering semantics. [#111](https://github.com/hcrosse/opencode-pr-tracker/issues/111) defines light box-drawing markers for complete Stacks, incomplete outer boundaries, and internal unattached ranges. It can reuse the same bounded membership projection.
+
+The selected concise treatment uses `┌─` and `└─` only for complete visible boundaries. `├─` means the Stack continues beyond a visible boundary, `├┄` labels an internal unattached range, and trailing `┊` means the Stack continues after the final visible attached row:
+
+```text
+├─ owner/repo#12 passed
+│  Base migration
+├┄ 1 PR not attached
+├─ owner/repo#14 pending
+│  API update
+├─ owner/repo#15 draft
+┊  Client wiring
+```
 
 ## Follow-Up Work
 
 ### Persisted reorder operation and agent tool
 
-Implement `StateStore.move`, the `pr_move` server tool, Stack reattachment precedence, and focused state, concurrency, mixed-repository, and server-schema tests.
+[#117](https://github.com/hcrosse/opencode-pr-tracker/issues/117) tracks batched Stack membership projection, revision derivation, `StateStore.move`, the `pr_move` server tool, and focused state, concurrency, mixed-repository, partial-Stack, and server-schema tests.
 
 ### Keyboard reorder dialog
 
-Implement `/pr-reorder` with scoped move-mode bindings, preview state, commit and cancel behavior, refresh publication, toasts, and rendered interaction tests.
+[#116](https://github.com/hcrosse/opencode-pr-tracker/issues/116) tracks `/pr-reorder` with Stack-as-unit presentation, scoped move-mode bindings, adjacent Up/Down movement, Shift+Up/Shift+Down boundary movement, preview state, commit and cancel behavior, refresh publication, toasts, and rendered interaction tests.
 
 ### Optional drag and drop
 
@@ -140,12 +160,16 @@ Implement `/pr-reorder` with scoped move-mode bindings, preview state, commit an
 
 ### GitHub Stack visualization
 
-[#111](https://github.com/hcrosse/opencode-pr-tracker/issues/111) tracks box-drawing markers for Stack relationships. It is ready as a separate user-visible enhancement because it can be designed independently of manual reordering.
+[#111](https://github.com/hcrosse/opencode-pr-tracker/issues/111) tracks the selected concise box-drawing markers for Stack relationships. Deferred alternatives preserve the design exploration for [inline annotations (#113)](https://github.com/hcrosse/opencode-pr-tracker/issues/113), [explicit outer placeholder rows (#114)](https://github.com/hcrosse/opencode-pr-tracker/issues/114), and [collapsed Stack summaries (#115)](https://github.com/hcrosse/opencode-pr-tracker/issues/115).
+
+### Stack-scoped attachment and detachment
+
+[#118](https://github.com/hcrosse/opencode-pr-tracker/issues/118) tracks atomic one, all, open/non-open, selected-and-above, and selected-and-below scopes for state and agent tools. [#119](https://github.com/hcrosse/opencode-pr-tracker/issues/119) adds the dependent TUI scope selector while keeping standalone flows unchanged.
 
 ## Risks and Verification
 
 - OpenTUI drag support is source-verified but not exercised across terminal emulators or multiplexers. This is why drag is deferred.
 - A custom dialog must unregister its keymap layer during every close, cancellation, and plugin-abort path.
-- Stack membership can change remotely. Reattachment behavior must preserve existing manual order while adding only newly discovered members.
+- Stack membership can change remotely after resolution. One move uses one validated membership snapshot; the next dialog or tool call refreshes it. Reattachment must preserve the Stack unit's position among other units while rebuilding its attached subset in GitHub order.
 - A move may succeed before an unlock or lock-compromise error is reported by the current persistence boundary. Idempotent destination semantics make retries safe, but callers must surface the storage failure.
 - Full implementation should cover concurrent attach, detach, move, and session cleanup across separate store instances.
