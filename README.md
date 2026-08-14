@@ -82,9 +82,10 @@ entries:
 }
 ```
 
-Omitting `layout` keeps the default two-line entries with pull request titles.
-The `"compact"` layout shows only the pull request reference and status on one
-line.
+Only the exact `"compact"` value changes the layout. Omitting `layout` or using
+any other value keeps the default two-line rows with pull request titles.
+Compact rows omit the title but retain the list bullet, pull request reference,
+and status on one line.
 
 ## Sidebar
 
