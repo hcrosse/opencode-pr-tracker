@@ -1,6 +1,9 @@
 import { tool, type Hooks, type PluginModule } from "@opencode-ai/plugin"
 
+import packageManifest from "../package.json" with { type: "json" }
 import { attachPullRequest, type AttachPullRequestFailure } from "./attach.js"
+import { createFeedbackTool, type FeedbackToolDependencies } from "./feedback-tool.js"
+import type { FeedbackDiagnostics } from "./feedback.js"
 import { createGitHubClient, type GitHubClient } from "./github.js"
 import { createStateStore, type StateStore } from "./state.js"
 import { formatPullRequestRef, parsePullRequestUrl, type InvalidPullRequestUrl } from "./url.js"
@@ -32,14 +35,74 @@ function formatReferenceList(references: readonly string[]): string {
   return `${references.slice(0, -1).join(", ")}, and ${references.at(-1)}`
 }
 
-export function createServerHooks(store: StateStore, github: GitHubClient = createGitHubClient()): Hooks {
+type FeedbackDiagnosticsFetcher = (input: URL, init: Readonly<{ signal: AbortSignal }>) => Promise<Response>
+
+type FeedbackDiagnosticsOptions = Readonly<{
+  pluginVersion: string
+  platform: string
+  arch: string
+  signal: AbortSignal
+  fetcher?: FeedbackDiagnosticsFetcher
+}>
+
+function parseHealthVersion(value: unknown): string | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined
+  if (!("healthy" in value) || value.healthy !== true) return undefined
+  if (!("version" in value) || typeof value.version !== "string") return undefined
+  const version = value.version.trim()
+  return version === "" ? undefined : version
+}
+
+export async function readFeedbackDiagnostics(
+  serverUrl: URL,
+  options: FeedbackDiagnosticsOptions,
+): Promise<FeedbackDiagnostics> {
+  let opencodeVersion = "unavailable"
+  try {
+    const response = await (options.fetcher ?? fetch)(new URL("/global/health", serverUrl), {
+      signal: options.signal,
+    })
+    if (response.ok) {
+      const value: unknown = await response.json()
+      opencodeVersion = parseHealthVersion(value) ?? "unavailable"
+    }
+  } catch (cause) {
+    if (options.signal.aborted) throw cause
+  }
+
+  return {
+    pluginVersion: options.pluginVersion,
+    opencodeVersion,
+    operatingSystem: `${options.platform}/${options.arch}`,
+  }
+}
+
+const defaultFeedbackDependencies: FeedbackToolDependencies = {
+  async readDiagnostics() {
+    return {
+      pluginVersion: packageManifest.version,
+      opencodeVersion: "unavailable",
+      operatingSystem: `${process.platform}/${process.arch}`,
+    }
+  },
+  platform: process.platform,
+}
+
+export function createServerHooks(
+  store: StateStore,
+  github: GitHubClient = createGitHubClient(),
+  feedback: FeedbackToolDependencies = defaultFeedbackDependencies,
+): Hooks {
+  const feedbackTool = createFeedbackTool(feedback)
   return {
     async event({ event }) {
       if (event.type !== "session.deleted") return
+      feedbackTool.clearSession(event.properties.info.id)
       const result = await store.removeSession(event.properties.info.id)
       if (!result.ok) throw toToolError(result.error)
     },
     tool: {
+      pr_feedback: feedbackTool,
       pr_list: tool({
         description: "List pull requests attached to the current OpenCode session.",
         args: {},
@@ -125,7 +188,17 @@ export function createServerHooks(store: StateStore, github: GitHubClient = crea
 
 const plugin: PluginModule & { id: string } = {
   id: "opencode-pr-tracker",
-  server: async () => createServerHooks(createStateStore(), createGitHubClient()),
+  server: async ({ serverUrl }) =>
+    createServerHooks(createStateStore(), createGitHubClient(), {
+      readDiagnostics: (signal) =>
+        readFeedbackDiagnostics(serverUrl, {
+          pluginVersion: packageManifest.version,
+          platform: process.platform,
+          arch: process.arch,
+          signal,
+        }),
+      platform: process.platform,
+    }),
 }
 
 export default plugin

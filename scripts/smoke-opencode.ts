@@ -69,7 +69,7 @@ function assertTools(value: unknown): void {
   if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
     throw new Error("OpenCode returned an invalid tool ID response")
   }
-  for (const tool of ["pr_list", "pr_attach", "pr_detach"]) {
+  for (const tool of ["pr_list", "pr_attach", "pr_detach", "pr_feedback"]) {
     if (!value.includes(tool)) throw new Error(`OpenCode did not register ${tool}`)
   }
 }
@@ -140,7 +140,6 @@ const expected = [
   { name: "pr.open", slashName: "pr-open" },
   { name: "pr.detach", slashName: "pr-detach" },
   { name: "pr.sync", slashName: "pr-sync" },
-  { name: "pr.tracker.feedback", slashName: "pr-tracker-feedback" },
   { name: "pr.tracker.plugin.update", slashName: "pr-tracker-plugin-update" },
 ]
 for (const command of expected) {

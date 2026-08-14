@@ -9,7 +9,6 @@ export type FeedbackDiagnostics = Readonly<{
   pluginVersion: string
   opencodeVersion: string
   operatingSystem: string
-  installationSource: string
 }>
 
 export type FeedbackInput =
@@ -19,6 +18,7 @@ export type FeedbackInput =
       problem: string
       reproduction: string
       expectedBehavior: string
+      relevantOutput?: string
     }>
   | Readonly<{
       kind: "feature"
@@ -43,6 +43,7 @@ export type FeedbackFailure = Readonly<{
 
 export type OpenFeedbackFailure =
   | Readonly<{ tag: "UnsupportedPlatform"; message: string; platform: string }>
+  | Readonly<{ tag: "OpenFeedbackCancelled" }>
   | Readonly<{
       tag: "FeedbackUrlTooLong"
       message: "Feedback is too long for browser delivery; choose GitHub CLI delivery"
@@ -137,15 +138,39 @@ function trimRequired(value: string, field: string): Result<string, FeedbackFail
 function appendDiagnostics(
   draft: FeedbackDraft,
   diagnostics: FeedbackDiagnostics | undefined,
+  format: "diagnostics" | "environment" = "diagnostics",
 ): Result<FeedbackDraft, FeedbackFailure> {
-  if (diagnostics === undefined) return { ok: true, value: draft }
+  if (diagnostics === undefined) {
+    if (format === "diagnostics") return { ok: true, value: draft }
+    return {
+      ok: true,
+      value: {
+        ...draft,
+        body: [
+          draft.body,
+          "",
+          "## Environment",
+          "",
+          "- OpenCode version: not provided",
+          "- Plugin version or commit: not provided",
+          "- Operating system: not provided",
+        ].join("\n"),
+      },
+    }
+  }
 
-  const entries = [
-    ["pluginVersion", "Plugin version", diagnostics.pluginVersion],
-    ["opencodeVersion", "OpenCode version", diagnostics.opencodeVersion],
-    ["operatingSystem", "Operating system", diagnostics.operatingSystem],
-    ["installationSource", "Installation source", diagnostics.installationSource],
-  ] as const
+  const entries =
+    format === "environment"
+      ? ([
+          ["opencodeVersion", "OpenCode version", diagnostics.opencodeVersion],
+          ["pluginVersion", "Plugin version or commit", diagnostics.pluginVersion],
+          ["operatingSystem", "Operating system", diagnostics.operatingSystem],
+        ] as const)
+      : ([
+          ["pluginVersion", "Plugin version", diagnostics.pluginVersion],
+          ["opencodeVersion", "OpenCode version", diagnostics.opencodeVersion],
+          ["operatingSystem", "Operating system", diagnostics.operatingSystem],
+        ] as const)
   const lines: string[] = []
 
   for (const [field, label, value] of entries) {
@@ -158,7 +183,7 @@ function appendDiagnostics(
     ok: true,
     value: {
       ...draft,
-      body: [draft.body, "", "## Diagnostics", "", ...lines].join("\n"),
+      body: [draft.body, "", format === "environment" ? "## Environment" : "## Diagnostics", "", ...lines].join("\n"),
     },
   }
 }
@@ -179,7 +204,7 @@ export function createFeedbackDraft(
       const expectedBehavior = trimRequired(input.expectedBehavior, "expectedBehavior")
       if (!expectedBehavior.ok) return expectedBehavior
 
-      return appendDiagnostics(
+      const withDiagnostics = appendDiagnostics(
         {
           title: title.value,
           body: [
@@ -199,7 +224,18 @@ export function createFeedbackDraft(
           template: "bug_report.md",
         },
         diagnostics,
+        "environment",
       )
+      if (!withDiagnostics.ok) return withDiagnostics
+      const relevantOutput = input.relevantOutput?.trim()
+      if (relevantOutput === undefined || relevantOutput === "") return withDiagnostics
+      return {
+        ok: true,
+        value: {
+          ...withDiagnostics.value,
+          body: [withDiagnostics.value.body, "", "## Relevant Output", "", relevantOutput].join("\n"),
+        },
+      }
     }
     case "feature": {
       const problem = trimRequired(input.problem, "problem")
@@ -269,6 +305,9 @@ export async function openFeedbackDraft(
       error: result.error,
     }
   }
+  if (isProcessCancellation(result.error.cause, options.signal)) {
+    return { ok: false, error: { tag: "OpenFeedbackCancelled" } }
+  }
   return {
     ok: false,
     error: {
@@ -293,6 +332,7 @@ export async function submitFeedbackDraft(
     "--body",
     draft.body,
   ]
+  if (draft.label !== undefined) args.push("--label", draft.label)
 
   let stdout: string
   try {
@@ -337,8 +377,8 @@ export async function submitFeedbackDraft(
     }
   }
 
-  const issueUrl = stdout.trim()
-  if (issueUrl === "") {
+  const issueUrl = parseCreatedIssueUrl(stdout)
+  if (issueUrl === undefined) {
     return {
       ok: false,
       error: {
@@ -348,4 +388,19 @@ export async function submitFeedbackDraft(
     }
   }
   return { ok: true, value: issueUrl }
+}
+
+function parseCreatedIssueUrl(stdout: string): string | undefined {
+  const value = stdout.trim()
+  if (/\s/.test(value)) return undefined
+  try {
+    const url = new URL(value)
+    if (url.protocol !== "https:" || url.hostname !== "github.com") return undefined
+    if (url.port !== "") return undefined
+    if (!/^\/hcrosse\/opencode-pr-tracker\/issues\/[1-9]\d*$/.test(url.pathname)) return undefined
+    if (url.username !== "" || url.password !== "" || url.search !== "" || url.hash !== "") return undefined
+    return url.toString()
+  } catch {
+    return undefined
+  }
 }
