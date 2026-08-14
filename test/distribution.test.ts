@@ -30,6 +30,13 @@ test("the TUI bundle uses OpenTUI's reactive Solid transform", async () => {
   expect(source).not.toContain('jsxDEV("box"')
 })
 
+test("the TUI bundle uses OpenCode's keymap context", async () => {
+  const source = await readFile(new URL("../dist/tui.js", import.meta.url), "utf8")
+
+  expect(source).toContain('from "@opentui/keymap/solid"')
+  expect(source).not.toContain("Keymap not found. Wrap the tree in <KeymapProvider>.")
+})
+
 test("the TUI bundle exports the attach helper", async () => {
   const module = await import(new URL("../dist/tui.js", import.meta.url).href)
 

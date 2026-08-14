@@ -6,7 +6,10 @@ import type {
   TuiDialogSelectProps,
   TuiPluginApi,
 } from "@opencode-ai/plugin/tui"
-import { testRender, type JSX } from "@opentui/solid"
+import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { KeymapProvider } from "@opentui/keymap/solid"
+import { testRender, useRenderer, type JSX } from "@opentui/solid"
+import { createComponent } from "solid-js"
 
 import { createFeedbackCommand, FeedbackConfirmation, type FeedbackConfirmationProps } from "../src/feedback-tui.jsx"
 import type { ProcessRunner } from "../src/github.js"
@@ -577,20 +580,38 @@ describe("createFeedbackCommand", () => {
       "Complete preview tail",
     ].join("\n")
     let confirms = 0
+    let hostConfirms = 0
     let cancels = 0
     const view = await testRender(
-      () =>
-        FeedbackConfirmation({
-          title,
-          confirmLabel,
-          preview,
-          onConfirm: () => {
-            confirms += 1
+      () => {
+        const keymap = createDefaultOpenTuiKeymap(useRenderer())
+        keymap.registerLayer({
+          bindings: [
+            {
+              key: "return",
+              cmd: () => {
+                hostConfirms += 1
+              },
+            },
+          ],
+        })
+        return createComponent(KeymapProvider, {
+          keymap,
+          get children() {
+            return createComponent(FeedbackConfirmation, {
+              title,
+              confirmLabel,
+              preview,
+              onConfirm: () => {
+                confirms += 1
+              },
+              onCancel: () => {
+                cancels += 1
+              },
+            })
           },
-          onCancel: () => {
-            cancels += 1
-          },
-        }),
+        })
+      },
       { width: 72, height: 18 },
     )
 
@@ -614,6 +635,7 @@ describe("createFeedbackCommand", () => {
       await Bun.sleep(30)
       await view.flush()
       expect(confirms).toBe(1)
+      expect(hostConfirms).toBe(0)
       expect(cancels).toBe(1)
       view.mockInput.pressCtrlC()
       await view.flush()

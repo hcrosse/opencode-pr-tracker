@@ -1,5 +1,6 @@
 /** @jsxImportSource @opentui/solid */
-import { useKeyboard, type JSX } from "@opentui/solid"
+import { useBindings } from "@opentui/keymap/solid"
+import type { JSX } from "@opentui/solid"
 import type { TuiPluginApi, TuiPluginMeta } from "@opencode-ai/plugin/tui"
 import { createSignal } from "solid-js"
 
@@ -45,19 +46,13 @@ export type FeedbackConfirmationProps = Readonly<{
 export type FeedbackConfirmationRenderer = (props: FeedbackConfirmationProps) => JSX.Element
 
 export function FeedbackConfirmation(props: FeedbackConfirmationProps): JSX.Element {
-  useKeyboard((key) => {
-    if (key.name === "return") {
-      key.preventDefault()
-      key.stopPropagation()
-      props.onConfirm()
-      return
-    }
-    if (key.name === "escape" || (key.ctrl && key.name === "c")) {
-      key.preventDefault()
-      key.stopPropagation()
-      props.onCancel()
-    }
-  })
+  useBindings(() => ({
+    bindings: [
+      { key: "return", cmd: props.onConfirm },
+      { key: "escape", cmd: props.onCancel },
+      { key: "ctrl+c", cmd: props.onCancel },
+    ],
+  }))
 
   return (
     <box flexDirection="column" gap={1}>

@@ -10,7 +10,14 @@ const result = await Bun.build({
   target: "bun",
   format: "esm",
   sourcemap: "external",
-  external: ["@opencode-ai/plugin", "@opencode-ai/plugin/tui", "@opentui/core", "@opentui/solid", "solid-js"],
+  external: [
+    "@opencode-ai/plugin",
+    "@opencode-ai/plugin/tui",
+    "@opentui/core",
+    "@opentui/keymap/solid",
+    "@opentui/solid",
+    "solid-js",
+  ],
   plugins: [solidPlugin],
 })
 
