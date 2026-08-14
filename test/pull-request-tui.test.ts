@@ -35,7 +35,7 @@ function registerPullRequestCommands(
 
 async function renderSidebar(
   items: readonly PullRequestAttachment[],
-  options: Readonly<{ followingText?: string }> = {},
+  options: Readonly<{ followingText?: string; width?: number }> = {},
 ) {
   let githubCalls = 0
   const color = RGBA.fromHex("#ffffff")
@@ -85,7 +85,7 @@ async function renderSidebar(
           options.followingText ? jsx("text", { children: options.followingText }) : null,
         ],
       }),
-    { width: 80, height: 20 },
+    { width: options.width ?? 80, height: 20 },
   )
   await view.waitForFrame((frame) => frame.includes("Pull requests"))
   if (items.length > 0) await view.waitFor(() => githubCalls === 1)
@@ -155,11 +155,39 @@ describe("pull request TUI", () => {
       )
       const rows = frame.split("\n")
       const firstEntryRow = rows.findIndex((row) => row.includes("owner/repository#42"))
+      const firstReference = rows[firstEntryRow]!
+      const firstTitle = rows[firstEntryRow + 1]!
+      const secondReference = rows[firstEntryRow + 2]!
+      const secondTitle = rows[firstEntryRow + 3]!
+      const firstBulletColumn = firstReference.indexOf("•")
+      const secondBulletColumn = secondReference.indexOf("•")
 
       expect(firstEntryRow).toBeGreaterThanOrEqual(0)
-      expect(rows[firstEntryRow + 1]?.trim()).toBe("Track pull requests")
-      expect(rows[firstEntryRow + 2]).toContain("another/project#7")
-      expect(rows[firstEntryRow + 3]?.trim()).toBe("Track pull requests")
+      expect(firstReference.slice(firstBulletColumn)).toStartWith("• owner/repository#42")
+      expect(firstTitle.indexOf("Track pull requests")).toBe(firstBulletColumn + 2)
+      expect(secondReference.slice(secondBulletColumn)).toStartWith("• another/project#7")
+      expect(secondTitle.indexOf("Track pull requests")).toBe(secondBulletColumn + 2)
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("aligns wrapped status text and the title after the list bullet", async () => {
+    const sidebar = await renderSidebar([attachment], { width: 30 })
+    try {
+      const frame = await sidebar.view.waitForFrame(
+        (value) => value.includes("owner/repository#42") && value.includes("Track pull requests"),
+      )
+      const rows = frame.split("\n")
+      const referenceRow = rows.findIndex((row) => row.includes("owner/repository#42"))
+      const titleRow = rows.findIndex((row) => row.includes("Track pull requests"))
+      const bulletColumn = rows[referenceRow]!.indexOf("•")
+      const continuationRows = rows.slice(referenceRow + 1, titleRow + 1)
+
+      expect(continuationRows.length).toBeGreaterThan(1)
+      for (const row of continuationRows) {
+        expect(row.search(/\S/)).toBe(bulletColumn + 2)
+      }
     } finally {
       await sidebar.cleanup()
     }
