@@ -1214,8 +1214,9 @@ describe("GitHub client", () => {
 
     expect(statusAppearance(await getOne(client))).toEqual({
       tone: "yellow",
-      label: "branch behind",
+      label: "behind",
       strikethrough: false,
+      stale: false,
     })
   })
 
@@ -1271,8 +1272,9 @@ describe("GitHub client", () => {
     })
     expect(statusAppearance({ tag: "Unavailable", diagnostic: "PullRequestNotFound" })).toEqual({
       tone: "gray",
-      label: "not found or inaccessible",
+      label: "inaccessible",
       strikethrough: false,
+      stale: false,
     })
   })
 
