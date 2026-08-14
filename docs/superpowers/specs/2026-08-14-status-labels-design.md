@@ -55,6 +55,14 @@ unavailable appearance will then show the concise diagnostic label. A
 successful refresh or detachment will clear the recorded failure time. Manual
 refreshes will use elapsed time and therefore cannot accelerate escalation.
 
+Cached statuses and failure times will remain local to the active polling
+instance. Reopening a session or restarting OpenCode will start without cached
+status; an initial refresh failure will therefore show its unavailable
+diagnostic immediately. If polling is delayed while a session remains open,
+the current row will stay stale until the next refresh resolves it or escalates
+it based on elapsed time. No separate escalation timer or persisted stale state
+will be added.
+
 Example: a pull request whose last known result was pending will render as
 `#123 pending · stale`, with `pending` yellow and `stale` muted and italic.
 
