@@ -33,7 +33,7 @@ describe("GitHub client", () => {
       mergedAt: null,
       contexts: successChecks,
       tone: "green",
-      label: "checks passed",
+      label: "passed",
       strike: false,
     },
     {
@@ -41,7 +41,7 @@ describe("GitHub client", () => {
       mergedAt: null,
       contexts: pendingChecks,
       tone: "yellow",
-      label: "checks pending",
+      label: "pending",
       strike: false,
     },
     {
@@ -49,7 +49,7 @@ describe("GitHub client", () => {
       mergedAt: null,
       contexts: failedChecks,
       tone: "red",
-      label: "checks failed",
+      label: "failed",
       strike: false,
     },
   ])("projects $state status with $label appearance", async ({ state, mergedAt, contexts, tone, label, strike }) => {
@@ -57,7 +57,7 @@ describe("GitHub client", () => {
       runnerFor(batchResponse(response({ state, mergedAt, statusCheckRollup: rollup(contexts) }))),
     )
 
-    expect(statusAppearance(await getOne(client))).toEqual({ tone, label, strikethrough: strike })
+    expect(statusAppearance(await getOne(client))).toEqual({ tone, label, strikethrough: strike, stale: false })
   })
 
   test("gives an open merge conflict precedence over CI", async () => {
@@ -76,8 +76,9 @@ describe("GitHub client", () => {
 
     expect(statusAppearance(await getOne(client))).toEqual({
       tone: "red",
-      label: "merge conflict",
+      label: "conflict",
       strikethrough: false,
+      stale: false,
     })
   })
 
@@ -129,13 +130,13 @@ describe("GitHub client", () => {
       contexts: pendingChecks,
       policy: baseRefPolicy({ refUpdateRule: { requiredStatusCheckContexts: ["Build"] } }),
       tone: "yellow",
-      label: "checks pending",
+      label: "pending",
     },
     {
       contexts: failedChecks,
       policy: baseRefPolicy({ hasNextPage: true, totalCount: 101 }),
       tone: "red",
-      label: "checks failed",
+      label: "failed",
     },
   ])("gives $label precedence over inconclusive blocker policy", async ({ contexts, policy, tone, label }) => {
     const client = createGitHubClient(
@@ -150,7 +151,7 @@ describe("GitHub client", () => {
       ),
     )
 
-    expect(statusAppearance(await getOne(client))).toEqual({ tone, label, strikethrough: false })
+    expect(statusAppearance(await getOne(client))).toEqual({ tone, label, strikethrough: false, stale: false })
   })
 
   test("uses CI while GitHub computes mergeability", async () => {
@@ -160,44 +161,41 @@ describe("GitHub client", () => {
 
     expect(statusAppearance(await getOne(client))).toEqual({
       tone: "yellow",
-      label: "checks pending",
+      label: "pending",
       strikethrough: false,
+      stale: false,
     })
   })
 
   test("renders an unavailable status without a diagnostic", () => {
     expect(statusAppearance({ tag: "Unavailable" })).toEqual({
       tone: "gray",
-      label: "status unavailable",
+      label: "unavailable",
       strikethrough: false,
+      stale: false,
     })
   })
 
   test.each([
     { diagnostic: "GitHubCliMissing" as const, label: "install gh" },
-    { diagnostic: "GitHubAuthenticationRequired" as const, label: "run gh auth login" },
+    { diagnostic: "GitHubAuthenticationRequired" as const, label: "authenticate" },
     { diagnostic: "GitHubUnavailable" as const, label: "GitHub unavailable" },
-    { diagnostic: "InvalidGitHubResponse" as const, label: "invalid GitHub response" },
+    { diagnostic: "InvalidGitHubResponse" as const, label: "invalid response" },
   ])("renders $diagnostic as $label when status is unavailable", ({ diagnostic, label }) => {
     expect(statusAppearance({ tag: "Unavailable", diagnostic })).toEqual({
       tone: "gray",
       label,
       strikethrough: false,
+      stale: false,
     })
   })
 
   test.each([
-    { diagnostic: "GitHubCliMissing" as const, label: "checks pending (stale; install gh)" },
-    {
-      diagnostic: "GitHubAuthenticationRequired" as const,
-      label: "checks pending (stale; run gh auth login)",
-    },
-    { diagnostic: "GitHubUnavailable" as const, label: "checks pending (stale; GitHub unavailable)" },
-    {
-      diagnostic: "InvalidGitHubResponse" as const,
-      label: "checks pending (stale; invalid GitHub response)",
-    },
-  ])("renders $diagnostic as $label when status is stale", ({ diagnostic, label }) => {
+    "GitHubCliMissing",
+    "GitHubAuthenticationRequired",
+    "GitHubUnavailable",
+    "InvalidGitHubResponse",
+  ] as const)("marks $diagnostic status as stale without changing its label", (diagnostic) => {
     expect(
       statusAppearance({
         tag: "Available",
@@ -207,7 +205,7 @@ describe("GitHub client", () => {
         stale: true,
         diagnostic,
       }),
-    ).toEqual({ tone: "yellow", label, strikethrough: false })
+    ).toEqual({ tone: "yellow", label: "pending", strikethrough: false, stale: true })
   })
 
   test("renders a stale merge conflict with its diagnostic", () => {
@@ -220,6 +218,6 @@ describe("GitHub client", () => {
         stale: true,
         diagnostic: "GitHubUnavailable",
       }),
-    ).toEqual({ tone: "red", label: "merge conflict (stale; GitHub unavailable)", strikethrough: false })
+    ).toEqual({ tone: "red", label: "conflict", strikethrough: false, stale: true })
   })
 })
