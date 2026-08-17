@@ -14,7 +14,7 @@ import {
   type PullRequestTuiDependencies,
   type RefreshBus,
 } from "../src/pull-request-tui.js"
-import type { GitHubClient, ProcessRunner, PullRequestStackMembership } from "../src/github.js"
+import type { GitHubClient, ProcessRunner, PullRequestStackMembership, PullRequestState } from "../src/github.js"
 import type { PullRequestAttachment, StateStore } from "../src/state.js"
 import { parsePullRequestUrl, type PullRequestUrl } from "../src/url.js"
 import { attachment, available, githubStatuses, pullRequest, secondAttachment, stateStore } from "./tui-fixtures.js"
@@ -290,13 +290,13 @@ describe("pull request TUI", () => {
 
       const spans = sidebar.view.captureSpans()
       expect(
-        spans.lines[firstRow]!.spans.find((span) => span.text.includes("├─"))?.fg.equals(sidebar.colors.success),
+        spans.lines[firstRow]!.spans.find((span) => span.text.includes("─"))?.fg.equals(sidebar.colors.success),
       ).toBe(true)
       expect(
-        spans.lines[secondRow]!.spans.find((span) => span.text.includes("├─"))?.fg.equals(sidebar.colors.warning),
+        spans.lines[secondRow]!.spans.find((span) => span.text.includes("─"))?.fg.equals(sidebar.colors.warning),
       ).toBe(true)
       expect(
-        spans.lines[thirdRow]!.spans.find((span) => span.text.includes("├─"))?.fg.equals(sidebar.colors.textMuted),
+        spans.lines[thirdRow]!.spans.find((span) => span.text.includes("─"))?.fg.equals(sidebar.colors.textMuted),
       ).toBe(true)
       expect(spans.lines[gapRow]!.spans.some((span) => span.fg.equals(sidebar.colors.textMuted))).toBe(true)
     } finally {
@@ -467,13 +467,13 @@ describe("pull request TUI", () => {
       expect(statusRow).toBe(referenceRow + 1)
       expect(rows[statusRow]!.slice(markerColumn)).toStartWith("│  merged")
       expect({
-        marker: isStruck(attributesFor(referenceRow, "┌─")),
+        marker: isStruck(attributesFor(referenceRow, "┌")),
         reference: isStruck(attributesFor(referenceRow, "sample/stacked-service#501")),
-        continuation: isStruck(attributesFor(statusRow, "│  ")),
+        continuation: isStruck(attributesFor(statusRow, "│")),
         status: isStruck(attributesFor(statusRow, "merged")),
         stale: isStruck(attributesFor(statusRow, "stale")),
         staleItalic: (attributesFor(statusRow, "stale") & TextAttributes.ITALIC) === TextAttributes.ITALIC,
-        titleMarker: isStruck(attributesFor(titleRow, "│  ")),
+        titleMarker: isStruck(attributesFor(titleRow, "│")),
         title: isStruck(attributesFor(titleRow, "Track pull requests")),
       }).toEqual({
         marker: false,
@@ -551,6 +551,97 @@ describe("pull request TUI", () => {
         expect(isStruck(marker.attributes)).toBe(false)
         expect(isStruck(title.attributes)).toBe(rowIndex < secondReferenceRow)
       }
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("colors Stack marker glyphs independently from status and default gutters", async () => {
+    const standalone = parsePullRequestUrl("https://github.com/sample/color-fixture/pull/700")
+    const parsed = [701, 702, 703, 704].map((number) =>
+      parsePullRequestUrl(`https://github.com/sample/color-fixture/pull/${number}`),
+    )
+    if (!standalone.ok || parsed.some((result) => !result.ok)) throw new Error("color fixture URL is invalid")
+    const members = parsed.map((result) => (result.ok ? result.value : pullRequest))
+    const attached = [members[0]!, members[2]!, members[3]!]
+    const membership = stackMembership("synthetic-color-stack", members)
+    const titles = new Map([
+      [standalone.value.url, "Synthetic standalone title"],
+      [attached[0]!.url, "Synthetic color verification keeps connector shades stable"],
+      [attached[1]!.url, "Synthetic middle title"],
+      [attached[2]!.url, "Synthetic final title"],
+    ])
+    const sidebar = await renderSidebar(
+      [
+        { pullRequest: standalone.value, attachedAt: "2026-08-15T12:00:00.000Z" },
+        ...attached.map((value, index) => ({
+          pullRequest: value,
+          attachedAt: `2026-08-15T12:0${index + 1}:00.000Z`,
+        })),
+      ],
+      {
+        width: 30,
+        memberships: [{ tag: "Standalone", pullRequest: standalone.value }, membership, membership, membership],
+        github: githubStatuses((value) => {
+          const state: PullRequestState | undefined =
+            value.url === standalone.value.url
+              ? { tag: "Open", ci: "failed", isDraft: false, mergeability: "mergeable", blocker: "none" }
+              : value.url === attached[1]!.url
+                ? { tag: "Open", ci: "pending", isDraft: false, mergeability: "mergeable", blocker: "none" }
+                : value.url === attached[2]!.url
+                  ? { tag: "Merged" }
+                  : undefined
+          return { ...available(state, value), title: titles.get(value.url)! }
+        }),
+      },
+    )
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("Synthetic final title"))
+      const rows = frame.split("\n")
+      const spans = sidebar.view.captureSpans().lines
+      const rowFor = (text: string) => rows.findIndex((row) => row.includes(text))
+      const spanFor = (row: number, glyph: string) => spans[row]!.spans.find((span) => span.text.includes(glyph))
+      const colorName = (span: (typeof spans)[number]["spans"][number] | undefined) => {
+        if (span?.fg.equals(sidebar.colors.textMuted)) return "gray"
+        if (span?.fg.equals(sidebar.colors.error)) return "red"
+        if (span?.fg.equals(sidebar.colors.success)) return "green"
+        if (span?.fg.equals(sidebar.colors.warning)) return "yellow"
+        if (span?.fg.equals(sidebar.colors.secondary)) return "purple"
+        return "missing"
+      }
+      const standaloneRow = rowFor("sample/color-fixture#700")
+      const firstRow = rowFor("sample/color-fixture#701")
+      const middleRow = rowFor("sample/color-fixture#703")
+      const finalRow = rowFor("sample/color-fixture#704")
+      const gapRow = rowFor("PR not attached")
+      const wrappedHeaderRow = rowFor("passed")
+      const titleStart = rowFor("Synthetic color")
+      const titleRows = rows.slice(titleStart, gapRow).filter((row) => row.trim().length > 0)
+
+      expect(titleRows.length).toBeGreaterThan(1)
+      expect({
+        bullet: colorName(spanFor(standaloneRow, "•")),
+        firstJunction: colorName(spanFor(firstRow, "┌")),
+        firstHorizontal: colorName(spanFor(firstRow, "─")),
+        middleJunction: colorName(spanFor(middleRow, "├")),
+        middleHorizontal: colorName(spanFor(middleRow, "─")),
+        finalJunction: colorName(spanFor(finalRow, "└")),
+        finalHorizontal: colorName(spanFor(finalRow, "─")),
+        wrappedHeaderConnector: colorName(spanFor(wrappedHeaderRow, "│")),
+        wrappedTitleConnectors: titleRows.map((row) => colorName(spanFor(rows.indexOf(row), "│"))),
+        gap: colorName(spanFor(gapRow, "PR not attached")),
+      }).toEqual({
+        bullet: "red",
+        firstJunction: "gray",
+        firstHorizontal: "green",
+        middleJunction: "gray",
+        middleHorizontal: "yellow",
+        finalJunction: "gray",
+        finalHorizontal: "purple",
+        wrappedHeaderConnector: "gray",
+        wrappedTitleConnectors: titleRows.map(() => "gray"),
+        gap: "gray",
+      })
     } finally {
       await sidebar.cleanup()
     }

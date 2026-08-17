@@ -9,6 +9,7 @@ import {
   resolvePullRequestInput,
   type AttachPullRequestFailure,
 } from "./attach.js"
+import { casesHandled } from "./exhaustive.js"
 import { openPullRequest } from "./external-url.js"
 import { createGitHubClient, statusAppearance, type GitHubClient, type ProcessRunner } from "./github.js"
 import { updateStatusLabel } from "./plugin-update-tui.js"
@@ -432,11 +433,72 @@ function toneColor(theme: TuiPluginApi["theme"]["current"], tone: ReturnType<typ
 
 export type PullRequestSidebarLayout = "default" | "compact"
 
+type PullRequestSidebarRow = Extract<StackSidebarRow, { tag: "PullRequest" }>
+type PullRequestMarker = PullRequestSidebarRow["marker" | "titleMarker"]
+
+function SidebarMarker(
+  props: Readonly<{
+    marker: PullRequestMarker
+    statusColor: ReturnType<typeof toneColor>
+    mutedColor: ReturnType<typeof toneColor>
+  }>,
+): JSX.Element {
+  switch (props.marker) {
+    case "•  ":
+      return (
+        <text>
+          <span style={{ fg: props.statusColor }}>•</span>
+          {"  "}
+        </text>
+      )
+    case "┌─ ":
+      return (
+        <text>
+          <span style={{ fg: props.mutedColor }}>┌</span>
+          <span style={{ fg: props.statusColor }}>─</span>{" "}
+        </text>
+      )
+    case "├─ ":
+      return (
+        <text>
+          <span style={{ fg: props.mutedColor }}>├</span>
+          <span style={{ fg: props.statusColor }}>─</span>{" "}
+        </text>
+      )
+    case "└─ ":
+      return (
+        <text>
+          <span style={{ fg: props.mutedColor }}>└</span>
+          <span style={{ fg: props.statusColor }}>─</span>{" "}
+        </text>
+      )
+    case "│  ":
+      return (
+        <text>
+          <span style={{ fg: props.mutedColor }}>│</span>
+          {"  "}
+        </text>
+      )
+    case "┊  ":
+      return (
+        <text>
+          <span style={{ fg: props.mutedColor }}>┊</span>
+          {"  "}
+        </text>
+      )
+    case "   ":
+      return <text>{"   "}</text>
+    default:
+      return casesHandled(props.marker)
+  }
+}
+
 function WrappedMarkerText(
   props: Readonly<{
-    firstMarker: Extract<StackSidebarRow, { tag: "PullRequest" }>["marker" | "titleMarker"]
-    continuationMarker: Extract<StackSidebarRow, { tag: "PullRequest" }>["titleMarker"]
-    markerColor: ReturnType<typeof toneColor>
+    firstMarker: PullRequestMarker
+    continuationMarker: PullRequestSidebarRow["titleMarker"]
+    statusColor: ReturnType<typeof toneColor>
+    mutedColor: ReturnType<typeof toneColor>
     children: JSX.Element
   }>,
 ): JSX.Element {
@@ -447,9 +509,13 @@ function WrappedMarkerText(
   return (
     <box flexDirection="row" width="100%">
       <box flexDirection="column" width={3}>
-        <text fg={props.markerColor}>{props.firstMarker}</text>
+        <SidebarMarker marker={props.firstMarker} statusColor={props.statusColor} mutedColor={props.mutedColor} />
         {Array.from({ length: lineCount() - 1 }).map(() => (
-          <text fg={props.markerColor}>{props.continuationMarker}</text>
+          <SidebarMarker
+            marker={props.continuationMarker}
+            statusColor={props.statusColor}
+            mutedColor={props.mutedColor}
+          />
         ))}
       </box>
       <text
@@ -483,7 +549,8 @@ function PullRequestHeader(
     <WrappedMarkerText
       firstMarker={props.row.marker}
       continuationMarker={props.row.titleMarker}
-      markerColor={props.color}
+      statusColor={props.color}
+      mutedColor={props.mutedColor}
     >
       <span style={{ fg: props.color, bold: true, strikethrough }}>{props.reference}</span>
       <span style={{ fg: props.color }}>{` ${props.label}`}</span>
@@ -614,7 +681,8 @@ export function PullRequestSidebar(
                       <WrappedMarkerText
                         firstMarker={row.titleMarker}
                         continuationMarker={row.titleMarker}
-                        markerColor={props.api.theme.current.textMuted}
+                        statusColor={color}
+                        mutedColor={props.api.theme.current.textMuted}
                       >
                         <span
                           style={{ fg: props.api.theme.current.textMuted, strikethrough: appearance.strikethrough }}
