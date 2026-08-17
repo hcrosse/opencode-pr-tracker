@@ -337,6 +337,51 @@ describe("pull request TUI", () => {
     }
   })
 
+  test("renders a sole attached remote base with an incomplete marker in the default layout", async () => {
+    const parsed = [821, 822, 823].map((number) =>
+      parsePullRequestUrl(`https://github.com/sample/stack-fixture/pull/${number}`),
+    )
+    if (parsed.some((result) => !result.ok)) throw new Error("singleton base fixture URL is invalid")
+    const members = parsed.map((result) => (result.ok ? result.value : pullRequest))
+    const membership = stackMembership("synthetic-stack", members)
+    const sidebar = await renderSidebar([{ pullRequest: members[0]!, attachedAt: "2026-08-15T12:00:00.000Z" }], {
+      memberships: [membership],
+    })
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("sample/stack-fixture#821"))
+
+      expect(frame).toContain("├─ sample/stack-fixture#821")
+      expect(frame).toContain("┊  Track pull requests")
+      expect(frame).not.toContain("┌─ sample/stack-fixture#821")
+      expect(frame).not.toContain("└─ sample/stack-fixture#821")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("renders a sole attached remote head with an incomplete marker in the compact layout", async () => {
+    const parsed = [831, 832, 833].map((number) =>
+      parsePullRequestUrl(`https://github.com/sample/stack-fixture/pull/${number}`),
+    )
+    if (parsed.some((result) => !result.ok)) throw new Error("singleton head fixture URL is invalid")
+    const members = parsed.map((result) => (result.ok ? result.value : pullRequest))
+    const membership = stackMembership("synthetic-stack", members)
+    const sidebar = await renderSidebar([{ pullRequest: members[2]!, attachedAt: "2026-08-15T12:00:00.000Z" }], {
+      layout: "compact",
+      memberships: [membership],
+    })
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("sample/stack-fixture#833"))
+
+      expect(frame).toContain("├─ sample/stack-fixture#833")
+      expect(frame).not.toContain("┌─ sample/stack-fixture#833")
+      expect(frame).not.toContain("└─ sample/stack-fixture#833")
+      expect(frame).not.toContain("Track pull requests")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
   test("renders complete boundaries, plural gaps, invalid bullets, and merged strikethrough", async () => {
     const urls = [20, 21, 22, 23, 24, 30, 31, 40, 41].map((number) =>
       parsePullRequestUrl(`https://github.com/owner/repository/pull/${number}`),

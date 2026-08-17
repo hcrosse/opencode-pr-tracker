@@ -48,6 +48,24 @@ describe("projectStackSidebarRows", () => {
     ])
   })
 
+  test("renders a sole attached remote base as an incomplete Stack unit", () => {
+    const members = [801, 802, 803].map((number) => pullRequest("sample", "stack-fixture", number))
+    const membership = stack("synthetic-stack", members[0]!, members[1]!, members[2]!)
+
+    expect(rowShape(projectStackSidebarRows([sidebarItem(members[0]!, membership)]))).toEqual([
+      { tag: "PullRequest", pullRequest: members[0]!.url, marker: "├─ ", titleMarker: "┊  " },
+    ])
+  })
+
+  test("renders a sole attached remote head as an incomplete Stack unit", () => {
+    const members = [811, 812, 813].map((number) => pullRequest("sample", "stack-fixture", number))
+    const membership = stack("synthetic-stack", members[0]!, members[1]!, members[2]!)
+
+    expect(rowShape(projectStackSidebarRows([sidebarItem(members[2]!, membership)]))).toEqual([
+      { tag: "PullRequest", pullRequest: members[2]!.url, marker: "├─ ", titleMarker: "   " },
+    ])
+  })
+
   test("renders partial Stack members with a singular internal gap", () => {
     const members = [10, 11, 12, 13, 14].map((number) => pullRequest("owner", "repository", number))
     const membership = stack("stack-1", members[0]!, ...members.slice(1))

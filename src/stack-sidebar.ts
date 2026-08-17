@@ -119,11 +119,13 @@ export function projectStackSidebarRows(items: readonly SidebarPullRequest[]): r
     const isFirstAttached = valid.stackIndex === 0
     const isLastAttached = valid.stackIndex === valid.stack.length - 1
     const marker =
-      isFirstAttached && current.memberPosition === 0
-        ? "┌─ "
-        : isLastAttached && current.memberPosition === current.members.length - 1
-          ? "└─ "
-          : "├─ "
+      valid.stack.length === 1 && current.members.length > 1
+        ? "├─ "
+        : isFirstAttached && current.memberPosition === 0
+          ? "┌─ "
+          : isLastAttached && current.memberPosition === current.members.length - 1
+            ? "└─ "
+            : "├─ "
     const titleMarker = !isLastAttached ? "│  " : current.memberPosition < current.members.length - 1 ? "┊  " : "   "
     rows.push({ tag: "PullRequest", item, marker, titleMarker })
   }
