@@ -382,6 +382,28 @@ describe("pull request TUI", () => {
     }
   })
 
+  test("renders a sole attached remote middle member with an incomplete marker", async () => {
+    const parsed = [851, 852, 853].map((number) =>
+      parsePullRequestUrl(`https://github.com/sample/stack-fixture/pull/${number}`),
+    )
+    if (parsed.some((result) => !result.ok)) throw new Error("singleton middle fixture URL is invalid")
+    const members = parsed.map((result) => (result.ok ? result.value : pullRequest))
+    const membership = stackMembership("synthetic-stack", members)
+    const sidebar = await renderSidebar([{ pullRequest: members[1]!, attachedAt: "2026-08-15T12:00:00.000Z" }], {
+      memberships: [membership],
+    })
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("sample/stack-fixture#852"))
+
+      expect(frame).toContain("├─ sample/stack-fixture#852")
+      expect(frame).toContain("┊  Track pull requests")
+      expect(frame).not.toContain("┌─ sample/stack-fixture#852")
+      expect(frame).not.toContain("└─ sample/stack-fixture#852")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
   test("renders complete boundaries, plural gaps, invalid bullets, and merged strikethrough", async () => {
     const urls = [20, 21, 22, 23, 24, 30, 31, 40, 41].map((number) =>
       parsePullRequestUrl(`https://github.com/owner/repository/pull/${number}`),

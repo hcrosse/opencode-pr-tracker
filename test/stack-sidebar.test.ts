@@ -66,6 +66,15 @@ describe("projectStackSidebarRows", () => {
     ])
   })
 
+  test("renders a sole attached remote middle member as an incomplete Stack unit", () => {
+    const members = [841, 842, 843].map((number) => pullRequest("sample", "stack-fixture", number))
+    const membership = stack("synthetic-stack", members[0]!, members[1]!, members[2]!)
+
+    expect(rowShape(projectStackSidebarRows([sidebarItem(members[1]!, membership)]))).toEqual([
+      { tag: "PullRequest", pullRequest: members[1]!.url, marker: "├─ ", titleMarker: "┊  " },
+    ])
+  })
+
   test("renders partial Stack members with a singular internal gap", () => {
     const members = [10, 11, 12, 13, 14].map((number) => pullRequest("owner", "repository", number))
     const membership = stack("stack-1", members[0]!, ...members.slice(1))
