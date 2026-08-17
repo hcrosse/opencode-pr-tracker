@@ -85,7 +85,8 @@ entries:
 Only the exact `"compact"` value changes the layout. Omitting `layout` or using
 any other value keeps the default two-line rows with pull request titles.
 Compact rows omit the title but retain the list bullet, pull request reference,
-and status on one line.
+and status on one line. Stack gaps remain visible, so compact layout has one row
+per attached pull request plus any internal gaps.
 
 ## Sidebar
 
@@ -97,6 +98,14 @@ activity changes. Click a row to open the pull request on macOS or Linux. When
 more than two pull requests are attached, click the **Pull requests** heading
 to collapse or expand its rows. Status refreshes continue while the section is
 collapsed.
+
+Ordinary `•` bullets identify standalone pull requests or membership that has
+not been resolved yet. Validated Stack boundaries use `┌─`, `├─`, and `└─`.
+`├┄ N PR(s) not attached` identifies internal gaps. Missing ranges outside the
+attached members use open boundary markers rather than extra rows. The default
+layout uses title connectors, while compact layout omits titles and retains one
+row per attached pull request plus internal gaps. Transient refresh failures
+retain the last valid Stack presentation.
 
 | State                    | Appearance            |
 | ------------------------ | --------------------- |

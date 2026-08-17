@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import { TextAttributes } from "@opentui/core"
+import { TextAttributes, type TextRenderable } from "@opentui/core"
 import type { JSX } from "@opentui/solid"
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 import { createSignal, onCleanup } from "solid-js"
@@ -13,6 +13,7 @@ import { openPullRequest } from "./external-url.js"
 import { createGitHubClient, statusAppearance, type GitHubClient, type ProcessRunner } from "./github.js"
 import { updateStatusLabel } from "./plugin-update-tui.js"
 import { startSessionPolling, type SessionRefreshResult, type SidebarPullRequest } from "./polling.js"
+import { projectStackSidebarRows, type StackSidebarRow } from "./stack-sidebar.js"
 import type { PullRequestAttachment, StateStore } from "./state.js"
 import {
   formatPullRequestRef,
@@ -431,6 +432,66 @@ function toneColor(theme: TuiPluginApi["theme"]["current"], tone: ReturnType<typ
 
 export type PullRequestSidebarLayout = "default" | "compact"
 
+function WrappedMarkerText(
+  props: Readonly<{
+    firstMarker: Extract<StackSidebarRow, { tag: "PullRequest" }>["marker" | "titleMarker"]
+    continuationMarker: Extract<StackSidebarRow, { tag: "PullRequest" }>["titleMarker"]
+    markerColor: ReturnType<typeof toneColor>
+    children: JSX.Element
+  }>,
+): JSX.Element {
+  const [lineCount, setLineCount] = createSignal(1)
+  let content: TextRenderable | undefined
+  const updateLineCount = () => setLineCount(Math.max(1, content?.virtualLineCount ?? 1))
+
+  return (
+    <box flexDirection="row" width="100%">
+      <box flexDirection="column" width={3}>
+        <text fg={props.markerColor}>{props.firstMarker}</text>
+        {Array.from({ length: lineCount() - 1 }).map(() => (
+          <text fg={props.markerColor}>{props.continuationMarker}</text>
+        ))}
+      </box>
+      <text
+        ref={(value) => {
+          content = value
+          updateLineCount()
+        }}
+        flexGrow={1}
+        on:line-info-change={updateLineCount}
+      >
+        {props.children}
+      </text>
+    </box>
+  )
+}
+
+function PullRequestHeader(
+  props: Readonly<{
+    row: Extract<StackSidebarRow, { tag: "PullRequest" }>
+    reference: string
+    label: string
+    stale: boolean
+    color: ReturnType<typeof toneColor>
+    mutedColor: ReturnType<typeof toneColor>
+    attributes: number
+  }>,
+): JSX.Element {
+  const strikethrough = (props.attributes & TextAttributes.STRIKETHROUGH) === TextAttributes.STRIKETHROUGH
+
+  return (
+    <WrappedMarkerText
+      firstMarker={props.row.marker}
+      continuationMarker={props.row.titleMarker}
+      markerColor={props.color}
+    >
+      <span style={{ fg: props.color, bold: true, strikethrough }}>{props.reference}</span>
+      <span style={{ fg: props.color }}>{` ${props.label}`}</span>
+      {props.stale ? <span style={{ fg: props.mutedColor, italic: true }}>{" · stale"}</span> : null}
+    </WrappedMarkerText>
+  )
+}
+
 export function PullRequestSidebar(
   props: Readonly<{
     api: TuiPluginApi
@@ -505,13 +566,18 @@ export function PullRequestSidebar(
           ) : null}
           {items().length > 0 ? (
             <box flexDirection="column" gap={0}>
-              {items().map((item) => {
+              {projectStackSidebarRows(items()).map((row) => {
+                if (row.tag === "Gap") {
+                  return <text fg={props.api.theme.current.textMuted}>├┄ {row.label}</text>
+                }
+                const item = row.item
                 const appearance = statusAppearance(item.status)
                 const attributes = appearance.strikethrough ? TextAttributes.STRIKETHROUGH : TextAttributes.NONE
                 const title = item.status.tag === "Available" ? item.status.title : "Title unavailable"
+                const color = toneColor(props.api.theme.current, appearance.tone)
                 return (
                   <box
-                    flexDirection="row"
+                    flexDirection="column"
                     onMouseUp={() => {
                       openPullRequest(item.attachment.pullRequest, {
                         ...(props.dependencies.runner ? { runner: props.dependencies.runner } : {}),
@@ -535,26 +601,28 @@ export function PullRequestSidebar(
                         })
                     }}
                   >
-                    <text fg={toneColor(props.api.theme.current, appearance.tone)} attributes={attributes}>
-                      •{" "}
-                    </text>
-                    <box flexDirection="column" flexGrow={1}>
-                      <box flexDirection="row" width="100%">
-                        <text fg={toneColor(props.api.theme.current, appearance.tone)} attributes={attributes}>
-                          <b>{formatPullRequestRef(item.attachment.pullRequest)}</b> {appearance.label}
-                        </text>
-                        {appearance.stale ? (
-                          <text fg={props.api.theme.current.textMuted} attributes={TextAttributes.ITALIC}>
-                            {" · stale"}
-                          </text>
-                        ) : null}
-                      </box>
-                      {props.layout !== "compact" ? (
-                        <text fg={props.api.theme.current.textMuted} attributes={attributes}>
+                    <PullRequestHeader
+                      row={row}
+                      reference={formatPullRequestRef(item.attachment.pullRequest)}
+                      label={appearance.label}
+                      stale={appearance.stale}
+                      color={color}
+                      mutedColor={props.api.theme.current.textMuted}
+                      attributes={attributes}
+                    />
+                    {props.layout !== "compact" ? (
+                      <WrappedMarkerText
+                        firstMarker={row.titleMarker}
+                        continuationMarker={row.titleMarker}
+                        markerColor={props.api.theme.current.textMuted}
+                      >
+                        <span
+                          style={{ fg: props.api.theme.current.textMuted, strikethrough: appearance.strikethrough }}
+                        >
                           {title}
-                        </text>
-                      ) : null}
-                    </box>
+                        </span>
+                      </WrappedMarkerText>
+                    ) : null}
                   </box>
                 )
               })}

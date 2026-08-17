@@ -50,6 +50,15 @@ function availableGitHubItem(value: PullRequestUrl) {
 function githubWithStack(getStack: GitHubClient["getStack"]): GitHubClient {
   return {
     getStack,
+    async getStacks(requested) {
+      return {
+        ok: true,
+        value: requested.map((value) => ({
+          ok: true,
+          value: { tag: "Standalone", pullRequest: value },
+        })),
+      }
+    },
     async get(pullRequests) {
       return { ok: true, value: pullRequests.map(availableGitHubItem) }
     },
@@ -151,6 +160,27 @@ describe("attachPullRequest", () => {
     expect(await store.list("session")).toEqual({ ok: true, value: [] })
   })
 
+  test("rejects a two-member stack when 19 standalone attachments already exist without mutating state", async () => {
+    const store = await temporaryStateStore()
+    const existing = Array.from({ length: 19 }, (_, index) => pullRequest(index + 100, "another", "project"))
+    for (const item of existing) await store.attach("session", item)
+    const stack = [pullRequest(1), pullRequest(2)] as const
+    const github = githubWithStack(async () => ({ ok: true, value: stack }))
+
+    expect(await attachPullRequest({ store, github }, "session", stack[0])).toEqual({
+      ok: false,
+      error: {
+        tag: "AttachmentLimitReached",
+        limit: 20,
+        message: "A session can track at most 20 pull requests",
+      },
+    })
+    const attachments = await store.list("session")
+    expect(attachments.ok && attachments.value.map((item) => item.pullRequest.url)).toEqual(
+      existing.map((item) => item.url),
+    )
+  })
+
   test("propagates the caller signal to stack discovery", async () => {
     const store = await temporaryStateStore()
     const requested = pullRequest(1)
@@ -184,6 +214,15 @@ describe("attachPullRequest", () => {
       async getStack(requested) {
         await discover(requested)
         return { ok: true, value: [requested] }
+      },
+      async getStacks(requested) {
+        return {
+          ok: true,
+          value: requested.map((value) => ({
+            ok: true,
+            value: { tag: "Standalone", pullRequest: value },
+          })),
+        }
       },
       async get(pullRequests) {
         const requested = pullRequests[0]

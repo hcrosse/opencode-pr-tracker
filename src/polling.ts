@@ -1,10 +1,18 @@
-import type { GitHubClient, GitHubFailure, PullRequestDiagnostic, PullRequestStatus } from "./github.js"
+import type {
+  GitHubCancelled,
+  GitHubClient,
+  GitHubFailure,
+  PullRequestDiagnostic,
+  PullRequestStackMembership,
+  PullRequestStatus,
+} from "./github.js"
 import type { PullRequestAttachment, StateFailure, StateStore } from "./state.js"
 import type { CanonicalPullRequestUrl, Result } from "./url.js"
 
 export type SidebarPullRequest = Readonly<{
   attachment: PullRequestAttachment
   status: PullRequestStatus
+  membership?: PullRequestStackMembership
 }>
 
 export type PollScheduler = Readonly<{
@@ -46,6 +54,7 @@ export function startSessionPolling(
   const scheduler = input.scheduler ?? defaultScheduler
   const now = input.now ?? Date.now
   const statuses = new Map<CanonicalPullRequestUrl, PullRequestStatus>()
+  const memberships = new Map<CanonicalPullRequestUrl, PullRequestStackMembership>()
   const failureStartedAt = new Map<CanonicalPullRequestUrl, number>()
   const controller = new AbortController()
   let timer: unknown
@@ -61,10 +70,14 @@ export function startSessionPolling(
     | undefined
 
   function project(attachments: readonly PullRequestAttachment[]): SidebarPullRequest[] {
-    return attachments.map((attachment) => ({
-      attachment,
-      status: statuses.get(attachment.pullRequest.url) ?? { tag: "Unavailable" },
-    }))
+    return attachments.map((attachment) => {
+      const membership = memberships.get(attachment.pullRequest.url)
+      return {
+        attachment,
+        status: statuses.get(attachment.pullRequest.url) ?? { tag: "Unavailable" },
+        ...(membership === undefined ? {} : { membership }),
+      }
+    })
   }
 
   async function poll(): Promise<SessionRefreshResult> {
@@ -82,8 +95,12 @@ export function startSessionPolling(
     for (const url of statuses.keys()) {
       if (!attachedUrls.has(url)) {
         statuses.delete(url)
+        memberships.delete(url)
         failureStartedAt.delete(url)
       }
+    }
+    for (const url of memberships.keys()) {
+      if (!attachedUrls.has(url)) memberships.delete(url)
     }
     input.publish(project(attachments.value))
     if (attachments.value.length === 0) return { ok: true, value: "no_attachments" }
@@ -92,47 +109,75 @@ export function startSessionPolling(
       const previous = statuses.get(attachment.pullRequest.url)
       return previous?.tag !== "Available" || previous.state.tag !== "Merged"
     })
-    const batch = await input.github.get(
+    const statusRequest = input.github.get(
       refreshable.map((attachment) => attachment.pullRequest),
       { signal: controller.signal },
     )
+    const stackRequest = input.github.getStacks(
+      attachments.value.map((attachment) => attachment.pullRequest),
+      { signal: controller.signal },
+    )
+    const [statusResult, stackResult] = await Promise.allSettled([statusRequest, stackRequest])
+    if (statusResult.status === "rejected") throw statusResult.reason
+    if (stackResult.status === "rejected") throw stackResult.reason
+    const batch = statusResult.value
+    const stackBatch = stackResult.value
     if (stopped) return { ok: true, value: "stopped" }
     let batchDiagnostic: PullRequestDiagnostic | undefined
     let failure: GitHubFailure | undefined
+    let cancellation: GitHubCancelled | undefined
     if (!batch.ok) {
-      if (batch.error.tag === "GitHubCancelled") return batch
-      batchDiagnostic = batch.error.tag === "GitHubBatchLimitExceeded" ? "GitHubUnavailable" : batch.error.tag
-      failure = batch.error
+      if (batch.error.tag === "GitHubCancelled") {
+        cancellation = batch.error
+      } else {
+        batchDiagnostic = batch.error.tag === "GitHubBatchLimitExceeded" ? "GitHubUnavailable" : batch.error.tag
+        failure = batch.error
+      }
     }
 
-    for (const [index, attachment] of refreshable.entries()) {
-      const previous = statuses.get(attachment.pullRequest.url)
-      const result = batch.ok ? batch.value[index] : undefined
-      if (result?.ok) {
-        statuses.set(attachment.pullRequest.url, result.value)
-        failureStartedAt.delete(attachment.pullRequest.url)
-        continue
-      }
-      const diagnostic = result === undefined ? (batchDiagnostic ?? "GitHubUnavailable") : result.error.tag
-      if (result !== undefined && !result.ok) failure ??= result.error
-      if (previous?.tag !== "Available") {
-        statuses.set(attachment.pullRequest.url, { tag: "Unavailable", diagnostic })
-        continue
-      }
+    if (batch.ok || batch.error.tag !== "GitHubCancelled") {
+      for (const [index, attachment] of refreshable.entries()) {
+        const previous = statuses.get(attachment.pullRequest.url)
+        const result = batch.ok ? batch.value[index] : undefined
+        if (result?.ok) {
+          statuses.set(attachment.pullRequest.url, result.value)
+          failureStartedAt.delete(attachment.pullRequest.url)
+          continue
+        }
+        const diagnostic = result === undefined ? (batchDiagnostic ?? "GitHubUnavailable") : result.error.tag
+        if (result !== undefined && !result.ok) failure ??= result.error
+        if (previous?.tag !== "Available") {
+          statuses.set(attachment.pullRequest.url, { tag: "Unavailable", diagnostic })
+          continue
+        }
 
-      const failedAt = failureStartedAt.get(attachment.pullRequest.url)
-      const failedNow = now()
-      if (failedAt === undefined) failureStartedAt.set(attachment.pullRequest.url, failedNow)
-      statuses.set(
-        attachment.pullRequest.url,
-        failedAt !== undefined && failedNow - failedAt >= staleEscalationMilliseconds
-          ? { tag: "Unavailable", diagnostic }
-          : { ...previous, stale: true, diagnostic },
-      )
+        const failedAt = failureStartedAt.get(attachment.pullRequest.url)
+        const failedNow = now()
+        if (failedAt === undefined) failureStartedAt.set(attachment.pullRequest.url, failedNow)
+        statuses.set(
+          attachment.pullRequest.url,
+          failedAt !== undefined && failedNow - failedAt >= staleEscalationMilliseconds
+            ? { tag: "Unavailable", diagnostic }
+            : { ...previous, stale: true, diagnostic },
+        )
+      }
+    }
+
+    if (!stackBatch.ok) {
+      if (stackBatch.error.tag === "GitHubCancelled") cancellation ??= stackBatch.error
+      else failure ??= stackBatch.error
+    } else {
+      for (const [index, attachment] of attachments.value.entries()) {
+        const result = stackBatch.value[index]
+        if (result?.ok) memberships.set(attachment.pullRequest.url, result.value)
+        else if (result !== undefined) failure ??= result.error
+      }
     }
 
     if (!stopped) input.publish(project(attachments.value))
-    return failure === undefined ? { ok: true, value: "refreshed" } : { ok: false, error: failure }
+    if (failure !== undefined) return { ok: false, error: failure }
+    if (cancellation !== undefined) return { ok: false, error: cancellation }
+    return { ok: true, value: "refreshed" }
   }
 
   function startQueuedRefresh(): void {
