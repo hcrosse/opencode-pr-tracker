@@ -543,6 +543,12 @@ describe("pull request TUI", () => {
       })
 
       const spans = sidebar.view.captureSpans().lines
+      expect(
+        incompleteUpperTitleRows.map((row) => {
+          const connector = spans[rows.indexOf(row)]!.spans.find((span) => span.text.includes("┊"))!
+          return connector.fg.equals(sidebar.colors.textMuted)
+        }),
+      ).toEqual(incompleteUpperTitleRows.map(() => true))
       for (const row of [...continuingTitleRows, ...incompleteUpperTitleRows]) {
         const rowIndex = rows.indexOf(row)
         const titleSpans = spans[rowIndex]!.spans
