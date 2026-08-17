@@ -80,6 +80,12 @@ export type PullRequestItemFailure = Exclude<GitHubFailure, GitHubCancelled | Gi
 
 export type GitHubBatch = readonly Result<AvailablePullRequestStatus, PullRequestItemFailure>[]
 
+export type PullRequestStackMembership =
+  | Readonly<{ tag: "Standalone"; pullRequest: PullRequestUrl }>
+  | Readonly<{ tag: "Stack"; id: string; members: NonEmptyPullRequests }>
+
+export type GitHubStackBatch = readonly Result<PullRequestStackMembership, PullRequestItemFailure>[]
+
 export type PullRequestDiagnostic = Exclude<GitHubFailure, GitHubCancelled | GitHubBatchLimitExceeded>["tag"]
 
 export type GitHubClient = Readonly<{
@@ -91,4 +97,8 @@ export type GitHubClient = Readonly<{
     pullRequest: PullRequestUrl,
     options?: Readonly<{ signal?: AbortSignal }>,
   ): Promise<Result<NonEmptyPullRequests, GitHubFailure>>
+  getStacks(
+    pullRequests: readonly PullRequestUrl[],
+    options?: Readonly<{ signal?: AbortSignal }>,
+  ): Promise<Result<GitHubStackBatch, GitHubFailure>>
 }>

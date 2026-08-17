@@ -26,7 +26,7 @@ test("the TUI bundle uses OpenTUI's reactive Solid transform", async () => {
   const source = await readFile(new URL("../dist/tui.js", import.meta.url), "utf8")
 
   expect(source).toContain("insertNode as _$insertNode")
-  expect(source).toContain("=> items().map")
+  expect(source).toContain("=> projectStackSidebarRows(items()).map")
   expect(source).not.toContain('jsxDEV("box"')
 })
 

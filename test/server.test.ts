@@ -22,6 +22,15 @@ function availableGitHub(): GitHubClient {
     async getStack(requested) {
       return { ok: true, value: [requested] }
     },
+    async getStacks(requested) {
+      return {
+        ok: true,
+        value: requested.map((pullRequest) => ({
+          ok: true,
+          value: { tag: "Standalone", pullRequest },
+        })),
+      }
+    },
     async get(pullRequests) {
       return {
         ok: true,
@@ -263,6 +272,15 @@ describe("server tools", () => {
     const github: GitHubClient = {
       async getStack() {
         return { ok: true, value: stack }
+      },
+      async getStacks(requested) {
+        return {
+          ok: true,
+          value: requested.map((pullRequest) => ({
+            ok: true,
+            value: { tag: "Standalone", pullRequest },
+          })),
+        }
       },
       async get() {
         throw new Error("status lookup is not expected")

@@ -1,5 +1,5 @@
 import type { GitHubClient } from "./github-types.js"
-import { getPullRequestStack } from "./github-stack.js"
+import { getPullRequestStack, getPullRequestStacks } from "./github-stack.js"
 import { getPullRequestStatuses } from "./github-status.js"
 import { execFileRunner, type ProcessRunner } from "./github-transport.js"
 
@@ -12,6 +12,7 @@ export type {
   GitHubCliMissing,
   GitHubClient,
   GitHubFailure,
+  GitHubStackBatch,
   GitHubUnavailable,
   InvalidGitHubResponse,
   PullRequestBlocker,
@@ -21,6 +22,7 @@ export type {
   PullRequestMergeability,
   PullRequestNotFound,
   PullRequestState,
+  PullRequestStackMembership,
   PullRequestStatus,
 } from "./github-types.js"
 export { statusAppearance } from "./github-appearance.js"
@@ -35,6 +37,9 @@ export function createGitHubClient(runner: ProcessRunner = execFileRunner): GitH
     },
     async getStack(pullRequest, options = {}) {
       return getPullRequestStack(runner, pullRequest, options)
+    },
+    async getStacks(pullRequests, options = {}) {
+      return getPullRequestStacks(runner, pullRequests, options)
     },
   }
 }

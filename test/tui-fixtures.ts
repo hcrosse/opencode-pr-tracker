@@ -81,6 +81,15 @@ export function githubStatuses(
     async getStack(requested) {
       return { ok: true, value: [requested] }
     },
+    async getStacks(requested) {
+      return {
+        ok: true,
+        value: requested.map((value) => ({
+          ok: true,
+          value: { tag: "Standalone", pullRequest: value },
+        })),
+      }
+    },
     async get(pullRequests) {
       return {
         ok: true,

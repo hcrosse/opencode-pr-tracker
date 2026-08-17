@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { RGBA } from "@opentui/core"
+import { RGBA, TextAttributes } from "@opentui/core"
 import { testRender } from "@opentui/solid"
 import { jsx } from "@opentui/solid/jsx-runtime"
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
@@ -14,7 +14,7 @@ import {
   type PullRequestTuiDependencies,
   type RefreshBus,
 } from "../src/pull-request-tui.js"
-import type { GitHubClient, ProcessRunner } from "../src/github.js"
+import type { GitHubClient, ProcessRunner, PullRequestStackMembership, PullRequestState } from "../src/github.js"
 import type { PullRequestAttachment, StateStore } from "../src/state.js"
 import { parsePullRequestUrl, type PullRequestUrl } from "../src/url.js"
 import { attachment, available, githubStatuses, pullRequest, secondAttachment, stateStore } from "./tui-fixtures.js"
@@ -24,6 +24,16 @@ if (!thirdParsed.ok) throw new Error("third test fixture URL is invalid")
 const thirdAttachment: PullRequestAttachment = {
   pullRequest: thirdParsed.value,
   attachedAt: "2026-08-10T12:02:00.000Z",
+}
+
+function stackMembership(id: string, members: readonly PullRequestUrl[]): PullRequestStackMembership {
+  const [first, ...rest] = members
+  if (first === undefined) throw new Error("Stack test fixture is empty")
+  return { tag: "Stack", id, members: [first, ...rest] }
+}
+
+function isStruck(attributes: number): boolean {
+  return (attributes & TextAttributes.STRIKETHROUGH) === TextAttributes.STRIKETHROUGH
 }
 
 function registerPullRequestCommands(
@@ -40,11 +50,20 @@ async function renderSidebar(
     followingText?: string
     github?: GitHubClient
     layout?: PullRequestSidebarLayout
+    memberships?: readonly PullRequestStackMembership[]
+    runner?: ProcessRunner
     width?: number
   }> = {},
 ) {
   let githubCalls = 0
-  const color = RGBA.fromHex("#ffffff")
+  const colors = {
+    text: RGBA.fromHex("#ffffff"),
+    textMuted: RGBA.fromHex("#777777"),
+    error: RGBA.fromHex("#ff0000"),
+    warning: RGBA.fromHex("#ffff00"),
+    success: RGBA.fromHex("#00ff00"),
+    secondary: RGBA.fromHex("#ff00ff"),
+  }
   const github = options.github ?? githubStatuses()
   const refreshBus = createRefreshBus()
   const api = {
@@ -53,12 +72,7 @@ async function renderSidebar(
     },
     theme: {
       current: {
-        text: color,
-        textMuted: color,
-        error: color,
-        warning: color,
-        success: color,
-        secondary: color,
+        ...colors,
       },
     },
     ui: { toast() {} },
@@ -69,11 +83,21 @@ async function renderSidebar(
       async getStack(requested) {
         return { ok: true, value: [requested] }
       },
+      async getStacks(requested) {
+        return {
+          ok: true,
+          value: requested.map((value, index) => ({
+            ok: true,
+            value: options.memberships?.[index] ?? { tag: "Standalone", pullRequest: value },
+          })),
+        }
+      },
       async get(...args) {
         githubCalls += 1
         return github.get(...args)
       },
     },
+    ...(options.runner ? { runner: options.runner } : {}),
   } satisfies PullRequestTuiDependencies
 
   const view = await testRender(
@@ -100,6 +124,7 @@ async function renderSidebar(
 
   return {
     view,
+    colors,
     emitSessionUpdated() {
       refreshBus.emit("session")
     },
@@ -170,10 +195,10 @@ describe("pull request TUI", () => {
       const secondBulletColumn = secondReference.indexOf("•")
 
       expect(firstEntryRow).toBeGreaterThanOrEqual(0)
-      expect(firstReference.slice(firstBulletColumn)).toStartWith("• owner/repository#42")
-      expect(firstTitle.indexOf("Track pull requests")).toBe(firstBulletColumn + 2)
-      expect(secondReference.slice(secondBulletColumn)).toStartWith("• another/project#7")
-      expect(secondTitle.indexOf("Track pull requests")).toBe(secondBulletColumn + 2)
+      expect(firstReference.slice(firstBulletColumn)).toStartWith("•  owner/repository#42")
+      expect(firstTitle.indexOf("Track pull requests")).toBe(firstBulletColumn + 3)
+      expect(secondReference.slice(secondBulletColumn)).toStartWith("•  another/project#7")
+      expect(secondTitle.indexOf("Track pull requests")).toBe(secondBulletColumn + 3)
     } finally {
       await sidebar.cleanup()
     }
@@ -192,9 +217,533 @@ describe("pull request TUI", () => {
       const secondEntry = rows[secondEntryRow]!
 
       expect(frame).not.toContain("Track pull requests")
-      expect(firstEntry.trimStart()).toStartWith("• owner/repository#42 passed")
-      expect(secondEntry.trimStart()).toStartWith("• another/project#7 passed")
+      expect(firstEntry.trimStart()).toStartWith("•  owner/repository#42 passed")
+      expect(secondEntry.trimStart()).toStartWith("•  another/project#7 passed")
       expect(secondEntryRow).toBe(firstEntryRow + 1)
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("renders partial Stack markers and an internal gap in the default layout", async () => {
+    const parsed = [11, 12, 13, 14, 15, 16].map((number) =>
+      parsePullRequestUrl(`https://github.com/owner/repository/pull/${number}`),
+    )
+    if (parsed.some((result) => !result.ok)) throw new Error("Stack test fixture URL is invalid")
+    const members = parsed.map((result) => (result.ok ? result.value : pullRequest))
+    const attached = [members[1]!, members[3]!, members[4]!]
+    const membership = stackMembership("stack-1", members)
+    const memberships = attached.map(() => membership)
+    const items = attached.map((value, index) => ({
+      pullRequest: value,
+      attachedAt: `2026-08-15T12:0${index}:00.000Z`,
+    }))
+    const statuses = new Map([
+      [
+        attached[0]!.url,
+        available(
+          { tag: "Open", ci: "passed", isDraft: false, mergeability: "mergeable", blocker: "none" },
+          attached[0],
+        ),
+      ],
+      [
+        attached[1]!.url,
+        available(
+          { tag: "Open", ci: "pending", isDraft: false, mergeability: "mergeable", blocker: "none" },
+          attached[1],
+        ),
+      ],
+      [
+        attached[2]!.url,
+        available(
+          { tag: "Open", ci: "passed", isDraft: true, mergeability: "mergeable", blocker: "none" },
+          attached[2],
+        ),
+      ],
+    ])
+    const titles = new Map([
+      [attached[0]!.url, "Base migration"],
+      [attached[1]!.url, "API update"],
+      [attached[2]!.url, "Client wiring"],
+    ])
+    const sidebar = await renderSidebar(items, {
+      memberships,
+      github: githubStatuses((value) => ({ ...statuses.get(value.url)!, title: titles.get(value.url)! })),
+    })
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("Client wiring"))
+      const rows = frame.split("\n")
+      const firstRow = rows.findIndex((row) => row.includes("owner/repository#12"))
+      const gapRow = rows.findIndex((row) => row.includes("PR not attached"))
+      const secondRow = rows.findIndex((row) => row.includes("owner/repository#14"))
+      const thirdRow = rows.findIndex((row) => row.includes("owner/repository#15"))
+      const markerColumn = rows[firstRow]!.indexOf("├")
+
+      expect(rows[firstRow]!.slice(markerColumn)).toStartWith("├─ owner/repository#12 passed")
+      expect(rows[firstRow + 1]!.slice(markerColumn)).toStartWith("│  Base migration")
+      expect(rows[gapRow]!.slice(markerColumn)).toStartWith("├┄ 1 PR not attached")
+      expect(rows[secondRow]!.slice(markerColumn)).toStartWith("├─ owner/repository#14 pending")
+      expect(rows[secondRow + 1]!.slice(markerColumn)).toStartWith("│  API update")
+      expect(rows[thirdRow]!.slice(markerColumn)).toStartWith("├─ owner/repository#15 draft")
+      expect(rows[thirdRow + 1]!.slice(markerColumn)).toStartWith("┊  Client wiring")
+      expect(rows[firstRow + 1]!.indexOf("Base migration")).toBe(markerColumn + 3)
+
+      const spans = sidebar.view.captureSpans()
+      expect(
+        spans.lines[firstRow]!.spans.find((span) => span.text.includes("─"))?.fg.equals(sidebar.colors.success),
+      ).toBe(true)
+      expect(
+        spans.lines[secondRow]!.spans.find((span) => span.text.includes("─"))?.fg.equals(sidebar.colors.warning),
+      ).toBe(true)
+      expect(
+        spans.lines[thirdRow]!.spans.find((span) => span.text.includes("─"))?.fg.equals(sidebar.colors.textMuted),
+      ).toBe(true)
+      expect(spans.lines[gapRow]!.spans.some((span) => span.fg.equals(sidebar.colors.textMuted))).toBe(true)
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("renders Stack markers and gaps without titles in the compact layout", async () => {
+    const parsed = [11, 12, 13, 14, 15, 16].map((number) =>
+      parsePullRequestUrl(`https://github.com/owner/repository/pull/${number}`),
+    )
+    if (parsed.some((result) => !result.ok)) throw new Error("Stack test fixture URL is invalid")
+    const members = parsed.map((result) => (result.ok ? result.value : pullRequest))
+    const attached = [members[1]!, members[3]!, members[4]!]
+    const membership = stackMembership("stack-1", members)
+    const sidebar = await renderSidebar(
+      attached.map((value, index) => ({ pullRequest: value, attachedAt: `2026-08-15T12:0${index}:00.000Z` })),
+      { layout: "compact", memberships: attached.map(() => membership) },
+    )
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("owner/repository#15"))
+      const rows = frame.split("\n")
+      const firstRow = rows.findIndex((row) => row.includes("owner/repository#12"))
+      const gapRow = rows.findIndex((row) => row.includes("PR not attached"))
+      const secondRow = rows.findIndex((row) => row.includes("owner/repository#14"))
+      const thirdRow = rows.findIndex((row) => row.includes("owner/repository#15"))
+
+      expect(rows[firstRow]!.trimStart()).toStartWith("├─ owner/repository#12")
+      expect(rows[gapRow]!.trimStart()).toStartWith("├┄ 1 PR not attached")
+      expect(rows[secondRow]!.trimStart()).toStartWith("├─ owner/repository#14")
+      expect(rows[thirdRow]!.trimStart()).toStartWith("├─ owner/repository#15")
+      expect(gapRow).toBe(firstRow + 1)
+      expect(secondRow).toBe(gapRow + 1)
+      expect(thirdRow).toBe(secondRow + 1)
+      expect(frame).not.toContain("Track pull requests")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("renders a sole attached remote base with an incomplete marker in the default layout", async () => {
+    const parsed = [821, 822, 823].map((number) =>
+      parsePullRequestUrl(`https://github.com/sample/stack-fixture/pull/${number}`),
+    )
+    if (parsed.some((result) => !result.ok)) throw new Error("singleton base fixture URL is invalid")
+    const members = parsed.map((result) => (result.ok ? result.value : pullRequest))
+    const membership = stackMembership("synthetic-stack", members)
+    const sidebar = await renderSidebar([{ pullRequest: members[0]!, attachedAt: "2026-08-15T12:00:00.000Z" }], {
+      memberships: [membership],
+    })
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("sample/stack-fixture#821"))
+
+      expect(frame).toContain("├─ sample/stack-fixture#821")
+      expect(frame).toContain("┊  Track pull requests")
+      expect(frame).not.toContain("┌─ sample/stack-fixture#821")
+      expect(frame).not.toContain("└─ sample/stack-fixture#821")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("renders a sole attached remote head with an incomplete marker in the compact layout", async () => {
+    const parsed = [831, 832, 833].map((number) =>
+      parsePullRequestUrl(`https://github.com/sample/stack-fixture/pull/${number}`),
+    )
+    if (parsed.some((result) => !result.ok)) throw new Error("singleton head fixture URL is invalid")
+    const members = parsed.map((result) => (result.ok ? result.value : pullRequest))
+    const membership = stackMembership("synthetic-stack", members)
+    const sidebar = await renderSidebar([{ pullRequest: members[2]!, attachedAt: "2026-08-15T12:00:00.000Z" }], {
+      layout: "compact",
+      memberships: [membership],
+    })
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("sample/stack-fixture#833"))
+
+      expect(frame).toContain("├─ sample/stack-fixture#833")
+      expect(frame).not.toContain("┌─ sample/stack-fixture#833")
+      expect(frame).not.toContain("└─ sample/stack-fixture#833")
+      expect(frame).not.toContain("Track pull requests")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("renders a sole attached remote middle member with an incomplete marker", async () => {
+    const parsed = [851, 852, 853].map((number) =>
+      parsePullRequestUrl(`https://github.com/sample/stack-fixture/pull/${number}`),
+    )
+    if (parsed.some((result) => !result.ok)) throw new Error("singleton middle fixture URL is invalid")
+    const members = parsed.map((result) => (result.ok ? result.value : pullRequest))
+    const membership = stackMembership("synthetic-stack", members)
+    const sidebar = await renderSidebar([{ pullRequest: members[1]!, attachedAt: "2026-08-15T12:00:00.000Z" }], {
+      memberships: [membership],
+    })
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("sample/stack-fixture#852"))
+
+      expect(frame).toContain("├─ sample/stack-fixture#852")
+      expect(frame).toContain("┊  Track pull requests")
+      expect(frame).not.toContain("┌─ sample/stack-fixture#852")
+      expect(frame).not.toContain("└─ sample/stack-fixture#852")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("renders complete boundaries, plural gaps, invalid bullets, and merged strikethrough", async () => {
+    const urls = [20, 21, 22, 23, 24, 30, 31, 40, 41].map((number) =>
+      parsePullRequestUrl(`https://github.com/owner/repository/pull/${number}`),
+    )
+    if (urls.some((result) => !result.ok)) throw new Error("Stack test fixture URL is invalid")
+    const values = urls.map((result) => (result.ok ? result.value : pullRequest))
+    const partialMembers = values.slice(0, 5)
+    const completeMembers = values.slice(5, 7)
+    const invalidMembers = values.slice(7)
+    const partialMembership = stackMembership("stack-partial", partialMembers)
+    const completeMembership = stackMembership("stack-complete", completeMembers)
+    const invalidMembership = stackMembership("stack-invalid", invalidMembers)
+    const items = [values[0]!, values[3]!, values[5]!, values[6]!, values[7]!, values[8]!].map((value, index) => ({
+      pullRequest: value,
+      attachedAt: `2026-08-15T12:0${index}:00.000Z`,
+    }))
+    const sidebar = await renderSidebar(items, {
+      memberships: [
+        partialMembership,
+        partialMembership,
+        completeMembership,
+        completeMembership,
+        invalidMembership,
+        stackMembership("stack-invalid", [invalidMembers[1]!, invalidMembers[0]!]),
+      ],
+      github: githubStatuses((value) => available(value.url === values[6]!.url ? { tag: "Merged" } : undefined, value)),
+    })
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("owner/repository#41"))
+      expect(frame).toContain("┌─ owner/repository#20")
+      expect(frame).toContain("├┄ 2 PRs not attached")
+      expect(frame).toContain("┌─ owner/repository#30")
+      expect(frame).toContain("└─ owner/repository#31 merged")
+      expect(frame).toContain("•  owner/repository#40")
+      expect(frame).toContain("•  owner/repository#41")
+
+      const mergedRow = frame.split("\n").findIndex((row) => row.includes("owner/repository#31"))
+      const mergedSpans = sidebar.view.captureSpans().lines[mergedRow]!.spans
+      expect(
+        mergedSpans.some(
+          (span) =>
+            span.text.includes("owner/repository#31") &&
+            (span.attributes & TextAttributes.STRIKETHROUGH) === TextAttributes.STRIKETHROUGH,
+        ),
+      ).toBe(true)
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("keeps Stack gaps non-interactive while preserving collapse and pull request clicks", async () => {
+    const urls = [40, 41, 42, 43, 44].map((number) =>
+      parsePullRequestUrl(`https://github.com/owner/repository/pull/${number}`),
+    )
+    if (urls.some((result) => !result.ok)) throw new Error("Stack test fixture URL is invalid")
+    const members = urls.map((result) => (result.ok ? result.value : pullRequest))
+    const attached = [members[0]!, members[2]!, members[4]!]
+    const membership = stackMembership("stack-1", members)
+    const processCalls: string[] = []
+    const runner: ProcessRunner = async (_file, args) => {
+      processCalls.push(args[0]!)
+      return { stdout: "" }
+    }
+    const sidebar = await renderSidebar(
+      attached.map((value, index) => ({ pullRequest: value, attachedAt: `2026-08-15T12:0${index}:00.000Z` })),
+      { memberships: attached.map(() => membership), runner },
+    )
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("owner/repository#44"))
+      const rows = frame.split("\n")
+      const gapRow = rows.findIndex((row) => row.includes("PR not attached"))
+      const pullRequestRow = rows.findIndex((row) => row.includes("owner/repository#42"))
+
+      await sidebar.view.mockMouse.click(1, gapRow)
+      await sidebar.view.flush()
+      expect(processCalls).toEqual([])
+
+      await sidebar.view.mockMouse.click(1, pullRequestRow)
+      await sidebar.view.waitFor(() => processCalls.length === 1)
+      expect(processCalls).toEqual([attached[1]!.url])
+
+      await sidebar.view.mockMouse.pressDown(1, 0)
+      await sidebar.view.flush()
+      const collapsed = sidebar.view.captureCharFrame()
+      expect(collapsed).toContain("▶ Pull requests")
+      expect(collapsed).not.toContain("PR not attached")
+      expect(collapsed).not.toContain("owner/repository#42")
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("renders the Stack connector beside every wrapped header continuation", async () => {
+    const base = parsePullRequestUrl("https://github.com/sample/stacked-service/pull/501")
+    const top = parsePullRequestUrl("https://github.com/sample/stacked-service/pull/502")
+    if (!base.ok || !top.ok) throw new Error("wrapped Stack test fixture URL is invalid")
+    const membership = stackMembership("stack-1", [base.value, top.value])
+    const sidebar = await renderSidebar(
+      [
+        { pullRequest: base.value, attachedAt: "2026-08-15T12:00:00.000Z" },
+        { pullRequest: top.value, attachedAt: "2026-08-15T12:01:00.000Z" },
+      ],
+      {
+        width: 36,
+        memberships: [membership, membership],
+        github: githubStatuses((value) =>
+          value.url === base.value.url
+            ? {
+                ...available({ tag: "Merged" }, value),
+                stale: true as const,
+                diagnostic: "GitHubUnavailable" as const,
+              }
+            : available(undefined, value),
+        ),
+      },
+    )
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("merged"))
+      const rows = frame.split("\n")
+      const referenceRow = rows.findIndex((row) => row.includes("sample/stacked-service#501"))
+      const statusRow = rows.findIndex((row) => row.includes("merged"))
+      const titleRow = rows.findIndex((row) => row.includes("Track pull requests"))
+      const markerColumn = rows[referenceRow]!.indexOf("┌")
+      const spans = sidebar.view.captureSpans().lines
+      const attributesFor = (row: number, text: string) =>
+        spans[row]!.spans.find((span) => span.text.includes(text))!.attributes
+
+      expect(statusRow).toBe(referenceRow + 1)
+      expect(rows[statusRow]!.slice(markerColumn)).toStartWith("│  merged")
+      expect({
+        marker: isStruck(attributesFor(referenceRow, "┌")),
+        reference: isStruck(attributesFor(referenceRow, "sample/stacked-service#501")),
+        continuation: isStruck(attributesFor(statusRow, "│")),
+        status: isStruck(attributesFor(statusRow, "merged")),
+        stale: isStruck(attributesFor(statusRow, "stale")),
+        staleItalic: (attributesFor(statusRow, "stale") & TextAttributes.ITALIC) === TextAttributes.ITALIC,
+        titleMarker: isStruck(attributesFor(titleRow, "│")),
+        title: isStruck(attributesFor(titleRow, "Track pull requests")),
+      }).toEqual({
+        marker: false,
+        reference: true,
+        continuation: false,
+        status: false,
+        stale: false,
+        staleItalic: true,
+        titleMarker: false,
+        title: true,
+      })
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("repeats Stack title connectors across every wrapped title line", async () => {
+    const parsed = [601, 602, 603, 604].map((number) =>
+      parsePullRequestUrl(`https://github.com/sample/stacked-service/pull/${number}`),
+    )
+    if (parsed.some((result) => !result.ok)) throw new Error("wrapped title fixture URL is invalid")
+    const members = parsed.map((result) => (result.ok ? result.value : pullRequest))
+    const attached = [members[1]!, members[2]!]
+    const membership = stackMembership("synthetic-stack", members)
+    const titles = new Map([
+      [attached[0]!.url, "Synthetic migration policy validates staged resource ownership"],
+      [attached[1]!.url, "Synthetic rollout metadata preserves deterministic handoff ordering"],
+    ])
+    const sidebar = await renderSidebar(
+      attached.map((value, index) => ({
+        pullRequest: value,
+        attachedAt: `2026-08-15T12:0${index}:00.000Z`,
+      })),
+      {
+        width: 38,
+        memberships: [membership, membership],
+        github: githubStatuses((value) => ({
+          ...available(value.url === attached[0]!.url ? { tag: "Merged" } : undefined, value),
+          title: titles.get(value.url)!,
+        })),
+      },
+    )
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("ordering"))
+      const rows = frame.split("\n")
+      const markerColumn = rows.find((row) => row.includes("sample/stacked-service#602"))!.indexOf("├")
+      const secondReferenceRow = rows.findIndex((row) => row.includes("sample/stacked-service#603"))
+      const continuingTitleStart = rows.findIndex((row) => row.includes("Synthetic migration"))
+      const incompleteUpperTitleStart = rows.findIndex((row) => row.includes("Synthetic rollout"))
+      const continuingTitleRows = rows
+        .slice(continuingTitleStart, secondReferenceRow)
+        .filter((row) => row.trim().length > 0)
+      const incompleteUpperTitleRows = rows.slice(incompleteUpperTitleStart).filter((row) => row.trim().length > 0)
+
+      expect(continuingTitleRows.length).toBeGreaterThan(1)
+      expect(incompleteUpperTitleRows.length).toBeGreaterThan(1)
+      expect({
+        continuingMarkers: continuingTitleRows.map((row) => row.slice(markerColumn, markerColumn + 3)),
+        continuingContentColumns: continuingTitleRows.map((row) => row.slice(markerColumn + 3).search(/\S/)),
+        incompleteUpperMarkers: incompleteUpperTitleRows.map((row) => row.slice(markerColumn, markerColumn + 3)),
+        incompleteUpperContentColumns: incompleteUpperTitleRows.map((row) => row.slice(markerColumn + 3).search(/\S/)),
+      }).toEqual({
+        continuingMarkers: continuingTitleRows.map(() => "│  "),
+        continuingContentColumns: continuingTitleRows.map(() => 0),
+        incompleteUpperMarkers: incompleteUpperTitleRows.map(() => "┊  "),
+        incompleteUpperContentColumns: incompleteUpperTitleRows.map(() => 0),
+      })
+
+      const spans = sidebar.view.captureSpans().lines
+      expect(
+        incompleteUpperTitleRows.map((row) => {
+          const connector = spans[rows.indexOf(row)]!.spans.find((span) => span.text.includes("┊"))!
+          return connector.fg.equals(sidebar.colors.textMuted)
+        }),
+      ).toEqual(incompleteUpperTitleRows.map(() => true))
+      for (const row of [...continuingTitleRows, ...incompleteUpperTitleRows]) {
+        const rowIndex = rows.indexOf(row)
+        const titleSpans = spans[rowIndex]!.spans
+        const marker = titleSpans[0]!
+        const title = titleSpans.reduce((last, span) => (span.text.trim().length > 0 ? span : last), marker)
+        expect(isStruck(marker.attributes)).toBe(false)
+        expect(isStruck(title.attributes)).toBe(rowIndex < secondReferenceRow)
+      }
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("colors Stack marker glyphs independently from status and default gutters", async () => {
+    const standalone = parsePullRequestUrl("https://github.com/sample/color-fixture/pull/700")
+    const parsed = [701, 702, 703, 704].map((number) =>
+      parsePullRequestUrl(`https://github.com/sample/color-fixture/pull/${number}`),
+    )
+    if (!standalone.ok || parsed.some((result) => !result.ok)) throw new Error("color fixture URL is invalid")
+    const members = parsed.map((result) => (result.ok ? result.value : pullRequest))
+    const attached = [members[0]!, members[2]!, members[3]!]
+    const membership = stackMembership("synthetic-color-stack", members)
+    const titles = new Map([
+      [standalone.value.url, "Synthetic standalone title"],
+      [attached[0]!.url, "Synthetic color verification keeps connector shades stable"],
+      [attached[1]!.url, "Synthetic middle title"],
+      [attached[2]!.url, "Synthetic final title"],
+    ])
+    const sidebar = await renderSidebar(
+      [
+        { pullRequest: standalone.value, attachedAt: "2026-08-15T12:00:00.000Z" },
+        ...attached.map((value, index) => ({
+          pullRequest: value,
+          attachedAt: `2026-08-15T12:0${index + 1}:00.000Z`,
+        })),
+      ],
+      {
+        width: 30,
+        memberships: [{ tag: "Standalone", pullRequest: standalone.value }, membership, membership, membership],
+        github: githubStatuses((value) => {
+          const state: PullRequestState | undefined =
+            value.url === standalone.value.url
+              ? { tag: "Open", ci: "failed", isDraft: false, mergeability: "mergeable", blocker: "none" }
+              : value.url === attached[1]!.url
+                ? { tag: "Open", ci: "pending", isDraft: false, mergeability: "mergeable", blocker: "none" }
+                : value.url === attached[2]!.url
+                  ? { tag: "Merged" }
+                  : undefined
+          return { ...available(state, value), title: titles.get(value.url)! }
+        }),
+      },
+    )
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("Synthetic final title"))
+      const rows = frame.split("\n")
+      const spans = sidebar.view.captureSpans().lines
+      const rowFor = (text: string) => rows.findIndex((row) => row.includes(text))
+      const spanFor = (row: number, glyph: string) => spans[row]!.spans.find((span) => span.text.includes(glyph))
+      const colorName = (span: (typeof spans)[number]["spans"][number] | undefined) => {
+        if (span?.fg.equals(sidebar.colors.textMuted)) return "gray"
+        if (span?.fg.equals(sidebar.colors.error)) return "red"
+        if (span?.fg.equals(sidebar.colors.success)) return "green"
+        if (span?.fg.equals(sidebar.colors.warning)) return "yellow"
+        if (span?.fg.equals(sidebar.colors.secondary)) return "purple"
+        return "missing"
+      }
+      const standaloneRow = rowFor("sample/color-fixture#700")
+      const firstRow = rowFor("sample/color-fixture#701")
+      const middleRow = rowFor("sample/color-fixture#703")
+      const finalRow = rowFor("sample/color-fixture#704")
+      const gapRow = rowFor("PR not attached")
+      const wrappedHeaderRow = rowFor("passed")
+      const titleStart = rowFor("Synthetic color")
+      const titleRows = rows.slice(titleStart, gapRow).filter((row) => row.trim().length > 0)
+
+      expect(titleRows.length).toBeGreaterThan(1)
+      expect({
+        bullet: colorName(spanFor(standaloneRow, "•")),
+        firstJunction: colorName(spanFor(firstRow, "┌")),
+        firstHorizontal: colorName(spanFor(firstRow, "─")),
+        middleJunction: colorName(spanFor(middleRow, "├")),
+        middleHorizontal: colorName(spanFor(middleRow, "─")),
+        finalJunction: colorName(spanFor(finalRow, "└")),
+        finalHorizontal: colorName(spanFor(finalRow, "─")),
+        wrappedHeaderConnector: colorName(spanFor(wrappedHeaderRow, "│")),
+        wrappedTitleConnectors: titleRows.map((row) => colorName(spanFor(rows.indexOf(row), "│"))),
+        gap: colorName(spanFor(gapRow, "PR not attached")),
+      }).toEqual({
+        bullet: "red",
+        firstJunction: "gray",
+        firstHorizontal: "green",
+        middleJunction: "gray",
+        middleHorizontal: "yellow",
+        finalJunction: "gray",
+        finalHorizontal: "purple",
+        wrappedHeaderConnector: "gray",
+        wrappedTitleConnectors: titleRows.map(() => "gray"),
+        gap: "gray",
+      })
+    } finally {
+      await sidebar.cleanup()
+    }
+  })
+
+  test("aligns standalone and Stack pull request references to one marker gutter", async () => {
+    const standalone = parsePullRequestUrl("https://github.com/sample/stacked-service/pull/503")
+    const base = parsePullRequestUrl("https://github.com/sample/stacked-service/pull/504")
+    const top = parsePullRequestUrl("https://github.com/sample/stacked-service/pull/505")
+    if (!standalone.ok || !base.ok || !top.ok) throw new Error("mixed Stack test fixture URL is invalid")
+    const membership = stackMembership("stack-1", [base.value, top.value])
+    const sidebar = await renderSidebar(
+      [
+        { pullRequest: standalone.value, attachedAt: "2026-08-15T12:00:00.000Z" },
+        { pullRequest: base.value, attachedAt: "2026-08-15T12:01:00.000Z" },
+        { pullRequest: top.value, attachedAt: "2026-08-15T12:02:00.000Z" },
+      ],
+      {
+        memberships: [{ tag: "Standalone", pullRequest: standalone.value }, membership, membership],
+      },
+    )
+    try {
+      const frame = await sidebar.view.waitForFrame((value) => value.includes("sample/stacked-service#505"))
+      const rows = frame.split("\n")
+      const referenceColumns = [503, 504, 505].map((number) =>
+        rows.find((row) => row.includes(`sample/stacked-service#${number}`))!.indexOf("sample/stacked-service"),
+      )
+
+      expect(referenceColumns).toEqual([3, 3, 3])
     } finally {
       await sidebar.cleanup()
     }
@@ -227,7 +776,7 @@ describe("pull request TUI", () => {
 
       expect(continuationRows.length).toBeGreaterThan(1)
       for (const row of continuationRows) {
-        expect(row.search(/\S/)).toBe(bulletColumn + 2)
+        expect(row.search(/\S/)).toBe(bulletColumn + 3)
       }
     } finally {
       await sidebar.cleanup()
@@ -255,6 +804,15 @@ describe("pull request TUI", () => {
     const github: GitHubClient = {
       async getStack(requested) {
         return { ok: true, value: [requested] }
+      },
+      async getStacks(requested) {
+        return {
+          ok: true,
+          value: requested.map((value) => ({
+            ok: true,
+            value: { tag: "Standalone", pullRequest: value },
+          })),
+        }
       },
       async get(pullRequests) {
         return availableResponse
@@ -298,6 +856,15 @@ describe("pull request TUI", () => {
             tag: "PullRequestNotFound",
             message: "Pull request does not exist or is not accessible",
           },
+        }
+      },
+      async getStacks(requested) {
+        return {
+          ok: true,
+          value: requested.map((value) => ({
+            ok: true,
+            value: { tag: "Standalone", pullRequest: value },
+          })),
         }
       },
       async get() {
@@ -410,6 +977,15 @@ describe("pull request TUI", () => {
             tag: "PullRequestNotFound",
             message: "Pull request does not exist or is not accessible",
           },
+        }
+      },
+      async getStacks(requested) {
+        return {
+          ok: true,
+          value: requested.map((value) => ({
+            ok: true,
+            value: { tag: "Standalone", pullRequest: value },
+          })),
         }
       },
       async get() {
