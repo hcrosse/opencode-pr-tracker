@@ -124,7 +124,12 @@ function expectUpdate<A, E>(
       Effect.forkScoped,
     )
 
-    yield* connected.await
+    yield* connected.await.pipe(
+      Effect.timeoutOrElse({
+        duration: "30 seconds",
+        orElse: () => Effect.die("the event stream never reported server.connected"),
+      }),
+    )
 
     const result = yield* act
     const updated = yield* Fiber.join(update)
