@@ -30,6 +30,8 @@ jobs:
             command: bun run typecheck
           - name: OpenCode smoke
             command: bun run smoke:opencode
+            # The smoke test reads public pull requests; the read-only workflow token is enough.
+            github-token: true
           - name: Package
             command: bun run package:check
     steps:
@@ -53,6 +55,8 @@ jobs:
 
       - name: ${{ matrix.name }}
         run: ${{ matrix.command }}
+        env:
+          GH_TOKEN: ${{ matrix.github-token && github.token || '' }}
 
       - name: Verify build output
         if: matrix.name == 'Build'

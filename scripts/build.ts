@@ -7,7 +7,7 @@ const outdir = "./dist"
 await rm(outdir, { force: true, recursive: true })
 
 const result = await Bun.build({
-  entrypoints: ["./src/server.ts", "./src/rpc.ts"],
+  entrypoints: ["./src/server.ts"],
   // Runtime dependencies and the host's TUI packages stay imports, so the host's copies are used.
   external: [
     "@opencode/plugin",

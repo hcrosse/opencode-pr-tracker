@@ -23,9 +23,6 @@
   "exports": {
     ".": {
       "import": "./dist/server.js"
-    },
-    "./rpc": {
-      "import": "./dist/rpc.js"
     }
   },
   "publishConfig": {
