@@ -1,5 +1,5 @@
 import type { StorageDomain } from "@opencode/plugin/effect/storage"
-import { Deferred, Effect, Layer, Option, Result, type Schema } from "effect"
+import { type Clock, Deferred, Effect, Layer, Option, Result, type Schema } from "effect"
 
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
 import type { Diagnostic, PullRequestState } from "../../src/domain/Snapshot.ts"
@@ -51,6 +51,21 @@ export function memoryStorage(): StorageFake {
   }
 
   return { storage, values }
+}
+
+/** A clock stopped at `millis`, which may be fractional. */
+export function fixedClock(millis: number): Clock.Clock {
+  const nanos = BigInt(Math.round(millis * 1_000_000))
+
+  return {
+    currentTimeMillis: Effect.succeed(millis),
+    currentTimeMillisUnsafe: () => millis,
+    currentTimeNanos: Effect.succeed(nanos),
+    currentTimeNanosUnsafe: () => nanos,
+    monotonicTimeNanos: Effect.succeed(nanos),
+    monotonicTimeNanosUnsafe: () => nanos,
+    sleep: () => Effect.void,
+  }
 }
 
 export const standalone: Membership = { _tag: "Standalone" }
