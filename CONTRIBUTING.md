@@ -2,7 +2,7 @@
 
 ## Setup
 
-Install Bun 1.3.14, authenticate GitHub CLI, then run `bun ci`.
+Install the toolchain with `mise install`, authenticate GitHub CLI, then run `mise run setup`.
 
 ## Checks
 

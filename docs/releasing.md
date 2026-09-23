@@ -2,7 +2,7 @@
 
 ## Policy
 
-The package follows SemVer and supports OpenCode `>=1.18.15 <2`. Release Please
+The package follows SemVer and supports OpenCode `>=2.0.15 <3`. Release Please
 uses Conventional Commit pull request titles. Before 1.0, features and breaking
 changes increment the minor version, while fixes and performance changes
 increment the patch version.

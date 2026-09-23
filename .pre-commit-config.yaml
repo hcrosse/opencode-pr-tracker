@@ -1,0 +1,23 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: oxfmt
+        name: oxfmt
+        entry: mise exec -- bun run format:check
+        language: system
+        pass_filenames: false
+      - id: oxlint
+        name: oxlint
+        entry: mise run lint
+        language: system
+        pass_filenames: false

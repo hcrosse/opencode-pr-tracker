@@ -1,0 +1,24 @@
+[tools]
+bun = "1.4.2"
+prek = "latest"
+"aqua:charmbracelet/freeze" = "latest"
+
+[tasks.setup]
+description = "Resolve dependencies and install Git hooks"
+run = ["bun install", "UV_NO_BUILD=false prek install --prepare-hooks"]
+
+[tasks.build]
+description = "Build the plugin into dist"
+run = "bun run build"
+
+[tasks.check]
+description = "Run lint, format, typecheck, tests and package checks"
+run = "bun run check"
+
+[tasks.lint]
+description = "Run strict Oxlint rules and TypeScript diagnostics"
+run = "bun run lint"
+
+[tasks.test]
+description = "Run Bun tests"
+run = "bun run test"

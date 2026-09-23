@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "endOfLine": "lf",
+  // release-please owns the changelog and manifest; the issue-claim script is kept unchanged.
+  "ignorePatterns": [
+    "tools/oxlint/anti-slop/**",
+    ".release-please-manifest.json",
+    "CHANGELOG.md",
+    ".github/scripts/**",
+  ],
+  "insertFinalNewline": true,
+  "printWidth": 100,
+  "proseWrap": "preserve",
+  "semi": false,
+  "singleQuote": false,
+  "sortImports": true,
+  "sortPackageJson": {
+    "sortScripts": true,
+  },
+  "tabWidth": 2,
+  "trailingComma": "all",
+  "useTabs": false,
+}
