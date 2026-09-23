@@ -2,8 +2,7 @@
 import { usePlugin } from "@opencode/plugin/tui"
 import type { KeymapCommand } from "@opencode/plugin/tui/context"
 import type { JSX } from "@opentui/solid"
-import { Effect, Fiber, Option } from "effect"
-import { onCleanup } from "solid-js"
+import { Option, type Effect } from "effect"
 
 import type { Actions } from "./Actions.ts"
 
@@ -43,24 +42,13 @@ function command(
 }
 
 /** Registers the slash commands; OpenCode requires this from a rendered component. */
-export function Commands(props: { readonly actions: Actions }): JSX.Element {
+export function Commands(props: {
+  readonly actions: Actions
+  readonly run: (effect: Effect.Effect<void>) => void
+}): JSX.Element {
   const context = usePlugin()
-  const running = new Set<Fiber.Fiber<void>>()
+  const commands = definitions(props.actions).map((definition) => command(definition, props.run))
 
-  const run = (effect: Effect.Effect<void>): void => {
-    const fiber = Effect.runFork(effect)
-
-    running.add(fiber)
-    fiber.addObserver(() => {
-      running.delete(fiber)
-    })
-  }
-
-  const commands = definitions(props.actions).map((definition) => command(definition, run))
-
-  onCleanup(() => {
-    Effect.runFork(Fiber.interruptAll(running))
-  })
   context.keymap.layer(() => ({ commands, mode: "global" }))
 
   return null

@@ -26,7 +26,7 @@ export const palette: Palette = {
   },
 }
 
-export const passing: PullRequestState = {
+const passing: PullRequestState = {
   _tag: "Open",
   behind: false,
   ci: "passed",
@@ -77,7 +77,7 @@ export const bottom = ref("acme/api", 1)
 
 export const second = ref("acme/api", 2)
 
-export const third = ref("acme/api", 3)
+const third = ref("acme/api", 3)
 
 const top = ref("acme/api", 4)
 
@@ -139,7 +139,7 @@ function firstStyle(frame: SpanFrame, text: string): Option.Option<Style> {
   return Option.none()
 }
 
-export async function render(node: () => JSX.Element, width = 44, height = 24): Promise<Rendered> {
+async function render(node: () => JSX.Element, width = 44, height = 24): Promise<Rendered> {
   const setup = await testRender(node, { height, width })
 
   await setup.flush()

@@ -16,6 +16,7 @@ This directory holds the recipes for verifying what a user sees and does in the 
 - Type slash commands with `h send-text "$PANE" '<command>'`, then submit with `h send-keys "$PANE" enter`.
 - Wait with `h wait-output "$PANE" --source visible --match '<text>' --timeout <ms>`. Match text only the result prints, not the command you typed.
 - Dialogs open with the first row selected, and take `down`, `up`, `enter` and `esc` through `h send-keys`.
+- Wait about a second after a dialog appears before sending keys, and between typing a command and pressing `enter`. Keys sent while the dialog is still taking focus can be lost, which leaves it open with no toast.
 - Toasts cover the top of the sidebar for a few seconds. Before capturing the heading, wait until the toast text is gone:
   `until ! h read "$PANE" --source visible | grep -q '<toast text>'; do sleep 0.5; done`
 - Leave about five seconds between commands, so the previous toast does not satisfy the next wait.

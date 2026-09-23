@@ -22,6 +22,7 @@ export interface Collapsed {
 function sessionView(
   sessionID: Accessor<string>,
   tracker: TrackerClientApi,
+  run: (effect: Effect.Effect<void>) => void,
 ): Accessor<SidebarState> {
   const [state, setState] = createSignal<SidebarState>({ _tag: "Loading" })
 
@@ -38,7 +39,7 @@ function sessionView(
   createEffect(
     on(sessionID, (current) => {
       setState({ _tag: "Loading" })
-      Effect.runFork(
+      run(
         Effect.map(Effect.result(tracker.list(current)), (result) => {
           if (result._tag === "Failure")
             show(current, { _tag: "Failed", message: result.failure.message })
@@ -57,9 +58,10 @@ export function SessionSidebar(props: {
   readonly tracker: TrackerClientApi
   readonly collapsed: Collapsed
   readonly onOpen: (ref: PullRequestRef) => void
+  readonly run: (effect: Effect.Effect<void>) => void
 }): JSX.Element {
   const context = usePlugin()
-  const state = sessionView(() => props.sessionID, props.tracker)
+  const state = sessionView(() => props.sessionID, props.tracker, props.run)
 
   return (
     <Sidebar
