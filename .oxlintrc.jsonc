@@ -66,7 +66,8 @@
     ],
     "eslint/max-params": ["error", { "countThis": "except-void", "max": 3 }],
     "oxc/no-accumulating-spread": "error",
-    // Effect values and requests are immutable data that expose methods such as `pipe`; Hegel's
+    // Effect values and requests are immutable data that expose methods such as `pipe`; Ref,
+    // PubSub, Semaphore, Deferred and Scope are shared handles changed only through Effect operations; Hegel's
     // TestCase is a library class.
     "typescript/prefer-readonly-parameter-types": [
       "error",
@@ -74,7 +75,24 @@
         "allow": [
           {
             "from": "package",
-            "name": ["Effect", "Layer", "Option", "Some", "None", "HttpClientRequest"],
+            "name": [
+              "Effect",
+              "Layer",
+              "Option",
+              "Some",
+              "None",
+              "Result",
+              "Success",
+              "Failure",
+              "Duration",
+              "Stream",
+              "Ref",
+              "PubSub",
+              "Semaphore",
+              "Deferred",
+              "Scope",
+              "HttpClientRequest",
+            ],
             "package": "effect",
           },
           { "from": "package", "name": "TestCase", "package": "@hegeldev/hegel" },
