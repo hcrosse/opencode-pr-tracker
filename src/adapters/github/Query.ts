@@ -11,6 +11,7 @@ const contexts = (pageSize: number, after: string): string => `
       ... on CheckRun {
         name status conclusion
         checkSuite {
+          id
           createdAt
           app { id }
           workflowRun { event runNumber runAttempt workflow { id } }

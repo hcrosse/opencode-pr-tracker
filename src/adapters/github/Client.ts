@@ -122,8 +122,13 @@ const allContexts = Effect.fn("allContexts")(function* (post: Post, node: PullRe
 /** GraphQL error types meaning the pull request does not exist or this token cannot see it. */
 const inaccessible = new Set(["NOT_FOUND", "FORBIDDEN"])
 
-function aliasFailure(envelope: Envelope, key: string): Option.Option<Diagnostic> {
-  const errors = (envelope.errors ?? []).filter((error) => (error.path ?? [])[0] === key)
+/** The failure GitHub reported for `key`, counting errors that name no alias in the batch. */
+function aliasFailure(request: Batch, key: string): Option.Option<Diagnostic> {
+  const errors = (request.envelope.errors ?? []).filter((error) => {
+    const root = String((error.path ?? [])[0] ?? "")
+
+    return root === key || !request.aliases.has(root)
+  })
 
   return Arr.matchLeft(errors, {
     onEmpty: () => Option.none(),
@@ -135,14 +140,17 @@ function aliasFailure(envelope: Envelope, key: string): Option.Option<Diagnostic
 interface Batch {
   readonly post: Post
   readonly envelope: Envelope
+  /** The aliases of this batch's pull requests. */
+  readonly aliases: ReadonlySet<string>
 }
 
 const itemResult = Effect.fn("itemResult")(function* (
-  { envelope, post }: Batch,
+  request: Batch,
   ref: PullRequestRef,
   key: string,
 ) {
-  const reported = aliasFailure(envelope, key)
+  const { envelope, post } = request
+  const reported = aliasFailure(request, key)
   const raw = Option.fromNullishOr((envelope.data ?? {})[key])
 
   if (Option.isSome(reported)) return failed(reported.value)
@@ -172,7 +180,8 @@ const fetchBatch = Effect.fn("fetchBatch")(function* (post: Post, refs: readonly
 
   const results = yield* Effect.forEach(
     refs,
-    (ref, index) => itemResult({ envelope, post }, ref, alias(index)),
+    (ref, index) =>
+      itemResult({ aliases: new Set(Object.keys(variables)), envelope, post }, ref, alias(index)),
     {
       concurrency: 4,
     },

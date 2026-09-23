@@ -9,12 +9,11 @@
             "title": "DRA: expose the allocator's constraint mechanism to callers",
             "state": "OPEN",
             "isDraft": false,
-            "mergeable": "MERGEABLE",
-            "mergeStateStatus": "BLOCKED",
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
             "stack": null,
             "statusCheckRollup": {
               "contexts": {
-                "totalCount": 21,
                 "pageInfo": {
                   "hasNextPage": true,
                   "endCursor": "NQ"
@@ -65,7 +64,6 @@
             "stack": null,
             "statusCheckRollup": {
               "contexts": {
-                "totalCount": 11,
                 "pageInfo": {
                   "hasNextPage": true,
                   "endCursor": "NQ"
@@ -77,6 +75,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -97,6 +96,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDrW5g",
                       "createdAt": "2026-08-26T13:47:18Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -117,6 +117,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsDQw",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -137,6 +138,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsDdA",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -157,6 +159,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -189,7 +192,6 @@
             "__typename": "PullRequest",
             "statusCheckRollup": {
               "contexts": {
-                "totalCount": 21,
                 "pageInfo": {
                   "hasNextPage": true,
                   "endCursor": "MTA"
@@ -243,7 +245,6 @@
             "__typename": "PullRequest",
             "statusCheckRollup": {
               "contexts": {
-                "totalCount": 21,
                 "pageInfo": {
                   "hasNextPage": true,
                   "endCursor": "MTU"
@@ -297,7 +298,6 @@
             "__typename": "PullRequest",
             "statusCheckRollup": {
               "contexts": {
-                "totalCount": 21,
                 "pageInfo": {
                   "hasNextPage": true,
                   "endCursor": "MjA"
@@ -351,7 +351,6 @@
             "__typename": "PullRequest",
             "statusCheckRollup": {
               "contexts": {
-                "totalCount": 21,
                 "pageInfo": {
                   "hasNextPage": false,
                   "endCursor": "MjE"
@@ -381,7 +380,6 @@
             "__typename": "PullRequest",
             "statusCheckRollup": {
               "contexts": {
-                "totalCount": 11,
                 "pageInfo": {
                   "hasNextPage": true,
                   "endCursor": "MTA"
@@ -393,6 +391,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDrW5g",
                       "createdAt": "2026-08-26T13:47:18Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -413,6 +412,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -433,6 +433,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -453,6 +454,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -473,6 +475,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -505,7 +508,6 @@
             "__typename": "PullRequest",
             "statusCheckRollup": {
               "contexts": {
-                "totalCount": 11,
                 "pageInfo": {
                   "hasNextPage": false,
                   "endCursor": "MTE"
@@ -517,6 +519,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzD0nfw",
                       "createdAt": "2026-08-26T13:47:50Z",
                       "app": {
                         "id": "MDM6QXBwNTc3ODk="
@@ -537,5 +540,5 @@
     }
   ],
   "pageSize": 5,
-  "recordedAt": "2026-09-23T15:12:34.894Z"
+  "recordedAt": "2026-09-23T22:31:02.405Z"
 }

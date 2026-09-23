@@ -1,11 +1,14 @@
 import { readFileSync } from "node:fs"
 import path from "node:path"
 
-import { Effect, Layer, Option, Redacted, Schema } from "effect"
+import { Effect, Exit, Layer, Option, Redacted, Result, Schema } from "effect"
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from "effect/unstable/http"
 
+import { layer as clientLayer } from "../../src/adapters/github/Client.ts"
 import { CommandFailed, CommandMissing, CommandRunner } from "../../src/adapters/github/Command.ts"
 import { Token } from "../../src/adapters/github/Token.ts"
+import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
+import { GitHub, type GitHubApi } from "../../src/ports/GitHub.ts"
 
 const Exchange = Schema.Struct({
   response: Schema.Json,
@@ -166,4 +169,30 @@ export function fixedCommands(outcomes: Readonly<Record<string, FixedOutcome>>):
   )
 
   return { calls, layer }
+}
+
+/** hcrosse/opencode-pr-tracker#127, whose response is recorded in the standalone fixture. */
+export const tracker127: PullRequestRef = Result.getOrThrow(
+  parsePullRequestUrl("github.com/hcrosse/opencode-pr-tracker/pull/127"),
+)
+
+export const recordedPullRequest = recordedNode("standalone", "pr0")
+
+export interface ClientSetup {
+  readonly http: HttpFake
+  readonly commands?: CommandsFake
+  readonly token?: TokenFake
+}
+
+/** Runs `use` against the real GitHub client over fake HTTP, token and `gh`. */
+export async function runClient<A, E>(
+  setup: ClientSetup,
+  use: (github: GitHubApi) => Effect.Effect<A, E>,
+): Promise<Exit.Exit<A, E>> {
+  const token = setup.token ?? fixedToken()
+  const commands = setup.commands ?? fixedCommands({})
+  const layer = clientLayer.pipe(Layer.provide([setup.http.layer, token.layer, commands.layer]))
+  const result = await Effect.runPromise(Effect.exit(GitHub.use(use).pipe(Effect.provide(layer))))
+
+  return result
 }

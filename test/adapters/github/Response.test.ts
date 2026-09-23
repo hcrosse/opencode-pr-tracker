@@ -13,6 +13,7 @@ const recordedRun = {
   checkSuite: {
     app: { id: "MDM6QXBwMTUzNjg=" },
     createdAt: "2026-08-26T13:47:20Z",
+    id: "CS_kwDOTs91es8AAAAB",
     workflowRun: {
       event: "pull_request",
       runAttempt: 1,
@@ -32,7 +33,10 @@ interface RunFields {
   readonly runNumber: number
   readonly runAttempt: number
   readonly suiteCreatedAt: string
+  readonly suite: string
   readonly workflow: boolean
+  /** Whether GitHub reports the app that created the check suite. */
+  readonly app: boolean
 }
 
 const recordedFields: RunFields = {
@@ -42,7 +46,9 @@ const recordedFields: RunFields = {
   runNumber: recordedRun.checkSuite.workflowRun.runNumber,
   status: recordedRun.status,
   suiteCreatedAt: recordedRun.checkSuite.createdAt,
+  suite: recordedRun.checkSuite.id,
   workflow: true,
+  app: true,
 }
 
 /** The recorded check run with some fields changed. */
@@ -53,8 +59,9 @@ function run(changes: Partial<RunFields>): ContextNode {
   return {
     __typename: "CheckRun",
     checkSuite: {
-      app: recordedRun.checkSuite.app,
+      app: fields.app ? recordedRun.checkSuite.app : null,
       createdAt: fields.suiteCreatedAt,
+      id: fields.suite,
       workflowRun: fields.workflow
         ? { event, runAttempt: fields.runAttempt, runNumber: fields.runNumber, workflow }
         : null,
@@ -137,6 +144,27 @@ describe("which runs count across jobs and suites", () => {
     const newer = run({ suiteCreatedAt: "2026-08-26T13:05:00Z", workflow: false })
 
     expect(ci([newer, older])).toBe("passed")
+  })
+})
+
+describe("which checks are one check", () => {
+  test("checks whose app GitHub does not report are kept apart by suite", () => {
+    const failing = run({
+      app: false,
+      conclusion: "FAILURE",
+      suite: "CS_a",
+      suiteCreatedAt: "2026-08-26T13:00:00Z",
+      workflow: false,
+    })
+
+    const passing = run({
+      app: false,
+      suite: "CS_b",
+      suiteCreatedAt: "2026-08-26T13:05:00Z",
+      workflow: false,
+    })
+
+    expect(ci([passing, failing])).toBe("failed")
   })
 
   test("status contexts differing only in case are one check", () => {

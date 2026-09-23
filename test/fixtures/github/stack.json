@@ -15,7 +15,6 @@
               "id": "PRS_kwDOTs91es4ABPv2",
               "size": 2,
               "entries": {
-                "totalCount": 2,
                 "pageInfo": {
                   "hasNextPage": false
                 },
@@ -37,7 +36,6 @@
             },
             "statusCheckRollup": {
               "contexts": {
-                "totalCount": 11,
                 "pageInfo": {
                   "hasNextPage": false,
                   "endCursor": "MTE"
@@ -49,6 +47,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCIBw",
                       "createdAt": "2026-08-12T23:13:29Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -69,6 +68,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cB7Qg",
                       "createdAt": "2026-08-12T23:13:27Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -89,6 +89,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCGNg",
                       "createdAt": "2026-08-12T23:13:28Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -109,6 +110,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCHPA",
                       "createdAt": "2026-08-12T23:13:28Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -129,6 +131,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCIBw",
                       "createdAt": "2026-08-12T23:13:29Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -149,6 +152,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cB7Qg",
                       "createdAt": "2026-08-12T23:13:27Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -169,6 +173,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCIBw",
                       "createdAt": "2026-08-12T23:13:29Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -189,6 +194,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCIBw",
                       "createdAt": "2026-08-12T23:13:29Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -209,6 +215,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCIBw",
                       "createdAt": "2026-08-12T23:13:29Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -229,6 +236,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCIBw",
                       "createdAt": "2026-08-12T23:13:29Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -249,6 +257,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cGxZg",
                       "createdAt": "2026-08-12T23:13:59Z",
                       "app": {
                         "id": "MDM6QXBwNTc3ODk="
@@ -272,7 +281,6 @@
               "id": "PRS_kwDOTs91es4ABPv2",
               "size": 2,
               "entries": {
-                "totalCount": 2,
                 "pageInfo": {
                   "hasNextPage": false
                 },
@@ -294,7 +302,6 @@
             },
             "statusCheckRollup": {
               "contexts": {
-                "totalCount": 11,
                 "pageInfo": {
                   "hasNextPage": false,
                   "endCursor": "MTE"
@@ -306,6 +313,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHKA",
                       "createdAt": "2026-08-12T23:24:53Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -326,6 +334,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dyyyA",
                       "createdAt": "2026-08-12T23:24:51Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -346,6 +355,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHHg",
                       "createdAt": "2026-08-12T23:24:53Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -366,6 +376,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHUA",
                       "createdAt": "2026-08-12T23:24:53Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -386,6 +397,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHKA",
                       "createdAt": "2026-08-12T23:24:53Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -406,6 +418,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dyyyA",
                       "createdAt": "2026-08-12T23:24:51Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -426,6 +439,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHKA",
                       "createdAt": "2026-08-12T23:24:53Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -446,6 +460,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHKA",
                       "createdAt": "2026-08-12T23:24:53Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -466,6 +481,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHKA",
                       "createdAt": "2026-08-12T23:24:53Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -486,6 +502,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHKA",
                       "createdAt": "2026-08-12T23:24:53Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -506,6 +523,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_d4_2w",
                       "createdAt": "2026-08-12T23:25:27Z",
                       "app": {
                         "id": "MDM6QXBwNTc3ODk="
@@ -526,5 +544,5 @@
     }
   ],
   "pageSize": 100,
-  "recordedAt": "2026-09-23T15:12:27.347Z"
+  "recordedAt": "2026-09-23T22:30:54.854Z"
 }

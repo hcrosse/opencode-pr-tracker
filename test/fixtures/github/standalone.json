@@ -14,7 +14,6 @@
             "stack": null,
             "statusCheckRollup": {
               "contexts": {
-                "totalCount": 11,
                 "pageInfo": {
                   "hasNextPage": false,
                   "endCursor": "MTE"
@@ -26,6 +25,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -46,6 +46,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDrW5g",
                       "createdAt": "2026-08-26T13:47:18Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -66,6 +67,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsDQw",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -86,6 +88,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsDdA",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -106,6 +109,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -126,6 +130,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDrW5g",
                       "createdAt": "2026-08-26T13:47:18Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -146,6 +151,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -166,6 +172,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -186,6 +193,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -206,6 +214,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
                       "createdAt": "2026-08-26T13:47:20Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -226,6 +235,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzD0nfw",
                       "createdAt": "2026-08-26T13:47:50Z",
                       "app": {
                         "id": "MDM6QXBwNTc3ODk="
@@ -248,7 +258,6 @@
             "stack": null,
             "statusCheckRollup": {
               "contexts": {
-                "totalCount": 11,
                 "pageInfo": {
                   "hasNextPage": false,
                   "endCursor": "MTE"
@@ -260,6 +269,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUHiAeAA",
                       "createdAt": "2026-08-14T22:57:45Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -280,6 +290,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUHiAVMA",
                       "createdAt": "2026-08-14T22:57:44Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -300,6 +311,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUHiAd8Q",
                       "createdAt": "2026-08-14T22:57:45Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -320,6 +332,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUHiAeNw",
                       "createdAt": "2026-08-14T22:57:45Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -340,6 +353,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUHiAeAA",
                       "createdAt": "2026-08-14T22:57:45Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -360,6 +374,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUHiAVMA",
                       "createdAt": "2026-08-14T22:57:44Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -380,6 +395,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUHiAeAA",
                       "createdAt": "2026-08-14T22:57:45Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -400,6 +416,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUHiAeAA",
                       "createdAt": "2026-08-14T22:57:45Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -420,6 +437,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUHiAeAA",
                       "createdAt": "2026-08-14T22:57:45Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -440,6 +458,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUHiAeAA",
                       "createdAt": "2026-08-14T22:57:45Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -460,6 +479,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUHiF4_A",
                       "createdAt": "2026-08-14T22:58:20Z",
                       "app": {
                         "id": "MDM6QXBwNTc3ODk="
@@ -482,7 +502,6 @@
             "stack": null,
             "statusCheckRollup": {
               "contexts": {
-                "totalCount": 11,
                 "pageInfo": {
                   "hasNextPage": false,
                   "endCursor": "MTE"
@@ -494,6 +513,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUFIfjKw",
                       "createdAt": "2026-08-14T10:01:36Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -514,6 +534,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUFIfUSA",
                       "createdAt": "2026-08-14T10:01:35Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -534,6 +555,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUFIfiWA",
                       "createdAt": "2026-08-14T10:01:36Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -554,6 +576,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUFIfitA",
                       "createdAt": "2026-08-14T10:01:36Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -574,6 +597,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUFIfjKw",
                       "createdAt": "2026-08-14T10:01:36Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -594,6 +618,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUFIfUSA",
                       "createdAt": "2026-08-14T10:01:35Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -614,6 +639,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUFIfjKw",
                       "createdAt": "2026-08-14T10:01:36Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -634,6 +660,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUFIfjKw",
                       "createdAt": "2026-08-14T10:01:36Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -654,6 +681,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUFIfjKw",
                       "createdAt": "2026-08-14T10:01:36Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -674,6 +702,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUFIfjKw",
                       "createdAt": "2026-08-14T10:01:36Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -694,6 +723,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUFImYNw",
                       "createdAt": "2026-08-14T10:02:10Z",
                       "app": {
                         "id": "MDM6QXBwNTc3ODk="
@@ -716,7 +746,6 @@
             "stack": null,
             "statusCheckRollup": {
               "contexts": {
-                "totalCount": 2,
                 "pageInfo": {
                   "hasNextPage": false,
                   "endCursor": "Mg"
@@ -728,6 +757,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOOiiGL88AAAAWkaj74w",
                       "createdAt": "2026-09-22T23:46:36Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -748,6 +778,7 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
+                      "id": "CS_kwDOOiiGL88AAAAWkaj74w",
                       "createdAt": "2026-09-22T23:46:36Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
@@ -779,5 +810,5 @@
     }
   ],
   "pageSize": 100,
-  "recordedAt": "2026-09-23T15:12:29.465Z"
+  "recordedAt": "2026-09-23T22:30:57.346Z"
 }

@@ -31,6 +31,7 @@ const CheckRunNode = Schema.Struct({
   checkSuite: Schema.Struct({
     app: Schema.NullOr(Schema.Struct({ id: Schema.String })),
     createdAt: Schema.String,
+    id: Schema.String,
     workflowRun: Schema.NullOr(
       Schema.Struct({
         event: Schema.String,
@@ -141,7 +142,10 @@ export function toCheck(node: ContextNode): Check {
   }
 
   const outcome = checkRunOutcome(node.status, node.conclusion)
-  const source = node.checkSuite.app === null ? "suite" : `app ${node.checkSuite.app.id}`
+
+  // Runs of one app's check replace each other across suites; without an app, each suite stands alone.
+  const source =
+    node.checkSuite.app === null ? `suite ${node.checkSuite.id}` : `app ${node.checkSuite.app.id}`
 
   return Option.match(Option.fromNullishOr(node.checkSuite.workflowRun), {
     onNone: () => ({
