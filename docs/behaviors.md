@@ -90,4 +90,4 @@ Each item names the V2 module that owns it.
 ## Repository process (unchanged)
 
 - Pull request titles must follow Conventional Commits (`scripts/check-pr-title.ts`).
-- Issue claim commands `CLAIM`, `UNCLAIM` and `CLEAR` (`.github/scripts/issue-claim.mjs`, `test/issue-claim.test.ts`).
+- Issue claim commands `CLAIM`, `UNCLAIM` and `CLEAR` (`.github/scripts/issue-claim.mjs`, `test/repository/issue-claim.test.ts`).
