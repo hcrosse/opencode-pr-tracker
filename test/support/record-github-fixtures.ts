@@ -8,7 +8,7 @@ import path from "node:path"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Effect, FileSystem, Option, Schema } from "effect"
 
-import { CommandRunner, layer as commandLayer } from "../../src/adapters/github/Command.ts"
+import { CommandRunner, layer as commandLayer } from "../../src/adapters/Command.ts"
 import { alias, batch, continuation } from "../../src/adapters/github/Query.ts"
 
 type Variables = Readonly<Record<string, string>>

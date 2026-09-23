@@ -43,8 +43,8 @@ function spawn(command: string, args: readonly string[], cwd: string): Child {
   return {
     completed: async () => {
       const result = await Promise.all([
-        process.stdout.text(),
-        process.stderr.text(),
+        new Response(process.stdout).text(),
+        new Response(process.stderr).text(),
         process.exited,
       ])
 

@@ -4,7 +4,7 @@ import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/
 import type { PullRequestRef } from "../../domain/PullRequest.ts"
 import type { Diagnostic } from "../../domain/Snapshot.ts"
 import { GitHub, GitHubFailure, maximumBatch, type ItemResult } from "../../ports/GitHub.ts"
-import { CommandRunner, layer as commandLayer } from "./Command.ts"
+import { CommandRunner, layer as commandLayer } from "../Command.ts"
 import { alias, batch, continuation } from "./Query.ts"
 import { resolveInRepository } from "./Repository.ts"
 import {

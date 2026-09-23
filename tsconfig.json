@@ -5,7 +5,7 @@
     "exactOptionalPropertyTypes": true,
     "jsx": "preserve",
     "jsxImportSource": "@opentui/solid",
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "DOM"],
     "module": "Preserve",
     "moduleDetection": "force",
     "moduleResolution": "bundler",

@@ -2,7 +2,7 @@ import { Effect, Result, Schema } from "effect"
 
 import { parsePullRequestUrl } from "../../domain/PullRequest.ts"
 import { GitHubFailure, RepositoryUnavailable } from "../../ports/GitHub.ts"
-import { CommandRunner } from "./Command.ts"
+import { CommandRunner } from "../Command.ts"
 
 const RepositoryView = Schema.fromJsonString(Schema.Struct({ url: Schema.String }))
 

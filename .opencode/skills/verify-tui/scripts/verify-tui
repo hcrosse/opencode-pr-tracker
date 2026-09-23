@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+# Runs OpenCode with this checkout's plugin in an isolated, headless Herdr session, captures
+# evidence, and tears down only what this run created. See ../SKILL.md.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  verify-tui start             Build the plugin, start OpenCode in a new Herdr session, print RUN_DIR
+  verify-tui doctor RUN_DIR    Check the run is this checkout's build, ready, and correctly isolated
+  verify-tui capture RUN_DIR NAME
+                               Save the visible screen as NAME.txt, NAME.ansi and NAME.png
+  verify-tui stop RUN_DIR      Stop the run's Herdr session and remove its scratch state; keeps artifacts/
+
+Environment:
+  OPENCODE_BIN   OpenCode binary to run (default: opencode)
+  GH_TOKEN       GitHub token for the plugin; defaults to `gh auth token` when gh is signed in
+EOF
+}
+
+# Set by `load` from a run's state.env.
+RUN_DIR="" SESSION="" PANE="" ROOT=""
+
+skill_dir=$(cd "$(dirname "$0")/.." && pwd)
+root=$(cd "$skill_dir/../../.." && pwd)
+
+die() {
+  echo "verify-tui: $*" >&2
+  exit 1
+}
+
+load() {
+  local run_dir=${1:-}
+  [[ -n $run_dir && -f $run_dir/state.env ]] || die "not a verify-tui run directory: ${run_dir:-<missing>}"
+  # shellcheck source=/dev/null
+  source "$run_dir/state.env"
+}
+
+herdr_s() {
+  herdr --session "$SESSION" "$@"
+}
+
+start() {
+  local opencode=${OPENCODE_BIN:-opencode}
+  command -v "$opencode" >/dev/null || die "OpenCode binary not found: $opencode"
+  command -v herdr >/dev/null || die "herdr is not installed"
+
+  local token=${GH_TOKEN:-}
+  if [[ -z $token ]] && command -v gh >/dev/null; then token=$(gh auth token 2>/dev/null || true); fi
+
+  (cd "$root" && bun run build >/dev/null)
+
+  local run_id
+  run_id=$(date +%Y%m%d%H%M%S)-$$
+  local run_dir=${TMPDIR:-/tmp}
+  run_dir=${run_dir%/}/opencode-pr-tracker-verify-$run_id
+  local session=prt-verify-$run_id
+  mkdir -p "$run_dir"/{home,project/.opencode,bin,artifacts}
+
+  # The plugin loads from this checkout, whose root server.js and tui.js point at dist/.
+  printf '{"plugins":["%s"]}\n' "$root" >"$run_dir/project/.opencode/opencode.json"
+  git -C "$run_dir/project" init -q
+
+  # Opening a pull request records the URL instead of launching a browser.
+  for opener in open xdg-open; do
+    # shellcheck disable=SC2016 # $1 belongs to the generated script.
+    printf '#!/bin/sh\nprintf "%%s\\n" "$1" >> "%s/artifacts/opened.txt"\n' "$run_dir" >"$run_dir/bin/$opener"
+    chmod +x "$run_dir/bin/$opener"
+  done
+
+  cat >"$run_dir/state.env" <<EOF
+RUN_ID=$run_id
+RUN_DIR=$run_dir
+SESSION=$session
+OPENCODE=$(command -v "$opencode")
+ROOT=$root
+EOF
+  SESSION=$session
+
+  herdr --session "$session" server >"$run_dir/herdr.log" 2>&1 &
+  for _ in $(seq 1 50); do
+    herdr_s workspace list >/dev/null 2>&1 && break
+    sleep 0.2
+  done
+
+  local home=$run_dir/home
+  local env=(
+    --env "HOME=$home"
+    --env "XDG_CONFIG_HOME=$home/.config"
+    --env "XDG_DATA_HOME=$home/.local/share"
+    --env "XDG_STATE_HOME=$home/.local/state"
+    --env "XDG_CACHE_HOME=$home/.cache"
+  )
+  [[ -n $token ]] && env+=(--env "GH_TOKEN=$token")
+
+  local pane
+  pane=$(herdr_s workspace create --cwd "$run_dir/project" "${env[@]}" --no-focus |
+    python3 -c 'import json, sys; print(json.load(sys.stdin)["result"]["root_pane"]["pane_id"])')
+  echo "PANE=$pane" >>"$run_dir/state.env"
+
+  # Prepend the recording openers here: a login shell's profile may reorder PATH set earlier.
+  herdr_s pane run "$pane" "PATH=$(printf %q "$run_dir/bin"):\$PATH $(printf %q "$(command -v "$opencode")") --standalone" >/dev/null
+  herdr_s pane wait-output "$pane" --source visible --regex 'ctrl\+p commands' --timeout 60000 >/dev/null ||
+    die "OpenCode did not become ready; see $run_dir and run: $0 stop $run_dir"
+
+  echo "$run_dir"
+}
+
+same_checkout() { [[ $ROOT == "$root" ]]; }
+session_running() { herdr session list 2>/dev/null | grep -Eq "^$SESSION +running"; }
+plugin_configured() { grep -qF "\"$ROOT\"" "$RUN_DIR/project/.opencode/opencode.json"; }
+build_current() {
+  [[ -z $(find "$ROOT/src" -type f -newer "$ROOT/dist/tui.js") ]] &&
+    [[ -z $(find "$ROOT/src" -type f -newer "$ROOT/dist/server.js") ]]
+}
+home_isolated() { [[ -d $RUN_DIR/home/.local/share/opencode ]]; }
+opencode_pid() {
+  herdr_s pane process-info --pane "$PANE" 2>/dev/null |
+    python3 -c 'import json, sys; print(json.load(sys.stdin)["result"]["process_info"]["foreground_processes"][0]["pid"])'
+}
+opencode_running() { [[ $(ps -o comm= -p "$(opencode_pid)" 2>/dev/null) == */opencode ]]; }
+# Opening a pull request must reach the recording opener, never a real browser.
+openers_recorded() { ps eww -o command= -p "$(opencode_pid)" 2>/dev/null | grep -qF "PATH=$RUN_DIR/bin:"; }
+
+doctor() {
+  load "${1:-}"
+  local failed=0
+  local checks=(
+    "same_checkout:the run belongs to this checkout"
+    "session_running:the Herdr session is running"
+    "opencode_running:OpenCode is the pane's foreground process"
+    "plugin_configured:the project loads the plugin from this checkout"
+    "build_current:dist/ is newer than every source file"
+    "home_isolated:OpenCode keeps its data in the run's home"
+    "openers_recorded:opening a pull request is recorded instead of launching a browser"
+  )
+  for entry in "${checks[@]}"; do
+    if "${entry%%:*}"; then echo "ok: ${entry#*:}"; else
+      echo "FAIL: ${entry#*:}"
+      failed=1
+    fi
+  done
+  return "$failed"
+}
+
+capture() {
+  load "${1:-}"
+  local name=${2:-}
+  [[ $name =~ ^[a-z0-9-]+$ ]] || die "capture NAME must be lowercase words joined by hyphens"
+  local out=$RUN_DIR/artifacts/$name
+  herdr_s pane read "$PANE" --source visible >"$out.txt"
+  herdr_s pane read "$PANE" --source visible --format ansi | tr -d '\r' >"$out.ansi"
+  (cd "$ROOT" && mise exec -- freeze --output "$out.png" --window=false --padding 20 <"$out.ansi" >/dev/null)
+  echo "$out.txt $out.ansi $out.png"
+}
+
+stop() {
+  local run_dir=${1:-}
+  [[ -n $run_dir && -d $run_dir && $(basename "$run_dir") == opencode-pr-tracker-verify-* ]] ||
+    die "not a verify-tui run directory: ${run_dir:-<missing>}"
+  if [[ -f $run_dir/state.env ]]; then
+    load "$run_dir"
+    herdr_s server stop >/dev/null 2>&1 || true
+    for _ in $(seq 1 25); do
+      herdr session list 2>/dev/null | grep -Eq "^$SESSION +running" || break
+      sleep 0.2
+    done
+    herdr session delete "$SESSION" >/dev/null 2>&1 || true
+  fi
+  rm -rf "${run_dir:?}/home" "${run_dir:?}/project" "${run_dir:?}/bin"
+  echo "stopped; evidence kept in $run_dir/artifacts"
+}
+
+case ${1:-} in
+start) start ;;
+doctor) doctor "${2:-}" ;;
+capture) capture "${2:-}" "${3:-}" ;;
+stop) stop "${2:-}" ;;
+*)
+  usage
+  exit 2
+  ;;
+esac

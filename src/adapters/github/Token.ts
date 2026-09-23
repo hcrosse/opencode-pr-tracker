@@ -1,7 +1,7 @@
 import { Config, Context, Effect, Layer, Option, Redacted, Ref } from "effect"
 
 import { GitHubFailure } from "../../ports/GitHub.ts"
-import { CommandRunner } from "./Command.ts"
+import { CommandRunner } from "../Command.ts"
 
 export interface TokenApi {
   /** The GitHub token, from `GH_TOKEN`, `GITHUB_TOKEN`, or `gh auth token`, cached after first use. */
