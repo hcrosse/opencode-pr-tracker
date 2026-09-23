@@ -185,8 +185,6 @@ describe("attaching stacks", () => {
       expect(attach(before, [...stack, ...repeats], 1)).toEqual(attach(before, unique, 1))
     })
   })
-
-  // Found by mutation: counting a repeated member twice rejected a stack that fits.
 })
 
 describe("Tracking examples", () => {

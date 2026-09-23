@@ -16,12 +16,12 @@ export interface Collapsed {
 }
 
 /** Numbers requests; each listing and each published update supersedes the listings before it. */
-interface Requests {
+interface Listings {
   readonly next: () => number
   readonly isLatest: (request: number) => boolean
 }
 
-function newestFirst(): Requests {
+function newestFirst(): Listings {
   let latest = 0
 
   return {

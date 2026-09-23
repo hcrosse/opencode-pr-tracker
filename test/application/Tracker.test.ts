@@ -8,7 +8,7 @@ import {
   type PullRequestInput,
   type PullRequestRef,
 } from "../../src/domain/PullRequest.ts"
-import { openState, reported, standalone } from "../support/application.ts"
+import { openState, reported, reportOf, standalone } from "../support/application.ts"
 import { byUrl, numbers, ref, run, world } from "../support/tracker.ts"
 
 const attachAll = (
@@ -77,6 +77,19 @@ describe("Tracker attach rejections", () => {
     )
 
     expect(Exit.findErrorOption(result)).toMatchObject(Option.some({ _tag: rejection.tag }))
+    expect(setup.storage.values.size).toBe(0)
+  })
+
+  test("rejects a pull request whose Stack GitHub reported only in part, and stores nothing", async () => {
+    const setup = world()
+
+    setup.github.script(ref(1), { _tag: "Reported", report: reportOf(ref(1), openState) })
+
+    const result = await run(setup, (tracker: TrackerApi) =>
+      tracker.attach("session", byUrl(ref(1)), "/work"),
+    )
+
+    expect(Exit.findErrorOption(result)).toMatchObject(Option.some({ _tag: "StackIncomplete" }))
     expect(setup.storage.values.size).toBe(0)
   })
 })

@@ -11,6 +11,7 @@ import type { Membership } from "../../src/domain/StackLayout.ts"
 import type { EntryView, Layout, View } from "../../src/rpc.ts"
 import type { Palette } from "../../src/ui/Palette.ts"
 import { Sidebar, type SidebarState } from "../../src/ui/Sidebar.tsx"
+import { openState } from "./application.ts"
 import { ref, stack } from "./stacks.ts"
 
 /** Distinct colors, so frames can be checked for which tone a span uses. */
@@ -26,18 +27,10 @@ export const palette: Palette = {
   },
 }
 
-const passing: PullRequestState = {
-  _tag: "Open",
-  behind: false,
-  ci: "passed",
-  draft: false,
-  mergeability: "mergeable",
-}
-
 export const fresh = (
   pullRequest: PullRequestRef,
   title: string,
-  state: PullRequestState = passing,
+  state: PullRequestState = openState,
 ): Status => ({
   _tag: "Fresh",
   snapshot: { ref: pullRequest, state, title },

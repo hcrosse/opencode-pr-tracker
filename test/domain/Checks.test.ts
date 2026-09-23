@@ -138,7 +138,7 @@ describe("classifyCi examples", () => {
     expect(classifyCi(checks)).toBe("pending")
   })
 
-  // Found by mutation: comparing only the run number treats an earlier attempt as current.
+  // Reruns share a run number, so the attempt number decides which is current.
   test("ignores an earlier attempt of the same run", () => {
     const checks = [run("ci/test", [7, 2], "passed"), run("ci/test", [7, 1], "pending")]
 

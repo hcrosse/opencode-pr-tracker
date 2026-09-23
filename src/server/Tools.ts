@@ -4,7 +4,7 @@ import { Effect, Schema, type Scope } from "effect"
 
 import { appearance } from "../domain/Appearance.ts"
 import { failureMessage, type RequestFailure } from "../messages.ts"
-import { requests, type Requests, type Services, type Settings } from "./Requests.ts"
+import { requests, type Change, type Services, type Settings } from "./Requests.ts"
 
 const options = { codemode: true, namespace: "pr", pinned: true } as const
 
@@ -49,28 +49,19 @@ const listTool = ({ monitor }: Services): Tool.Info<NoArguments> => ({
   options,
 })
 
-const attachTool = ({ attach }: Requests): Tool.Info<PullRequestArgumentSchema> => ({
-  description:
-    "Attach a pull request to this session. Attaching a GitHub Stack member attaches the whole Stack.",
+const changeTool = (
+  name: string,
+  description: string,
+  change: Change,
+): Tool.Info<PullRequestArgumentSchema> => ({
+  description,
   execute: (argument, context) =>
-    attach(context.sessionID, targetOf(argument)).pipe(
+    change(context.sessionID, targetOf(argument)).pipe(
       Effect.map((changed) => ({ content: changed.message })),
       Effect.mapError(asToolError),
     ),
   input: PullRequestArgument,
-  name: "attach",
-  options,
-})
-
-const detachTool = ({ detach }: Requests): Tool.Info<PullRequestArgumentSchema> => ({
-  description: "Detach a pull request from this session. Other members of its Stack stay attached.",
-  execute: (argument, context) =>
-    detach(context.sessionID, targetOf(argument)).pipe(
-      Effect.map((changed) => ({ content: changed.message })),
-      Effect.mapError(asToolError),
-    ),
-  input: PullRequestArgument,
-  name: "detach",
+  name,
   options,
 })
 
@@ -88,7 +79,19 @@ export function registerTools(
     const changes = requests(services, settings)
 
     editor.add(listTool(services))
-    editor.add(attachTool(changes))
-    editor.add(detachTool(changes))
+    editor.add(
+      changeTool(
+        "attach",
+        "Attach a pull request to this session. Attaching a GitHub Stack member attaches the whole Stack.",
+        changes.attach,
+      ),
+    )
+    editor.add(
+      changeTool(
+        "detach",
+        "Detach a pull request from this session. Other members of its Stack stay attached.",
+        changes.detach,
+      ),
+    )
   })
 }

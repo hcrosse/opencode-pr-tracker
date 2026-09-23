@@ -71,29 +71,31 @@ const run = (effect: Effect.Effect<void>): void => {
   Effect.runFork(effect)
 }
 
+/** Which listing to answer, and the title its answer shows. */
+type Answer = readonly [index: number, title: string]
+
+/** The first visit's listing is superseded by the third, made when the session is shown again. */
+const stale: Answer = [0, "stale"]
+
+const current: Answer = [2, "current"]
+
 describe("sidebar view of a session", () => {
-  test("ignores an answer to an earlier visit when the session is shown again", async () => {
+  test.each<readonly [string, Answer, Answer]>([
+    ["when the session is shown again", stale, current],
+    ["that arrives last", current, stale],
+  ])("ignores an answer to an earlier visit %s", async (_name, first, second) => {
     const held = heldLists()
     const [session, setSession] = createSignal("a")
     const state = createRoot(() => sessionView(session, held.tracker, run))
 
-    setSession("b")
-    setSession("a")
-    await Effect.runPromise(Deferred.succeed(held.answer(0), viewFor("a", "stale")))
-    await Effect.runPromise(Deferred.succeed(held.answer(2), viewFor("a", "current")))
-
-    expect(titleOf(state())).toBe("current")
-  })
-
-  test("ignores an answer to an earlier visit that arrives last", async () => {
-    const held = heldLists()
-    const [session, setSession] = createSignal("a")
-    const state = createRoot(() => sessionView(session, held.tracker, run))
+    const settle = async ([index, title]: Answer): Promise<void> => {
+      await Effect.runPromise(Deferred.succeed(held.answer(index), viewFor("a", title)))
+    }
 
     setSession("b")
     setSession("a")
-    await Effect.runPromise(Deferred.succeed(held.answer(2), viewFor("a", "current")))
-    await Effect.runPromise(Deferred.succeed(held.answer(0), viewFor("a", "stale")))
+    await settle(first)
+    await settle(second)
 
     expect(titleOf(state())).toBe("current")
   })

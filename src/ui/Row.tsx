@@ -119,8 +119,7 @@ export function PullRequestRow(props: {
   const shown = (): Appearance => appearance(props.entry.status)
   const color = (): RGBA => props.palette.tones[shown().tone]
 
-  const below = (): Glyph =>
-    props.marker === "bullet" ? continuations.none : continuations[props.connector]
+  const below = (): Glyph => continuations[props.connector]
 
   return (
     <box

@@ -91,7 +91,7 @@ describe("Monitor publishing", () => {
 })
 
 describe("Monitor views", () => {
-  // Found by mutation: the sidebar draws Stacks from the membership each refresh reports.
+  // The sidebar draws Stacks from the membership each refresh reports.
   test("shows the Stack membership GitHub last reported", async () => {
     const github = scripted()
     const stack = { _tag: "Stack", id: "s", members: [open, other] } as const

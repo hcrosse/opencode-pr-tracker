@@ -48,7 +48,7 @@ describe("layout of several Stacks", () => {
     ])
   })
 
-  // Found by mutation: a pull request moving between Stacks can be listed by both for a refresh.
+  // A pull request moving between Stacks can be listed by both for a refresh.
   test("draws neither Stack while two Stacks both list one pull request", () => {
     const moved = ref("acme/api", 3)
     const first: Stack = [ref("acme/api", 1), ref("acme/api", 2), moved]

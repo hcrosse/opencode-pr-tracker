@@ -34,14 +34,17 @@ export function toView(view: SessionView, layout: Layout): View {
 const parseTarget = (target: string): Effect.Effect<PullRequestInput, RequestFailure> =>
   Effect.fromResult(parsePullRequestInput(target))
 
+/** Changes a session's attachments for `target` and reports the change. */
+export type Change = (sessionID: string, target: string) => Effect.Effect<Changed, RequestFailure>
+
 export interface Requests {
   /**
    * Attaches `target`, with its Stack, then publishes the session's view. Only Stack members not yet
    * known are fetched; `target` itself was fetched while attaching.
    */
-  readonly attach: (sessionID: string, target: string) => Effect.Effect<Changed, RequestFailure>
+  readonly attach: Change
   /** Detaches `target`, then publishes the session's view, fetching only statuses not yet known. */
-  readonly detach: (sessionID: string, target: string) => Effect.Effect<Changed, RequestFailure>
+  readonly detach: Change
 }
 
 export function requests({ monitor, tracker }: Services, settings: Settings): Requests {
