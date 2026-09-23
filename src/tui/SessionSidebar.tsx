@@ -15,36 +15,60 @@ export interface Collapsed {
   readonly toggle: (sessionID: string) => void
 }
 
+/** Numbers requests; each listing and each published update supersedes the listings before it. */
+interface Requests {
+  readonly next: () => number
+  readonly isLatest: (request: number) => boolean
+}
+
+function newestFirst(): Requests {
+  let latest = 0
+
+  return {
+    isLatest: (request) => request === latest,
+    next: () => {
+      latest += 1
+
+      return latest
+    },
+  }
+}
+
 /**
  * The session's view, owned by the server: listed when the sidebar is shown or switches session,
- * then replaced by each published update.
+ * then replaced by each published update. Answers to superseded listings are ignored.
  */
-function sessionView(
+export function sessionView(
   sessionID: Accessor<string>,
   tracker: TrackerClientApi,
   run: (effect: Effect.Effect<void>) => void,
 ): Accessor<SidebarState> {
   const [state, setState] = createSignal<SidebarState>({ _tag: "Loading" })
-
-  const show = (shownFor: string, next: SidebarState): void => {
-    if (sessionID() === shownFor) setState(next)
-  }
+  const requests = newestFirst()
 
   onCleanup(
     tracker.onUpdate((view) => {
-      show(view.sessionID, { _tag: "Ready", view })
+      if (view.sessionID !== sessionID()) return
+
+      requests.next()
+      setState({ _tag: "Ready", view })
     }),
   )
 
   createEffect(
     on(sessionID, (current) => {
+      const request = requests.next()
+
       setState({ _tag: "Loading" })
       run(
         Effect.map(Effect.result(tracker.list(current)), (result) => {
-          if (result._tag === "Failure")
-            show(current, { _tag: "Failed", message: result.failure.message })
-          // An update may have arrived first; it is at least as new as this answer.
-          else if (state()._tag !== "Ready") show(current, { _tag: "Ready", view: result.success })
+          if (!requests.isLatest(request)) return
+
+          setState(
+            result._tag === "Failure"
+              ? { _tag: "Failed", message: result.failure.message }
+              : { _tag: "Ready", view: result.success },
+          )
         }),
       )
     }),

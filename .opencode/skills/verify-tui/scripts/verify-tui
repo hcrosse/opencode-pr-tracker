@@ -68,13 +68,14 @@ start() {
     chmod +x "$run_dir/bin/$opener"
   done
 
-  cat >"$run_dir/state.env" <<EOF
-RUN_ID=$run_id
-RUN_DIR=$run_dir
-SESSION=$session
-OPENCODE=$(command -v "$opencode")
-ROOT=$root
-EOF
+  # state.env is sourced later, so every value is shell-quoted.
+  {
+    printf 'RUN_ID=%q\n' "$run_id"
+    printf 'RUN_DIR=%q\n' "$run_dir"
+    printf 'SESSION=%q\n' "$session"
+    printf 'OPENCODE=%q\n' "$(command -v "$opencode")"
+    printf 'ROOT=%q\n' "$root"
+  } >"$run_dir/state.env"
   SESSION=$session
 
   herdr --session "$session" server >"$run_dir/herdr.log" 2>&1 &
@@ -96,7 +97,7 @@ EOF
   local pane
   pane=$(herdr_s workspace create --cwd "$run_dir/project" "${env[@]}" --no-focus |
     python3 -c 'import json, sys; print(json.load(sys.stdin)["result"]["root_pane"]["pane_id"])')
-  echo "PANE=$pane" >>"$run_dir/state.env"
+  printf 'PANE=%q\n' "$pane" >>"$run_dir/state.env"
 
   # Prepend the recording openers here: a login shell's profile may reorder PATH set earlier.
   herdr_s pane run "$pane" "PATH=$(printf %q "$run_dir/bin"):\$PATH $(printf %q "$(command -v "$opencode")") --standalone" >/dev/null
@@ -118,7 +119,11 @@ opencode_pid() {
   herdr_s pane process-info --pane "$PANE" 2>/dev/null |
     python3 -c 'import json, sys; print(json.load(sys.stdin)["result"]["process_info"]["foreground_processes"][0]["pid"])'
 }
-opencode_running() { [[ $(ps -o comm= -p "$(opencode_pid)" 2>/dev/null) == */opencode ]]; }
+# Herdr reports the process name without a path on both macOS and Linux.
+opencode_running() {
+  herdr_s pane process-info --pane "$PANE" 2>/dev/null |
+    python3 -c 'import json, sys; sys.exit(json.load(sys.stdin)["result"]["process_info"]["foreground_processes"][0]["name"] != "opencode")'
+}
 # Opening a pull request must reach the recording opener, never a real browser.
 openers_recorded() { ps eww -o command= -p "$(opencode_pid)" 2>/dev/null | grep -qF "PATH=$RUN_DIR/bin:"; }
 
