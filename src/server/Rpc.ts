@@ -2,7 +2,7 @@ import type { RpcHandlers } from "@opencode/plugin/effect/rpc"
 import { Effect } from "effect"
 
 import type { SessionView } from "../application/Monitor.ts"
-import { failureMessage, type RequestFailure } from "../messages.ts"
+import { failureMessage } from "../messages.ts"
 import type { PullRequestTracker, View } from "../rpc.ts"
 import { requests, toView, type Services, type Settings } from "./Requests.ts"
 
@@ -14,29 +14,25 @@ export function handlers(services: Services, settings: Settings): RpcHandlers<Pu
   return {
     attach: ({ sessionID, target }, context) =>
       attach(sessionID, target).pipe(
-        Effect.mapError((failure: RequestFailure) =>
-          context.error("rejected", failureMessage(failure), { message: failureMessage(failure) }),
-        ),
+        Effect.mapError(failureMessage),
+        Effect.mapError((message) => context.error("rejected", message, { message })),
       ),
     detach: ({ sessionID, target }, context) =>
       detach(sessionID, target).pipe(
-        Effect.mapError((failure: RequestFailure) =>
-          context.error("rejected", failureMessage(failure), { message: failureMessage(failure) }),
-        ),
+        Effect.mapError(failureMessage),
+        Effect.mapError((message) => context.error("rejected", message, { message })),
       ),
     list: ({ sessionID }, context) =>
       services.monitor.view(sessionID).pipe(
         Effect.map(viewOf),
-        Effect.mapError((failure: RequestFailure) =>
-          context.error("rejected", failureMessage(failure), { message: failureMessage(failure) }),
-        ),
+        Effect.mapError(failureMessage),
+        Effect.mapError((message) => context.error("rejected", message, { message })),
       ),
     refresh: ({ sessionID }, context) =>
       services.monitor.refresh(sessionID).pipe(
         Effect.map(viewOf),
-        Effect.mapError((failure: RequestFailure) =>
-          context.error("rejected", failureMessage(failure), { message: failureMessage(failure) }),
-        ),
+        Effect.mapError(failureMessage),
+        Effect.mapError((message) => context.error("rejected", message, { message })),
       ),
   }
 }

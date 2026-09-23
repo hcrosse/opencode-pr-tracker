@@ -3,8 +3,7 @@
  * Schemas are Standard Schema so both Effect and Promise clients can use them.
  */
 import { Rpc } from "@opencode/plugin/rpc"
-import type { StandardSchemaV1 } from "@standard-schema/spec"
-import { Schema } from "effect"
+import { Schema, type StandardSchema } from "effect"
 
 import { PullRequestRef } from "./domain/PullRequest.ts"
 import { Status } from "./domain/Snapshot.ts"
@@ -53,7 +52,9 @@ const Rejected = Schema.Struct({ message: Schema.String })
  * OpenCode would handle an Effect schema with its own copy, which can reject values this one
  * accepts, and it sends only JSON, so decoded values such as class instances cannot cross.
  */
-function portable<S extends Schema.Top>(schema: S): StandardSchemaV1<S["Encoded"], S["Encoded"]> {
+function portable<S extends Schema.Top>(
+  schema: S,
+): StandardSchema.StandardSchemaV1<S["Encoded"], S["Encoded"]> {
   return { "~standard": Schema.toStandardSchemaV1(Schema.toEncoded(schema))["~standard"] }
 }
 

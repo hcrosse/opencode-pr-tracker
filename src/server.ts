@@ -24,7 +24,6 @@ const layoutOf = (options: Plugin.Context["options"]): Layout =>
 /** Forgets a session everywhere once OpenCode deletes it. Every plugin instance sees the event. */
 const forgetDeletedSessions = (ctx: Plugin.Context, services: Services): Effect.Effect<void> =>
   ctx.event.subscribe().pipe(
-    Stream.filter((event) => event.type === "session.deleted"),
     Stream.runForEach((event) =>
       event.type === "session.deleted"
         ? Effect.andThen(
