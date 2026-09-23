@@ -1,0 +1,544 @@
+{
+  "exchanges": [
+    {
+      "response": {
+        "data": {
+          "pr0": {
+            "__typename": "PullRequest",
+            "url": "https://github.com/kubernetes/kubernetes/pull/142339",
+            "title": "DRA: expose the allocator's constraint mechanism to callers",
+            "state": "OPEN",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "stack": null,
+            "statusCheckRollup": {
+              "contexts": {
+                "pageInfo": {
+                  "hasNextPage": true,
+                  "endCursor": "NQ"
+                },
+                "nodes": [
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-linter-hints",
+                    "state": "FAILURE",
+                    "createdAt": "2026-09-23T07:43:42Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "tide",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T07:34:27Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "EasyCLA",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T07:34:10Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-cmd",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T07:43:28Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-conformance-kind-ga-only-parallel",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T07:49:50Z"
+                  }
+                ]
+              }
+            }
+          },
+          "pr1": {
+            "__typename": "PullRequest",
+            "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/127",
+            "title": "docs: draft stack-aware pull request moves",
+            "state": "OPEN",
+            "isDraft": true,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "BLOCKED",
+            "stack": null,
+            "statusCheckRollup": {
+              "contexts": {
+                "pageInfo": {
+                  "hasNextPage": true,
+                  "endCursor": "NQ"
+                },
+                "nodes": [
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Lint",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
+                      "createdAt": "2026-08-26T13:47:20Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 216,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Analyze (actions)",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDrW5g",
+                      "createdAt": "2026-08-26T13:47:18Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "dynamic",
+                        "runNumber": 207,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4TyiS8"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Conventional title",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsDQw",
+                      "createdAt": "2026-08-26T13:47:20Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 156,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Ty6MZ"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Workflow security",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsDdA",
+                      "createdAt": "2026-08-26T13:47:20Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 178,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4TyzUe"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Format",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
+                      "createdAt": "2026-08-26T13:47:20Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 216,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "variables": {
+        "pr0": "https://github.com/kubernetes/kubernetes/pull/142339",
+        "pr1": "https://github.com/hcrosse/opencode-pr-tracker/pull/127"
+      }
+    },
+    {
+      "response": {
+        "data": {
+          "resource": {
+            "__typename": "PullRequest",
+            "statusCheckRollup": {
+              "contexts": {
+                "pageInfo": {
+                  "hasNextPage": true,
+                  "endCursor": "MTA"
+                },
+                "nodes": [
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-dependencies",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T07:35:46Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-dra-integration",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:05:19Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-e2e-gce",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:24:55Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-e2e-kind",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:01:50Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-integration",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:06:22Z"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "variables": {
+        "cursor": "NQ",
+        "url": "https://github.com/kubernetes/kubernetes/pull/142339"
+      }
+    },
+    {
+      "response": {
+        "data": {
+          "resource": {
+            "__typename": "PullRequest",
+            "statusCheckRollup": {
+              "contexts": {
+                "pageInfo": {
+                  "hasNextPage": true,
+                  "endCursor": "MTU"
+                },
+                "nodes": [
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-kind-dra",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T07:59:40Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-kind-dra-all",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:10:18Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-kind-dra-n-1",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T07:58:55Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-kind-dra-n-2",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T07:59:12Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-kind-dra-n-3",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T07:57:48Z"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "variables": {
+        "cursor": "MTA",
+        "url": "https://github.com/kubernetes/kubernetes/pull/142339"
+      }
+    },
+    {
+      "response": {
+        "data": {
+          "resource": {
+            "__typename": "PullRequest",
+            "statusCheckRollup": {
+              "contexts": {
+                "pageInfo": {
+                  "hasNextPage": true,
+                  "endCursor": "MjA"
+                },
+                "nodes": [
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-node-e2e-containerd",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:13:34Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-node-e2e-containerd-2-1-ubuntu-dra",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:12:31Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-node-e2e-containerd-2-1-ubuntu-dra-alpha-beta-features",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:16:15Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-typecheck",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T07:36:29Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-unit",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T07:56:55Z"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "variables": {
+        "cursor": "MTU",
+        "url": "https://github.com/kubernetes/kubernetes/pull/142339"
+      }
+    },
+    {
+      "response": {
+        "data": {
+          "resource": {
+            "__typename": "PullRequest",
+            "statusCheckRollup": {
+              "contexts": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "MjE"
+                },
+                "nodes": [
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-verify",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:00:12Z"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "variables": {
+        "cursor": "MjA",
+        "url": "https://github.com/kubernetes/kubernetes/pull/142339"
+      }
+    },
+    {
+      "response": {
+        "data": {
+          "resource": {
+            "__typename": "PullRequest",
+            "statusCheckRollup": {
+              "contexts": {
+                "pageInfo": {
+                  "hasNextPage": true,
+                  "endCursor": "MTA"
+                },
+                "nodes": [
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Analyze (javascript-typescript)",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDrW5g",
+                      "createdAt": "2026-08-26T13:47:18Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "dynamic",
+                        "runNumber": 207,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4TyiS8"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Test",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
+                      "createdAt": "2026-08-26T13:47:20Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 216,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Build",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
+                      "createdAt": "2026-08-26T13:47:20Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 216,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "OpenCode smoke",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
+                      "createdAt": "2026-08-26T13:47:20Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 216,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Package",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzDsEGA",
+                      "createdAt": "2026-08-26T13:47:20Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 216,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "variables": {
+        "cursor": "NQ",
+        "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/127"
+      }
+    },
+    {
+      "response": {
+        "data": {
+          "resource": {
+            "__typename": "PullRequest",
+            "statusCheckRollup": {
+              "contexts": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "MTE"
+                },
+                "nodes": [
+                  {
+                    "__typename": "CheckRun",
+                    "name": "CodeQL",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAUzD0nfw",
+                      "createdAt": "2026-08-26T13:47:50Z",
+                      "app": {
+                        "id": "MDM6QXBwNTc3ODk="
+                      },
+                      "workflowRun": null
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "variables": {
+        "cursor": "MTA",
+        "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/127"
+      }
+    }
+  ],
+  "pageSize": 5,
+  "recordedAt": "2026-09-23T22:31:02.405Z"
+}

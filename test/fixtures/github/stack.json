@@ -1,0 +1,548 @@
+{
+  "exchanges": [
+    {
+      "response": {
+        "data": {
+          "pr0": {
+            "__typename": "PullRequest",
+            "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/78",
+            "title": "refactor: split TUI domains",
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "UNKNOWN",
+            "mergeStateStatus": "UNKNOWN",
+            "stack": {
+              "id": "PRS_kwDOTs91es4ABPv2",
+              "size": 2,
+              "entries": {
+                "pageInfo": {
+                  "hasNextPage": false
+                },
+                "nodes": [
+                  {
+                    "position": 1,
+                    "pullRequest": {
+                      "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/78"
+                    }
+                  },
+                  {
+                    "position": 2,
+                    "pullRequest": {
+                      "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/79"
+                    }
+                  }
+                ]
+              }
+            },
+            "statusCheckRollup": {
+              "contexts": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "MTE"
+                },
+                "nodes": [
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Lint",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCIBw",
+                      "createdAt": "2026-08-12T23:13:29Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 143,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Analyze (actions)",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cB7Qg",
+                      "createdAt": "2026-08-12T23:13:27Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "dynamic",
+                        "runNumber": 132,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4TyiS8"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Conventional title",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCGNg",
+                      "createdAt": "2026-08-12T23:13:28Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 86,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Ty6MZ"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Workflow security",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCHPA",
+                      "createdAt": "2026-08-12T23:13:28Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 105,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4TyzUe"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Format",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCIBw",
+                      "createdAt": "2026-08-12T23:13:29Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 143,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Analyze (javascript-typescript)",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cB7Qg",
+                      "createdAt": "2026-08-12T23:13:27Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "dynamic",
+                        "runNumber": 132,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4TyiS8"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Test",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCIBw",
+                      "createdAt": "2026-08-12T23:13:29Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 143,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Build",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCIBw",
+                      "createdAt": "2026-08-12T23:13:29Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 143,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "OpenCode smoke",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCIBw",
+                      "createdAt": "2026-08-12T23:13:29Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 143,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Package",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cCIBw",
+                      "createdAt": "2026-08-12T23:13:29Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 143,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "CodeQL",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_cGxZg",
+                      "createdAt": "2026-08-12T23:13:59Z",
+                      "app": {
+                        "id": "MDM6QXBwNTc3ODk="
+                      },
+                      "workflowRun": null
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "pr1": {
+            "__typename": "PullRequest",
+            "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/79",
+            "title": "feat: add guided feedback command",
+            "state": "MERGED",
+            "isDraft": false,
+            "mergeable": "CONFLICTING",
+            "mergeStateStatus": "DIRTY",
+            "stack": {
+              "id": "PRS_kwDOTs91es4ABPv2",
+              "size": 2,
+              "entries": {
+                "pageInfo": {
+                  "hasNextPage": false
+                },
+                "nodes": [
+                  {
+                    "position": 1,
+                    "pullRequest": {
+                      "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/78"
+                    }
+                  },
+                  {
+                    "position": 2,
+                    "pullRequest": {
+                      "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/79"
+                    }
+                  }
+                ]
+              }
+            },
+            "statusCheckRollup": {
+              "contexts": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "MTE"
+                },
+                "nodes": [
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Lint",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHKA",
+                      "createdAt": "2026-08-12T23:24:53Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 145,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Analyze (actions)",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dyyyA",
+                      "createdAt": "2026-08-12T23:24:51Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "dynamic",
+                        "runNumber": 134,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4TyiS8"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Conventional title",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHHg",
+                      "createdAt": "2026-08-12T23:24:53Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 88,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Ty6MZ"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Workflow security",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHUA",
+                      "createdAt": "2026-08-12T23:24:53Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 107,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4TyzUe"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Format",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHKA",
+                      "createdAt": "2026-08-12T23:24:53Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 145,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Analyze (javascript-typescript)",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dyyyA",
+                      "createdAt": "2026-08-12T23:24:51Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "dynamic",
+                        "runNumber": 134,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4TyiS8"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Test",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHKA",
+                      "createdAt": "2026-08-12T23:24:53Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 145,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Build",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHKA",
+                      "createdAt": "2026-08-12T23:24:53Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 145,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "OpenCode smoke",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHKA",
+                      "createdAt": "2026-08-12T23:24:53Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 145,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "Package",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_dzHKA",
+                      "createdAt": "2026-08-12T23:24:53Z",
+                      "app": {
+                        "id": "MDM6QXBwMTUzNjg="
+                      },
+                      "workflowRun": {
+                        "event": "pull_request",
+                        "runNumber": 145,
+                        "runAttempt": 1,
+                        "workflow": {
+                          "id": "W_kwDOTs91es4Twdqa"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "__typename": "CheckRun",
+                    "name": "CodeQL",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                    "checkSuite": {
+                      "id": "CS_kwDOTs91es8AAAAT_d4_2w",
+                      "createdAt": "2026-08-12T23:25:27Z",
+                      "app": {
+                        "id": "MDM6QXBwNTc3ODk="
+                      },
+                      "workflowRun": null
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "variables": {
+        "pr0": "https://github.com/hcrosse/opencode-pr-tracker/pull/78",
+        "pr1": "https://github.com/hcrosse/opencode-pr-tracker/pull/79"
+      }
+    }
+  ],
+  "pageSize": 100,
+  "recordedAt": "2026-09-23T22:30:54.854Z"
+}
