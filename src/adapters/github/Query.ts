@@ -4,7 +4,6 @@ export const defaultPageSize = 100
 
 const contexts = (pageSize: number, after: string): string => `
   contexts(first: ${String(pageSize)}${after}) {
-    totalCount
     pageInfo { hasNextPage endCursor }
     nodes {
       __typename
@@ -27,7 +26,6 @@ const pullRequest = (pageSize: number): string => `
     stack {
       id size
       entries(first: 100) {
-        totalCount
         pageInfo { hasNextPage }
         nodes { position pullRequest { url } }
       }

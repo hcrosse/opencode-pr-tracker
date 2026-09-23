@@ -20,7 +20,6 @@ const stackOf = (
       pullRequest: { url: entry.url },
     })),
     pageInfo: { hasNextPage },
-    totalCount: size,
   },
   id: "stack",
   size,

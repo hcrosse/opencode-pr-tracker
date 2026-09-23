@@ -8,6 +8,8 @@ export type Ci = typeof Ci.Type
 
 export const Mergeability = Schema.Literals(["mergeable", "conflicting", "unknown"])
 
+export type Mergeability = typeof Mergeability.Type
+
 export const PullRequestState = Schema.Union([
   Schema.TaggedStruct("Open", {
     behind: Schema.Boolean,

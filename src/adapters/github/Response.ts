@@ -2,7 +2,7 @@ import { Array as Arr, Option, Result, Schema } from "effect"
 
 import { classifyCi, type Check, type CheckOutcome } from "../../domain/Checks.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../domain/PullRequest.ts"
-import type { Diagnostic, PullRequestState } from "../../domain/Snapshot.ts"
+import type { Diagnostic, Mergeability, PullRequestState } from "../../domain/Snapshot.ts"
 import type { Membership } from "../../domain/StackLayout.ts"
 import type { ItemResult, Report } from "../../ports/GitHub.ts"
 
@@ -12,6 +12,10 @@ const PageInfo = Schema.Struct({
 })
 
 const StatusState = Schema.Literals(["EXPECTED", "PENDING", "SUCCESS", "ERROR", "FAILURE"])
+
+const MergeableState = Schema.Literals(["MERGEABLE", "CONFLICTING", "UNKNOWN"])
+
+type MergeableState = typeof MergeableState.Type
 
 type StatusState = typeof StatusState.Type
 
@@ -48,7 +52,6 @@ export type ContextNode = typeof ContextNode.Type
 export const Contexts = Schema.Struct({
   nodes: Schema.Array(ContextNode),
   pageInfo: PageInfo,
-  totalCount: Schema.Int,
 })
 
 export type Contexts = typeof Contexts.Type
@@ -59,7 +62,6 @@ const StackNode = Schema.Struct({
       Schema.Struct({ position: Schema.Int, pullRequest: Schema.Struct({ url: Schema.String }) }),
     ),
     pageInfo: Schema.Struct({ hasNextPage: Schema.Boolean }),
-    totalCount: Schema.Int,
   }),
   id: Schema.String,
   size: Schema.Int,
@@ -69,7 +71,7 @@ export const PullRequestNode = Schema.Struct({
   __typename: Schema.Literal("PullRequest"),
   isDraft: Schema.Boolean,
   mergeStateStatus: Schema.String,
-  mergeable: Schema.Literals(["MERGEABLE", "CONFLICTING", "UNKNOWN"]),
+  mergeable: MergeableState,
   stack: Schema.NullOr(StackNode),
   state: Schema.Literals(["OPEN", "CLOSED", "MERGED"]),
   statusCheckRollup: Schema.NullOr(Schema.Struct({ contexts: Contexts })),
@@ -106,6 +108,12 @@ function checkRunOutcome(status: string, conclusion: string | null): CheckOutcom
   if (conclusion === "SUCCESS") return "passed"
 
   return failedConclusions.has(conclusion ?? "") ? "failed" : "ignored"
+}
+
+const mergeabilities: Record<MergeableState, Mergeability> = {
+  CONFLICTING: "conflicting",
+  MERGEABLE: "mergeable",
+  UNKNOWN: "unknown",
 }
 
 const statusOutcomes: Record<StatusState, CheckOutcome> = {
@@ -159,12 +167,7 @@ function toState(node: PullRequestNode, contexts: readonly ContextNode[]): PullR
     behind: node.mergeStateStatus === "BEHIND",
     ci: classifyCi(contexts.map((context) => toCheck(context))),
     draft: node.isDraft,
-    mergeability:
-      node.mergeable === "MERGEABLE"
-        ? "mergeable"
-        : node.mergeable === "CONFLICTING"
-          ? "conflicting"
-          : "unknown",
+    mergeability: mergeabilities[node.mergeable],
   }
 }
 
