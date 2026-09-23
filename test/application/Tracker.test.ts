@@ -19,9 +19,7 @@ import {
   type GitHubScript,
   type StorageFake,
 } from "../support/application.ts"
-
-const ref = (number: number): PullRequestRef =>
-  Result.getOrThrow(parsePullRequestUrl(`github.com/acme/api/pull/${String(number)}`))
+import { ref } from "../support/monitor.ts"
 
 const byUrl = (pullRequest: PullRequestRef): PullRequestInput => ({
   _tag: "Reference",

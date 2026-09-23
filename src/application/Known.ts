@@ -31,13 +31,15 @@ export function afterRefresh(previous: Known, result: ItemResult, now: number): 
   }
 }
 
-export const isDue =
-  (known: ReadonlyMap<string, Known>, now: number) =>
-  (ref: PullRequestRef): boolean =>
-    Option.match((known.get(ref.url) ?? unknown).dueAt, {
-      onNone: () => false,
-      onSome: (at: number) => at <= now,
-    })
+export const isDue = (
+  known: ReadonlyMap<string, Known>,
+  now: number,
+  ref: PullRequestRef,
+): boolean =>
+  Option.match((known.get(ref.url) ?? unknown).dueAt, {
+    onNone: () => false,
+    onSome: (at: number) => at <= now,
+  })
 
 /**
  * `entries` without pull requests that no session in use has attached, as of the `before`

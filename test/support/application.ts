@@ -66,13 +66,7 @@ export const reported = (
   ref: PullRequestRef,
   state: PullRequestState,
   membership: Membership,
-): ItemResult => ({
-  _tag: "Reported",
-  report: {
-    membership: Option.some(membership),
-    snapshot: { ref, state, title: `Title of ${ref.label}` },
-  },
-})
+): ItemResult => ({ _tag: "Reported", report: reportOf(ref, state, Option.some(membership)) })
 
 export const openState: PullRequestState = {
   _tag: "Open",

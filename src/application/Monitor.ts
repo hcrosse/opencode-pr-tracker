@@ -28,8 +28,8 @@ export interface MonitorApi {
   /** Refreshes the session's pull requests now, except merged ones, and returns the result. */
   readonly refresh: (sessionID: string) => Effect.Effect<SessionView, StoredStateInvalid>
   /**
-   * Shows a session after `ref` was attached: marks the session in use, records what GitHub
-   * reported for `ref` so it is not fetched again, then continues as `show`.
+   * Shows a session after `ref` was attached: records what GitHub reported for `ref` so it is not
+   * fetched again, then continues as `show`.
    */
   readonly attached: (
     sessionID: string,
@@ -146,7 +146,7 @@ function poll(state: State): Effect.Effect<void> {
     )
 
     const now = yield* Clock.currentTimeMillis
-    const due = [...attached.values()].filter((ref: PullRequestRef) => isDue(known, now)(ref))
+    const due = [...attached.values()].filter((ref: PullRequestRef) => isDue(known, now, ref))
 
     yield* Ref.update(state.known, (entries: ReadonlyMap<string, Known>) =>
       withoutUnattached(entries, known, attached),
@@ -185,9 +185,11 @@ function fetchAndShow(
         .map((attachment) => attachment.ref)
         .filter((ref) => select(Option.fromNullishOr(known.get(ref.url)))),
     )
-    yield* publish(state, sessionID)
+    const view = yield* viewOf(state, sessionID)
 
-    return yield* viewOf(state, sessionID)
+    yield* PubSub.publish(state.published, view)
+
+    return view
   })
 }
 
@@ -225,9 +227,9 @@ export const layer = Layer.effect(
         ),
       poll: poll(state),
       attached: (sessionID, ref, report) =>
-        use(state, sessionID).pipe(
-          Effect.andThen(remember(cache, new Map([[ref.url, { _tag: "Reported", report }]]))),
-          Effect.andThen(fetchAndShow(state, sessionID, notYetKnown)),
+        Effect.andThen(
+          remember(cache, new Map([[ref.url, { _tag: "Reported", report }]])),
+          fetchAndShow(state, sessionID, notYetKnown),
         ),
       refresh: (sessionID) => fetchAndShow(state, sessionID, refreshable),
       show: (sessionID) => fetchAndShow(state, sessionID, notYetKnown),
