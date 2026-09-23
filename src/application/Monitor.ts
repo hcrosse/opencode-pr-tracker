@@ -1,4 +1,4 @@
-import { Clock, Context, Effect, Layer, Option, PubSub, Ref, Result, Stream } from "effect"
+import { Context, Effect, Layer, Option, PubSub, Ref, Result, Stream } from "effect"
 
 import type { PullRequestRef } from "../domain/PullRequest.ts"
 import type { Status } from "../domain/Snapshot.ts"
@@ -8,6 +8,7 @@ import { GitHub, type GitHubApi, type ItemResult, type Report } from "../ports/G
 import type { StoredStateInvalid } from "../ports/TrackingRepository.ts"
 import { FetchQueue } from "./FetchQueue.ts"
 import { afterRefresh, isDue, unknown, withoutUnattached, type Known } from "./Known.ts"
+import { currentMillis } from "./Time.ts"
 import { Tracker, type TrackerApi } from "./Tracker.ts"
 
 export interface Entry {
@@ -45,7 +46,7 @@ export interface MonitorApi {
   readonly forget: (sessionID: string) => Effect.Effect<void>
   /** Refreshes every due pull request of the sessions in use. Run it repeatedly. */
   readonly poll: Effect.Effect<void>
-  /** A session's view each time a refresh changes what is known about it. */
+  /** A session's view after each refresh of it, including refreshes that `poll` runs. */
   readonly changes: Stream.Stream<SessionView>
 }
 
@@ -82,7 +83,7 @@ interface State extends Cache {
 /** Records GitHub's results for pull requests as of now. */
 function remember(cache: Cache, results: ReadonlyMap<string, ItemResult>): Effect.Effect<void> {
   return Effect.gen(function* () {
-    const now = yield* Clock.currentTimeMillis
+    const now = yield* currentMillis
 
     yield* Ref.update(cache.known, (current: ReadonlyMap<string, Known>) => {
       const next = new Map(current)
@@ -145,7 +146,7 @@ function poll(state: State): Effect.Effect<void> {
       trackings.flat().map((attachment) => [attachment.ref.url, attachment.ref]),
     )
 
-    const now = yield* Clock.currentTimeMillis
+    const now = yield* currentMillis
     // Choose from the cache as it is now: an attach may have recorded a report while listing.
     const current = yield* Ref.get(state.known)
     const due = [...attached.values()].filter((ref: PullRequestRef) => isDue(current, now, ref))

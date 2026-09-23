@@ -19,6 +19,7 @@ import {
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
 import packageManifest from "../package.json" with { type: "json" }
+import { exerciseRpc } from "./smoke-rpc.ts"
 
 const pluginID = "opencode-pr-tracker"
 
@@ -87,23 +88,22 @@ const preparePackage = Effect.fn("preparePackage")(function* (root: string, runD
     name.endsWith(".tgz"),
   )
 
-  const dependencies = {
-    [packageManifest.name]: `file:${path.join(
+  const plugin = {
+    options: { layout: "compact" },
+    // A package spec, so OpenCode installs the tarball and its dependencies itself.
+    package: `file:${path.join(
       runDirectory,
       Option.getOrElse(tarball, () => ""),
     )}`,
   }
 
-  const config = { plugins: [`../node_modules/${packageManifest.name}`] }
+  const config = { plugins: [plugin] }
 
   yield* fs.makeDirectory(path.join(project, ".opencode"), { recursive: true })
-  yield* fs.copyFile(path.join(root, "bunfig.toml"), path.join(project, "bunfig.toml"))
-  yield* fs.writeFileString(path.join(project, "package.json"), JSON.stringify({ dependencies }))
   yield* fs.writeFileString(
     path.join(project, ".opencode", "opencode.json"),
     JSON.stringify(config),
   )
-  yield* run("bun", ["install"], project)
 
   return project
 })
@@ -114,19 +114,25 @@ function parseAddress(output: string): Option.Option<ServerAddress> {
   return Schema.decodeUnknownOption(ServerAddress)(match === null ? null : match.groups)
 }
 
+const token = process.env["GH_TOKEN"] ?? ""
+
 const startServer = Effect.fn("startServer")(function* (binary: string, runDirectory: string) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
   const home = `${runDirectory}/home`
 
-  // Isolate OpenCode from the developer's configuration, credentials, and data.
-  const env = {
-    HOME: home,
-    PATH: process.env["PATH"] ?? "",
-    XDG_CACHE_HOME: `${home}/.cache`,
-    XDG_CONFIG_HOME: `${home}/.config`,
-    XDG_DATA_HOME: `${home}/.local/share`,
-    XDG_STATE_HOME: `${home}/.local/state`,
-  }
+  // Isolate OpenCode from the developer's configuration, credentials, and data. The GitHub steps
+  // need a token, which is passed on only when one is set.
+  const variables: readonly (readonly [string, string])[] = [
+    ["HOME", home],
+    ["PATH", process.env["PATH"] ?? ""],
+    ["XDG_CACHE_HOME", `${home}/.cache`],
+    ["XDG_CONFIG_HOME", `${home}/.config`],
+    ["XDG_DATA_HOME", `${home}/.local/share`],
+    ["XDG_STATE_HOME", `${home}/.local/state`],
+    ["GH_TOKEN", token],
+  ]
+
+  const env = Object.fromEntries(variables.filter(([, value]) => value !== ""))
 
   const args = ["serve", "--hostname", "127.0.0.1", "--port", "0"]
 
@@ -202,6 +208,7 @@ const smoke = Effect.gen(function* () {
     Effect.mapError((state) => new Error(`Plugin ${pluginID} did not become active: ${state}`)),
   )
   yield* Effect.logInfo(`${pluginID} is active`)
+  yield* exerciseRpc({ password, project, url }, token !== "")
 })
 
 NodeRuntime.runMain(

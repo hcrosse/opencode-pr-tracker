@@ -1,4 +1,4 @@
-import { Array as Arr, Clock, Context, Effect, Layer, Option, Schema, Semaphore } from "effect"
+import { Array as Arr, Context, Effect, Layer, Option, Schema, Semaphore } from "effect"
 
 import type { PullRequestInput, PullRequestRef } from "../domain/PullRequest.ts"
 import { Diagnostic } from "../domain/Snapshot.ts"
@@ -24,6 +24,7 @@ import {
   type StoredStateInvalid,
   type TrackingRepositoryApi,
 } from "../ports/TrackingRepository.ts"
+import { currentMillis } from "./Time.ts"
 
 /** GitHub could not report the pull request being attached. */
 export class PullRequestUnavailable extends Schema.TaggedError<PullRequestUnavailable>()(
@@ -50,6 +51,8 @@ export interface Attached {
   /** What GitHub reported for it while attaching. */
   readonly report: Report
   readonly changed: boolean
+  /** How many pull requests the named one's Stack has, itself included. */
+  readonly stackSize: number
   readonly tracking: Tracking
 }
 
@@ -139,11 +142,17 @@ const attachTo = Effect.fn("Tracker.attach")(function* (
   const missing: ItemResult = { _tag: "Failed", diagnostic: "NotFound" }
   const { report, stack } = yield* discovered(ref, reports.get(ref.url) ?? missing)
   const current = yield* services.repository.load(sessionID)
-  const change = yield* Effect.fromResult(attach(current, stack, yield* Clock.currentTimeMillis))
+  const change = yield* Effect.fromResult(attach(current, stack, yield* currentMillis))
 
   if (change.changed) yield* services.repository.save(sessionID, change.tracking)
 
-  return { changed: change.changed, ref, report, tracking: change.tracking }
+  return {
+    changed: change.changed,
+    ref,
+    report,
+    stackSize: stack.length,
+    tracking: change.tracking,
+  }
 })
 
 const detachFrom = Effect.fn("Tracker.detach")(function* (

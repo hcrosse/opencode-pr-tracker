@@ -64,6 +64,33 @@ describe("Monitor refresh", () => {
   })
 })
 
+describe("Monitor sessions in use", () => {
+  // The server refreshes right after an attach, often before anything views the session.
+  test("keeps a session it refreshed in use: polling neither refetches early nor skips it", async () => {
+    const github = scripted()
+
+    const result = await run(github, (app: App) =>
+      Effect.gen(function* () {
+        for (const pullRequest of [open, merged]) {
+          yield* app.tracker.attach("a", { _tag: "Reference", ref: pullRequest }, "/work")
+        }
+
+        yield* app.monitor.refresh("a")
+
+        const before = github.fetches.length
+
+        yield* app.monitor.poll
+        yield* TestClock.adjust("15 seconds")
+        yield* app.monitor.poll
+
+        return fetchedSince(github, before)
+      }),
+    )
+
+    expect(result).toEqual(Exit.succeed([[1]]))
+  })
+})
+
 describe("Monitor forgetting", () => {
   test("stops refreshing forgotten sessions and detached pull requests", async () => {
     const github = scripted()

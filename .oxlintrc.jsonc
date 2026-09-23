@@ -96,6 +96,32 @@
             "package": "effect",
           },
           { "from": "package", "name": "TestCase", "package": "@hegeldev/hegel" },
+          // Tagged errors declare readonly fields; only members inherited from Error are mutable.
+          {
+            "from": "file",
+            "name": ["InvalidPullRequestInput", "InvalidPullRequestUrl"],
+            "path": "src/domain/PullRequest.ts",
+          },
+          {
+            "from": "file",
+            "name": ["AmbiguousPullRequestNumber", "AttachmentLimitReached"],
+            "path": "src/domain/Tracking.ts",
+          },
+          {
+            "from": "file",
+            "name": ["GitHubFailure", "RepositoryUnavailable"],
+            "path": "src/ports/GitHub.ts",
+          },
+          {
+            "from": "file",
+            "name": "StoredStateInvalid",
+            "path": "src/ports/TrackingRepository.ts",
+          },
+          {
+            "from": "file",
+            "name": ["PullRequestUnavailable", "StackIncomplete"],
+            "path": "src/application/Tracker.ts",
+          },
         ],
         "treatMethodsAsReadonly": true,
       },
