@@ -76,10 +76,10 @@ export default Plugin.define({
       }),
     ]
 
-    return (): void => {
+    return async (): Promise<void> => {
       for (const dispose of disposers) dispose()
-      tasks.stop()
       dismiss()
+      await tasks.stop()
     }
   },
 })

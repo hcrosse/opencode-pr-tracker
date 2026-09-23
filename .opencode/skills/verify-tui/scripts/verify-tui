@@ -58,13 +58,15 @@ start() {
   mkdir -p "$run_dir"/{home,project/.opencode,bin,artifacts}
 
   # The plugin loads from this checkout, whose root server.js and tui.js point at dist/.
-  printf '{"plugins":["%s"]}\n' "$root" >"$run_dir/project/.opencode/opencode.json"
+  python3 -c 'import json, sys; print(json.dumps({"plugins": [sys.argv[1]]}))' "$root" \
+    >"$run_dir/project/.opencode/opencode.json"
   git -C "$run_dir/project" init -q
 
   # Opening a pull request records the URL instead of launching a browser.
   for opener in open xdg-open; do
-    # shellcheck disable=SC2016 # $1 belongs to the generated script.
-    printf '#!/bin/sh\nprintf "%%s\\n" "$1" >> "%s/artifacts/opened.txt"\n' "$run_dir" >"$run_dir/bin/$opener"
+    # The script finds artifacts/ beside its own bin/, so no path is written into it.
+    # shellcheck disable=SC2016 # The variables belong to the generated script.
+    printf '#!/bin/sh\nprintf "%%s\\n" "$1" >> "$(dirname "$0")/../artifacts/opened.txt"\n' >"$run_dir/bin/$opener"
     chmod +x "$run_dir/bin/$opener"
   done
 
@@ -109,7 +111,10 @@ start() {
 
 same_checkout() { [[ $ROOT == "$root" ]]; }
 session_running() { herdr session list 2>/dev/null | grep -Eq "^$SESSION +running"; }
-plugin_configured() { grep -qF "\"$ROOT\"" "$RUN_DIR/project/.opencode/opencode.json"; }
+plugin_configured() {
+  python3 -c 'import json, sys; sys.exit(json.load(open(sys.argv[1]))["plugins"] != [sys.argv[2]])' \
+    "$RUN_DIR/project/.opencode/opencode.json" "$ROOT"
+}
 build_current() {
   [[ -z $(find "$ROOT/src" -type f -newer "$ROOT/dist/tui.js") ]] &&
     [[ -z $(find "$ROOT/src" -type f -newer "$ROOT/dist/server.js") ]]

@@ -3,7 +3,8 @@ import { Effect, Fiber } from "effect"
 /** Runs effects in the background, and stops those still running when the plugin unloads. */
 export interface Background {
   readonly run: (effect: Effect.Effect<void>) => void
-  readonly stop: () => void
+  /** Interrupts the running effects and resolves once they have stopped. */
+  readonly stop: () => Promise<void>
 }
 
 export function background(): Background {
@@ -18,8 +19,8 @@ export function background(): Background {
         running.delete(fiber)
       })
     },
-    stop: () => {
-      Effect.runFork(Fiber.interruptAll(running))
+    stop: async () => {
+      await Effect.runPromise(Fiber.interruptAll(running))
     },
   }
 }
