@@ -94,35 +94,44 @@ describe("Monitor recorded reports", () => {
   })
 })
 
+// One yield lets the forked poll snapshot the cache and start listing attachments; the attach
+// records #2 before the poll chooses what is due and what to forget.
 describe("Monitor polling alongside attaching", () => {
-  test("keeps a status recorded while a poll is listing attachments, without fetching it again", async () => {
-    const github = scripted()
+  test.each([
+    ["a session the poll has not seen", "b"],
+    ["a session the poll is listing", "a"],
+  ])(
+    "keeps a report recorded while polling, for %s, without fetching it again",
+    async (_name, session: string) => {
+      const github = scripted()
 
-    const result = await run(github, (app: App) =>
-      Effect.gen(function* () {
-        yield* watching(app, "a", [open])
-        yield* app.tracker.attach("b", { _tag: "Reference", ref: closed }, "/work")
+      const result = await run(github, (app: App) =>
+        Effect.gen(function* () {
+          yield* watching(app, "a", [open])
+          yield* app.monitor.refresh("a")
+          yield* app.tracker.attach(session, { _tag: "Reference", ref: closed }, "/work")
 
-        const before = github.fetches.length
-        const polling = yield* Effect.forkChild(app.monitor.poll)
+          const before = github.fetches.length
+          const polling = yield* Effect.forkChild(app.monitor.poll)
 
-        // One yield lets the forked poll snapshot the cache and start listing attachments; it prunes
-        // after `attached` has recorded #2.
-        yield* Effect.yieldNow
-        yield* app.monitor.attached(
-          "b",
-          closed,
-          reportOf(closed, { _tag: "Closed" }, Option.some(standalone)),
-        )
-        yield* Fiber.join(polling)
+          yield* Effect.yieldNow
+          yield* app.monitor.attached(
+            session,
+            closed,
+            reportOf(closed, { _tag: "Closed" }, Option.some(standalone)),
+          )
+          yield* Fiber.join(polling)
 
-        const view = yield* app.monitor.view("b")
+          const view = yield* app.monitor.view(session)
 
-        return [fetchedSince(github, before), view.entries.map((entry) => entry.status._tag)]
-      }),
-    )
+          return [
+            fetchedSince(github, before),
+            view.entries.every((entry) => entry.status._tag === "Fresh"),
+          ]
+        }),
+      )
 
-    // The poll fetches #1, which session "a" has not seen yet; #2 was reported while attaching.
-    expect(result).toEqual(Exit.succeed([[[1]], ["Fresh"]]))
-  })
+      expect(result).toEqual(Exit.succeed([[], true]))
+    },
+  )
 })

@@ -146,7 +146,9 @@ function poll(state: State): Effect.Effect<void> {
     )
 
     const now = yield* Clock.currentTimeMillis
-    const due = [...attached.values()].filter((ref: PullRequestRef) => isDue(known, now, ref))
+    // Choose from the cache as it is now: an attach may have recorded a report while listing.
+    const current = yield* Ref.get(state.known)
+    const due = [...attached.values()].filter((ref: PullRequestRef) => isDue(current, now, ref))
 
     yield* Ref.update(state.known, (entries: ReadonlyMap<string, Known>) =>
       withoutUnattached(entries, known, attached),
