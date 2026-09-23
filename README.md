@@ -1,124 +1,93 @@
 # OpenCode PR Tracker
 
-Track GitHub pull requests from an OpenCode session. The plugin adds tools and
-slash commands for attaching pull requests, then shows their lifecycle,
-mergeability, and CI status in the TUI sidebar.
+Track GitHub pull requests in an OpenCode session. Attach pull requests with a slash command or let the agent attach them, and the session's sidebar shows each one's state, checks, and mergeability.
 
 ## Requirements
 
-- [OpenCode](https://opencode.ai/) `>=1.18.15 <2`
-- [GitHub CLI](https://cli.github.com/) installed and authenticated (`gh auth status`)
-- macOS or Linux to open pull requests by clicking their sidebar rows
+- [OpenCode](https://opencode.ai/) 2.0.15 or later, from plugin version 0.4.0. For OpenCode 1, use version 0.3.
+- A GitHub token: set `GH_TOKEN` or `GITHUB_TOKEN`, or sign in with the [GitHub CLI](https://cli.github.com/) (`gh auth login`).
+- The GitHub CLI, to attach a pull request by number.
+- macOS or Linux, to open pull requests in the browser.
 
 ## Install
 
-Install the server and TUI plugins:
-
 ```sh
-opencode plugin @hcrosse/opencode-pr-tracker
+opencode plugin add @hcrosse/opencode-pr-tracker
 ```
 
-OpenCode adds the package to both `opencode.json` and `tui.json`. To pin a
-specific release, include its exact version:
+This adds the plugin to your global OpenCode configuration. To use it in one project instead, add it to that project's `opencode.json`:
 
-```sh
-opencode plugin @hcrosse/opencode-pr-tracker@0.1.0
-```
-
-Restart OpenCode after installation.
-
-## Update
-
-OpenCode caches installed npm plugins and does not update them automatically.
-Install each new release by its exact version with `--force`:
-
-```sh
-opencode plugin @hcrosse/opencode-pr-tracker@0.2.0 --global --force
-```
-
-Replace `0.2.0` with the version you want. Omit `--global` for a plugin installed
-in the current project.
-
-The plugin checks for compatible stable releases at most once every 24 hours.
-When an update is available, the sidebar shows its version. Click it or run
-`/pr-tracker-plugin-update` to see the exact command for the current installation
-scope. The plugin never installs updates automatically.
-
-## Commands
-
-- `/pr-attach` accepts a pull request URL, with or without `https://`, or a positive pull request number for the current GitHub repository. Attaching any GitHub Stack member attaches the complete stack in bottom-to-top order.
-- `/pr-open` lets you select and open an attached pull request on macOS or Linux.
-- `/pr-detach` lets you select and remove one attached pull request. Stack members are detached individually; detaching one member does not detach the rest of its stack.
-- `/pr-sync` immediately refreshes attached pull request status.
-- `/pr-tracker-plugin-update` checks for a compatible plugin release and shows the update command.
-- Agents can use the `pr_list`, `pr_attach`, `pr_detach`, and `pr_feedback` tools when the server plugin is enabled.
-
-The `pr_feedback` tool first returns an exact preview following the repository's
-[bug](.github/ISSUE_TEMPLATE/bug_report.md) or
-[feature](.github/ISSUE_TEMPLATE/feature_request.md) template. The agent must
-show that preview with OpenCode's native question tool before opening the
-prefilled browser issue or submitting it with GitHub CLI. Optional diagnostics
-contain only plugin version, OpenCode version, and operating system. The tool
-never automatically reads session content, attachments, local paths,
-repository names, or pull request URLs. After approved delivery, the agent
-returns the resulting URL in chat.
-
-The `pr_detach` tool also accepts a positive pull request number when exactly
-one session attachment has that number. Use a pull request URL when repositories
-have attached pull requests with the same number.
-
-The plugin accepts pull request URLs in the forms
-`https://github.com/<owner>/<repository>/pull/<number>` and
-`github.com/<owner>/<repository>/pull/<number>`.
-
-## Compact layout
-
-Set the TUI plugin's `layout` option in `tui.json` to show compact sidebar
-entries:
-
-```json
+```jsonc
 {
-  "plugin": [["@hcrosse/opencode-pr-tracker/tui", { "layout": "compact" }]]
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": ["@hcrosse/opencode-pr-tracker"],
 }
 ```
 
-Only the exact `"compact"` value changes the layout. Omitting `layout` or using
-any other value keeps the default two-line rows with pull request titles.
-Compact rows omit the title but retain the list bullet, pull request reference,
-and status on one line. Stack gaps remain visible, so compact layout has one row
-per attached pull request plus any internal gaps.
+Update it with `opencode plugin update`.
+
+## Attach pull requests
+
+In a session, run `/pr-attach` followed by a pull request URL, with or without `https://`, or a number in the session's GitHub repository:
+
+```text
+/pr-attach github.com/owner/repository/pull/123
+/pr-attach 123
+```
+
+Without an argument, `/pr-attach` asks for one. Attaching any member of a GitHub Stack attaches the whole Stack, bottom first. If GitHub returns only part of the Stack, nothing is attached. A session can track up to 20 pull requests.
+
+| Command      | What it does                                                    |
+| ------------ | --------------------------------------------------------------- |
+| `/pr-attach` | Attaches a pull request and the rest of its Stack.              |
+| `/pr-detach` | Detaches the pull request you choose. Other Stack members stay. |
+| `/pr-sync`   | Refreshes every attached pull request now.                      |
+| `/pr-open`   | Opens the pull request you choose in the browser.               |
+
+The same commands appear in the command palette (ctrl+p) under **Pull requests**. Deleting a session removes its attachments.
+
+Agents get three tools in the `pr` namespace: `pr.list`, `pr.attach` and `pr.detach`. They act on the agent's session and accept the same URLs and numbers. When several attached pull requests share a number, detach by URL.
 
 ## Sidebar
 
-Each attached pull request appears with its repository, number, title, and
-current state. GitHub Stack members appear together in bottom-to-top order,
-from the pull request closest to the trunk through the top pull request. Open
-and closed pull requests refresh at least once per minute and when session
-activity changes. Click a row to open the pull request on macOS or Linux. When
-more than two pull requests are attached, click the **Pull requests** heading
-to collapse or expand its rows. Status refreshes continue while the section is
-collapsed.
+Each attached pull request shows its repository, number, status, and title. Open the sidebar with ctrl+x b if your terminal is narrow enough to hide it. Click a row to open its pull request. With more than two pull requests attached, click the **Pull requests** heading to collapse or expand the list.
 
-Ordinary `•` bullets identify standalone pull requests or membership that has
-not been resolved yet. Validated Stack boundaries use `┌─`, `├─`, and `└─`.
-`├┄ N PR(s) not attached` identifies internal gaps. Missing ranges outside the
-attached members use open boundary markers rather than extra rows. The default
-layout uses title connectors, while compact layout omits titles and retains one
-row per attached pull request plus internal gaps. Transient refresh failures
-retain the last valid Stack presentation.
+Stack members appear together in Stack order, joined by `┌─`, `├─` and `└─`. `├┄ 2 PRs not attached` marks Stack members between attached ones. Other pull requests use `•`.
 
-| State                    | Appearance            |
-| ------------------------ | --------------------- |
-| Merged                   | Purple, strikethrough |
-| Closed                   | Red, strikethrough    |
-| Merge conflict           | Red                   |
-| Checks passed            | Green                 |
-| Checks pending           | Yellow                |
-| Checks failed            | Red                   |
-| No checks or unavailable | Gray                  |
+| Status          | Appearance             |
+| --------------- | ---------------------- |
+| Merged          | Purple, struck through |
+| Closed          | Red, struck through    |
+| Merge conflict  | Red                    |
+| Checks failed   | Red                    |
+| Draft           | Gray                   |
+| Checks pending  | Yellow                 |
+| Behind its base | Yellow                 |
+| Checks passed   | Green                  |
+| No checks       | Gray                   |
 
-Merged and closed states take precedence. For open pull requests, merge
-conflicts take precedence over CI status.
+The first matching row wins. A pull request shows as behind only when its base branch requires it to be up to date. Checks count only their most recent run.
 
-If a refresh fails, the sidebar keeps the last successful status and marks it
-as stale. Merged pull requests remain attached but stop refreshing.
+Open and closed pull requests refresh every 15 seconds in each session you have viewed or changed since OpenCode started, until the session is deleted. Merged pull requests stop refreshing. When a refresh fails, the sidebar keeps the last status and marks it `stale`. After five minutes of failures, it shows why instead, for example `authenticate` or `GitHub unavailable`.
+
+### Compact layout
+
+To show one line per pull request, without titles, set the `layout` option:
+
+```jsonc
+{
+  "plugins": [{ "package": "@hcrosse/opencode-pr-tracker", "options": { "layout": "compact" } }],
+}
+```
+
+Any other value keeps the default layout.
+
+## Development
+
+```sh
+mise install
+bun install
+bun run check
+```
+
+`bun run check` runs lint, format, type checks, tests and a package dry run. `bun run smoke:opencode` installs the packed plugin into a temporary project, starts OpenCode, and exercises the RPC and events against GitHub when `GH_TOKEN` is set. Set `OPENCODE_BIN` to test with a specific OpenCode binary. To verify the terminal UI, follow the project skill in `.opencode/skills/verify-tui/`.

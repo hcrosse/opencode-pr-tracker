@@ -1,12 +1,8 @@
-import { Effect, Exit, Layer, Result } from "effect"
+import { Effect, Exit, Layer } from "effect"
 
 import { layer as storageLayer } from "../../src/adapters/Storage.ts"
 import { layer as trackerLayer, Tracker, type TrackerApi } from "../../src/application/Tracker.ts"
-import {
-  parsePullRequestUrl,
-  type PullRequestInput,
-  type PullRequestRef,
-} from "../../src/domain/PullRequest.ts"
+import type { PullRequestInput, PullRequestRef } from "../../src/domain/PullRequest.ts"
 import type { Tracking } from "../../src/domain/Tracking.ts"
 import {
   memoryStorage,
@@ -17,9 +13,9 @@ import {
   type GitHubScript,
   type StorageFake,
 } from "./application.ts"
+import { ref } from "./monitor.ts"
 
-export const ref = (number: number): PullRequestRef =>
-  Result.getOrThrow(parsePullRequestUrl(`github.com/acme/api/pull/${String(number)}`))
+export { ref }
 
 export const byUrl = (pullRequest: PullRequestRef): PullRequestInput => ({
   _tag: "Reference",

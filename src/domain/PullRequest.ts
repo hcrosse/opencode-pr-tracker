@@ -10,9 +10,9 @@ const decimal = /^\d+$/u
 /** Printable ASCII only. With the `u` and `i` flags, `\w` also matches letters that fold to ASCII. */
 const printableAscii = /^[\u0021-\u007E]*$/u
 
-export const Segment = Schema.String.check(Schema.isPattern(canonicalSegment))
+const Segment = Schema.String.check(Schema.isPattern(canonicalSegment))
 
-export const PullRequestNumber = Schema.Int.check(
+const PullRequestNumber = Schema.Int.check(
   Schema.isBetween({ maximum: Number.MAX_SAFE_INTEGER, minimum: 1 }),
 )
 
@@ -49,10 +49,6 @@ export type PullRequestInput =
 const decodeRef = Schema.decodeUnknownOption(PullRequestRef)
 
 const decodeNumber = Schema.decodeUnknownOption(PullRequestNumber)
-
-export function sameRepository(left: PullRequestRef, right: PullRequestRef): boolean {
-  return left.owner === right.owner && left.repository === right.repository
-}
 
 export function samePullRequest(left: PullRequestRef, right: PullRequestRef): boolean {
   return left.url === right.url

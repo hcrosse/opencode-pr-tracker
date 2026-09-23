@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test"
 
-import { Effect, Exit, Result, Schema } from "effect"
+import { Effect, Exit, Schema } from "effect"
 
 import { PullRequestNode } from "../../../src/adapters/github/Response.ts"
-import { parsePullRequestUrl, type PullRequestRef } from "../../../src/domain/PullRequest.ts"
 import type { Diagnostic } from "../../../src/domain/Snapshot.ts"
 import type { GitHubApi, ItemResult } from "../../../src/ports/GitHub.ts"
 import {
@@ -13,13 +12,9 @@ import {
   runClient,
   tracker127,
   type RequestBody,
+  acmeRef,
+  fetchOne,
 } from "../../support/github.ts"
-
-const ref = (number: number): PullRequestRef =>
-  Result.getOrThrow(parsePullRequestUrl(`github.com/acme/api/pull/${String(number)}`))
-
-const fetchOne = (github: GitHubApi): Effect.Effect<ReadonlyMap<string, ItemResult>, unknown> =>
-  github.fetch([ref(1)])
 
 describe("GitHub client failures of one pull request", () => {
   test("reports a GraphQL error on one alias for that pull request only", async () => {
@@ -31,7 +26,7 @@ describe("GitHub client failures of one pull request", () => {
     )
 
     const result = await runClient({ http }, (github: GitHubApi) =>
-      github.fetch([tracker127, ref(2)]),
+      github.fetch([tracker127, acmeRef(2)]),
     )
 
     const results = Exit.isSuccess(result) ? [...result.value.values()] : []
@@ -84,13 +79,13 @@ describe("GitHub client failures in a pull request's data", () => {
 
     const result = await runClient({ http }, fetchOne)
 
-    expect(Exit.map(result, (results) => results.get(ref(1).url))).toEqual(
+    expect(Exit.map(result, (results) => results.get(acmeRef(1).url))).toEqual(
       Exit.succeed({ _tag: "Failed", diagnostic: "InvalidResponse" }),
     )
   })
 })
 
-const recorded = JSON.stringify(recordedNode("standalone", "pr0"))
+const recorded = JSON.stringify(recordedPullRequest)
 
 /** #127 as recorded, but claiming a further page of checks after `cursor`. */
 const withNextPage = (cursor: string | null): PullRequestNode =>

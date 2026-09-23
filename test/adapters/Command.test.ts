@@ -5,7 +5,7 @@ import path from "node:path"
 
 import { Effect, Fiber } from "effect"
 
-import { CommandRunner, layer } from "../../../src/adapters/github/Command.ts"
+import { CommandRunner, layer } from "../../src/adapters/Command.ts"
 
 const run = async <A, E>(program: Effect.Effect<A, E, CommandRunner>): Promise<A> => {
   const result = await Effect.runPromise(program.pipe(Effect.provide(layer)))

@@ -4,11 +4,11 @@ import path from "node:path"
 import { Effect, Exit, Layer, Option, Redacted, Result, Schema } from "effect"
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from "effect/unstable/http"
 
+import { CommandFailed, CommandMissing, CommandRunner } from "../../src/adapters/Command.ts"
 import { layer as clientLayer } from "../../src/adapters/github/Client.ts"
-import { CommandFailed, CommandMissing, CommandRunner } from "../../src/adapters/github/Command.ts"
 import { Token } from "../../src/adapters/github/Token.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
-import { GitHub, type GitHubApi } from "../../src/ports/GitHub.ts"
+import { GitHub, type GitHubApi, type ItemResult } from "../../src/ports/GitHub.ts"
 
 const Exchange = Schema.Struct({
   response: Schema.Json,
@@ -171,10 +171,20 @@ export function fixedCommands(outcomes: Readonly<Record<string, FixedOutcome>>):
   return { calls, layer }
 }
 
+export const acmeRef = (number: number): PullRequestRef =>
+  Result.getOrThrow(parsePullRequestUrl(`github.com/acme/api/pull/${String(number)}`))
+
+export const trackerRef = (number: number): PullRequestRef =>
+  Result.getOrThrow(
+    parsePullRequestUrl(`github.com/hcrosse/opencode-pr-tracker/pull/${String(number)}`),
+  )
+
 /** hcrosse/opencode-pr-tracker#127, whose response is recorded in the standalone fixture. */
-export const tracker127: PullRequestRef = Result.getOrThrow(
-  parsePullRequestUrl("github.com/hcrosse/opencode-pr-tracker/pull/127"),
-)
+export const tracker127: PullRequestRef = trackerRef(127)
+
+export const fetchOne = (
+  github: GitHubApi,
+): Effect.Effect<ReadonlyMap<string, ItemResult>, unknown> => github.fetch([acmeRef(1)])
 
 export const recordedPullRequest = recordedNode("standalone", "pr0")
 

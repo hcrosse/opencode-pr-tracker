@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test"
 
-import { Effect, Exit, Result } from "effect"
+import { Effect, Exit } from "effect"
 
-import { parsePullRequestUrl, type PullRequestRef } from "../../../src/domain/PullRequest.ts"
-import type { GitHubApi, ItemResult } from "../../../src/ports/GitHub.ts"
+import type { PullRequestRef } from "../../../src/domain/PullRequest.ts"
+import type { GitHubApi } from "../../../src/ports/GitHub.ts"
 import {
   exitWith,
   fixedCommands,
@@ -11,13 +11,9 @@ import {
   httpClient,
   output,
   runClient,
+  acmeRef,
+  fetchOne,
 } from "../../support/github.ts"
-
-const ref = (number: number): PullRequestRef =>
-  Result.getOrThrow(parsePullRequestUrl(`github.com/acme/api/pull/${String(number)}`))
-
-const fetchOne = (github: GitHubApi): Effect.Effect<ReadonlyMap<string, ItemResult>, unknown> =>
-  github.fetch([ref(1)])
 
 const nulls = (keys: readonly string[]): Record<string, null> =>
   Object.fromEntries(keys.map((key: string) => [key, null]))
@@ -77,9 +73,9 @@ describe("GitHub client batching", () => {
     const http = httpClient((body) => Response.json({ data: nulls(Object.keys(body.variables)) }))
 
     const refs = [
-      ...Array.from({ length: 25 }, (_, index: number) => ref(index + 1)),
-      ref(3),
-      ref(7),
+      ...Array.from({ length: 25 }, (_, index: number) => acmeRef(index + 1)),
+      acmeRef(3),
+      acmeRef(7),
     ]
 
     const result = await runClient({ http }, (github: GitHubApi) => github.fetch(refs))
@@ -97,13 +93,13 @@ describe("GitHub client batch failures", () => {
         : new Response("", { status: 502 }),
     )
 
-    const refs = Array.from({ length: 21 }, (_, index: number) => ref(index + 1))
+    const refs = Array.from({ length: 21 }, (_, index: number) => acmeRef(index + 1))
 
     const result = await runClient({ http }, (github: GitHubApi) => github.fetch(refs))
 
     // The first batch reported #1 missing; the second batch, with #21, failed as a whole.
     expect(
-      Exit.map(result, (results) => [results.get(ref(1).url), results.get(ref(21).url)]),
+      Exit.map(result, (results) => [results.get(acmeRef(1).url), results.get(acmeRef(21).url)]),
     ).toEqual(
       Exit.succeed([
         { _tag: "Failed", diagnostic: "NotFound" },
@@ -114,7 +110,7 @@ describe("GitHub client batch failures", () => {
 
   test("fails the whole request when every batch fails", async () => {
     const http = httpClient(() => new Response("", { status: 502 }))
-    const refs = Array.from({ length: 21 }, (_, index: number) => ref(index + 1))
+    const refs = Array.from({ length: 21 }, (_, index: number) => acmeRef(index + 1))
 
     const result = await runClient({ http }, (github: GitHubApi) => github.fetch(refs))
 

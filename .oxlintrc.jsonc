@@ -68,7 +68,9 @@
     "oxc/no-accumulating-spread": "error",
     // Effect values and requests are immutable data that expose methods such as `pipe`; Ref,
     // PubSub, Semaphore, Deferred and Scope are shared handles changed only through Effect operations; Hegel's
-    // TestCase is a library class.
+    // TestCase is a library class. OpenTUI's RGBA is a host color class that the sidebar only passes on.
+    // Solid's JSX.Element (a mutable array or DOM node, by type) is rendered, never changed. The TUI
+    // plugin Context holds host objects, such as the renderer, that the plugin reads and never changes.
     "typescript/prefer-readonly-parameter-types": [
       "error",
       {
@@ -96,6 +98,9 @@
             "package": "effect",
           },
           { "from": "package", "name": "TestCase", "package": "@hegeldev/hegel" },
+          { "from": "package", "name": "RGBA", "package": "@opentui/core" },
+          { "from": "package", "name": "Element", "package": "solid-js" },
+          { "from": "package", "name": "Context", "package": "@opencode/plugin" },
           // Tagged errors declare readonly fields; only members inherited from Error are mutable.
           {
             "from": "file",

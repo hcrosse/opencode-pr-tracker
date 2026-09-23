@@ -124,7 +124,7 @@ describe("which runs count", () => {
 })
 
 describe("which runs count across jobs and suites", () => {
-  // Found by mutation: a later run without a job must not replace that job's last result.
+  // A later run of other jobs must not replace a job's last result.
   test("a later run of other jobs does not replace a job's failure", () => {
     const nodes = [
       run({ conclusion: "FAILURE", name: "Test", runNumber: 216 }),

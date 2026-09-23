@@ -15,6 +15,7 @@
   "files": [
     "dist",
     "server.js",
+    "tui.js",
     "README.md",
     "LICENSE"
   ],
@@ -23,6 +24,9 @@
   "exports": {
     ".": {
       "import": "./dist/server.js"
+    },
+    "./tui": {
+      "import": "./dist/tui.js"
     }
   },
   "publishConfig": {
@@ -51,6 +55,7 @@
     "@hegeldev/hegel": "0.4.3",
     "@opencode/cli": "2.0.15",
     "@opencode/client": "2.0.15",
+    "@opencode/theme": "2.0.15",
     "@opentui/core": "0.5.11",
     "@opentui/solid": "0.5.11",
     "@oxlint/plugins": "1.80.0",
