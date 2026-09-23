@@ -15,7 +15,18 @@ describe("pull request tool argument", () => {
     expect(targetOf(decode({ pull_request: value }))).toBe(target)
   })
 
-  test("rejects anything else before it reaches the tracker", () => {
-    expect(() => decode({ pull_request: true })).toThrow()
+  test.each([
+    ["a boolean", true],
+    ["a fractional number", 7.5],
+  ])("rejects %s before it reaches the tracker", (_name, value: boolean | number) => {
+    expect(() => decode({ pull_request: value })).toThrow()
+  })
+
+  test("describes the argument to agents as text or a whole number", () => {
+    const { schema } = Schema.toJsonSchemaDocument(PullRequestArgument)
+
+    expect(schema).toMatchObject({
+      properties: { pull_request: { anyOf: [{ type: "string" }, { type: "integer" }] } },
+    })
   })
 })
