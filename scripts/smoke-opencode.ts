@@ -88,28 +88,22 @@ const preparePackage = Effect.fn("preparePackage")(function* (root: string, runD
     name.endsWith(".tgz"),
   )
 
-  const dependencies = {
-    [packageManifest.name]: `file:${path.join(
+  const plugin = {
+    options: { layout: "compact" },
+    // A package spec, so OpenCode installs the tarball and its dependencies itself.
+    package: `file:${path.join(
       runDirectory,
       Option.getOrElse(tarball, () => ""),
     )}`,
   }
 
-  const plugin = {
-    options: { layout: "compact" },
-    package: `../node_modules/${packageManifest.name}`,
-  }
-
   const config = { plugins: [plugin] }
 
   yield* fs.makeDirectory(path.join(project, ".opencode"), { recursive: true })
-  yield* fs.copyFile(path.join(root, "bunfig.toml"), path.join(project, "bunfig.toml"))
-  yield* fs.writeFileString(path.join(project, "package.json"), JSON.stringify({ dependencies }))
   yield* fs.writeFileString(
     path.join(project, ".opencode", "opencode.json"),
     JSON.stringify(config),
   )
-  yield* run("bun", ["install"], project)
 
   return project
 })
