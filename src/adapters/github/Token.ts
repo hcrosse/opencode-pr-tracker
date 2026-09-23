@@ -13,9 +13,19 @@ export interface TokenApi {
 export class Token extends Context.Service<Token, TokenApi>()("opencode-pr-tracker/Token") {}
 
 /** `GH_TOKEN`, then `GITHUB_TOKEN`, as `gh` itself reads them. Empty values count as unset. */
-const environmentToken = Config.option(
-  Config.orElse(Config.redacted("GH_TOKEN"), () => Config.redacted("GITHUB_TOKEN")),
-).pipe(Config.map(Option.filter((token) => Redacted.value(token).trim() !== "")))
+const variable = (name: string): Config.Config<Option.Option<Redacted.Redacted>> =>
+  Config.option(Config.redacted(name)).pipe(
+    Config.map(Option.filter((token) => Redacted.value(token).trim() !== "")),
+  )
+
+const environmentToken = Config.all([variable("GH_TOKEN"), variable("GITHUB_TOKEN")]).pipe(
+  Config.map(
+    ([ghToken, githubToken]: readonly [
+      Option.Option<Redacted.Redacted>,
+      Option.Option<Redacted.Redacted>,
+    ]) => Option.orElse(ghToken, () => githubToken),
+  ),
+)
 
 export const layer = Layer.effect(
   Token,

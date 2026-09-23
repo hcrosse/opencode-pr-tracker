@@ -97,19 +97,23 @@ const allContexts = Effect.fn("allContexts")(function* (post: Post, node: PullRe
   while (Option.isSome(page)) {
     collected.push(...page.value.nodes)
 
-    const cursor = page.value.pageInfo.hasNextPage
-      ? Option.fromNullishOr(page.value.pageInfo.endCursor)
-      : Option.none()
+    if (!page.value.pageInfo.hasNextPage) break
 
-    page = yield* Option.match(cursor, {
-      onNone: () => Effect.succeed(Option.none<Contexts>()),
-      onSome: (after) =>
-        post(continuation(), { cursor: after, url: node.url }).pipe(
-          Effect.flatMap((envelope) => Schema.decodeUnknownEffect(ContinuationData)(envelope.data)),
-          Effect.map((data) => Option.some(data.resource.statusCheckRollup.contexts)),
-          Effect.mapError(() => failure("InvalidResponse")),
-        ),
+    // A page that claims more checks must say where they are; otherwise CI would be judged on part.
+    const after = yield* Option.match(Option.fromNullishOr(page.value.pageInfo.endCursor), {
+      onNone: () => Effect.fail(failure("InvalidResponse")),
+      onSome: Effect.succeed,
     })
+
+    const envelope = yield* post(continuation(), { cursor: after, url: node.url })
+
+    if ((envelope.errors ?? []).length > 0) return yield* failure("InvalidResponse")
+
+    const data = yield* Schema.decodeUnknownEffect(ContinuationData)(envelope.data).pipe(
+      Effect.mapError(() => failure("InvalidResponse")),
+    )
+
+    page = Option.some(data.resource.statusCheckRollup.contexts)
   }
 
   return collected
@@ -149,15 +153,14 @@ const itemResult = Effect.fn("itemResult")(function* (
 
   if (Option.isNone(node)) return failed("InvalidResponse")
 
-  const contexts = yield* allContexts(post, node.value).pipe(Effect.option)
+  const contexts = yield* Effect.result(allContexts(post, node.value))
 
-  return Option.match(contexts, {
-    onNone: () => failed("InvalidResponse"),
-    onSome: (nodes: readonly ContextNode[]): ItemResult => ({
-      _tag: "Reported",
-      report: toReport(ref, node.value, nodes),
-    }),
-  })
+  if (Result.isFailure(contexts)) return failed(contexts.failure.diagnostic)
+
+  return {
+    _tag: "Reported",
+    report: toReport(ref, node.value, contexts.success),
+  } satisfies ItemResult
 })
 
 const fetchBatch = Effect.fn("fetchBatch")(function* (post: Post, refs: readonly PullRequestRef[]) {

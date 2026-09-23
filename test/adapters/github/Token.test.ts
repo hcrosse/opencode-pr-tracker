@@ -45,6 +45,11 @@ describe("Token source order", () => {
       "from-gh-token",
     ],
     ["GITHUB_TOKEN before gh", { GITHUB_TOKEN: "from-github-token" }, "from-github-token"],
+    [
+      "GITHUB_TOKEN when GH_TOKEN is empty",
+      { GH_TOKEN: " ", GITHUB_TOKEN: "from-github-token" },
+      "from-github-token",
+    ],
     ["gh when the variables are empty", { GH_TOKEN: " ", GITHUB_TOKEN: "" }, "from-gh"],
     ["gh when the variables are unset", {}, "from-gh"],
   ] as const)("prefers %s", async (_name, environment, expected) => {
