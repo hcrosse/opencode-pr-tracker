@@ -92,6 +92,7 @@ const makePost = Effect.fn("makePost")(function* (): Effect.fn.Return<
 /** Every check context for a pull request, following continuation pages. */
 const allContexts = Effect.fn("allContexts")(function* (post: Post, node: PullRequestNode) {
   const collected: ContextNode[] = []
+  const followed = new Set<string>()
   let page = Option.map(Option.fromNullishOr(node.statusCheckRollup), (rollup) => rollup.contexts)
 
   while (Option.isSome(page)) {
@@ -99,11 +100,12 @@ const allContexts = Effect.fn("allContexts")(function* (post: Post, node: PullRe
 
     if (!page.value.pageInfo.hasNextPage) break
 
-    // A page that claims more checks must say where they are; otherwise CI would be judged on part.
-    const after = yield* Option.match(Option.fromNullishOr(page.value.pageInfo.endCursor), {
-      onNone: () => Effect.fail(failure("InvalidResponse")),
-      onSome: Effect.succeed,
-    })
+    // A claimed next page needs a new cursor, or CI would be judged on part or paging never end.
+    const after = page.value.pageInfo.endCursor ?? ""
+
+    if (after === "" || followed.has(after)) return yield* failure("InvalidResponse")
+
+    followed.add(after)
 
     const envelope = yield* post(continuation(), { cursor: after, url: node.url })
 
@@ -122,19 +124,19 @@ const allContexts = Effect.fn("allContexts")(function* (post: Post, node: PullRe
 /** GraphQL error types meaning the pull request does not exist or this token cannot see it. */
 const inaccessible = new Set(["NOT_FOUND", "FORBIDDEN"])
 
-/** The failure GitHub reported for `key`, counting errors that name no alias in the batch. */
+/** Errors for `key`, or naming no alias, fail it; only its own inaccessible errors mean missing. */
 function aliasFailure(request: Batch, key: string): Option.Option<Diagnostic> {
-  const errors = (request.envelope.errors ?? []).filter((error) => {
+  const diagnostics = (request.envelope.errors ?? []).flatMap((error): Diagnostic[] => {
     const root = String((error.path ?? [])[0] ?? "")
 
-    return root === key || !request.aliases.has(root)
+    if (root === key) return [inaccessible.has(error.type ?? "") ? "NotFound" : "InvalidResponse"]
+
+    return request.aliases.has(root) ? [] : ["InvalidResponse"]
   })
 
-  return Arr.matchLeft(errors, {
-    onEmpty: () => Option.none(),
-    onNonEmpty: (first) =>
-      Option.some(inaccessible.has(first.type ?? "") ? "NotFound" : "InvalidResponse"),
-  })
+  if (diagnostics.length === 0) return Option.none()
+
+  return Option.some(diagnostics.includes("InvalidResponse") ? "InvalidResponse" : "NotFound")
 }
 
 interface Batch {

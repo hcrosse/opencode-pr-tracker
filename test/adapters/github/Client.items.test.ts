@@ -4,6 +4,7 @@ import { Effect, Exit, Result, Schema } from "effect"
 
 import { PullRequestNode } from "../../../src/adapters/github/Response.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../../src/domain/PullRequest.ts"
+import type { Diagnostic } from "../../../src/domain/Snapshot.ts"
 import type { GitHubApi, ItemResult } from "../../../src/ports/GitHub.ts"
 import {
   httpClient,
@@ -39,17 +40,23 @@ describe("GitHub client failures of one pull request", () => {
     expect(results[1]).toEqual({ _tag: "Failed", diagnostic: "NotFound" })
   })
 
-  test("reports a GraphQL error that names no pull request against every one", async () => {
-    const http = httpClient(() =>
-      Response.json({ data: { pr0: recordedPullRequest }, errors: [{ type: "INTERNAL" }] }),
-    )
+  test.each([
+    ["an internal error", "INTERNAL"],
+    ["an inaccessible error", "FORBIDDEN"],
+  ])(
+    "reports %s that names no pull request as invalid for every one",
+    async (_name, type: string) => {
+      const http = httpClient(() =>
+        Response.json({ data: { pr0: recordedPullRequest }, errors: [{ type }] }),
+      )
 
-    const result = await runClient({ http }, (github: GitHubApi) => github.fetch([tracker127]))
+      const result = await runClient({ http }, (github: GitHubApi) => github.fetch([tracker127]))
 
-    expect(Exit.map(result, (results) => [...results.values()])).toEqual(
-      Exit.succeed([{ _tag: "Failed", diagnostic: "InvalidResponse" }]),
-    )
-  })
+      expect(Exit.map(result, (results) => [...results.values()])).toEqual(
+        Exit.succeed([{ _tag: "Failed", diagnostic: "InvalidResponse" }]),
+      )
+    },
+  )
 })
 
 describe("GitHub client failures in a pull request's data", () => {
@@ -96,13 +103,28 @@ const withNextPage = (cursor: string | null): PullRequestNode =>
     ),
   )
 
-const lastPage = {
+/** A later page of checks as GitHub returns it. */
+interface LaterPage {
+  readonly resource: {
+    readonly statusCheckRollup: {
+      readonly contexts: {
+        readonly nodes: readonly never[]
+        readonly pageInfo: { readonly endCursor: string | null; readonly hasNextPage: boolean }
+      }
+    }
+  }
+}
+
+/** A later page with no checks of its own; with a cursor, it claims more checks after it. */
+const laterPage = (cursor: string | null): LaterPage => ({
   resource: {
     statusCheckRollup: {
-      contexts: { nodes: [], pageInfo: { endCursor: null, hasNextPage: false } },
+      contexts: { nodes: [], pageInfo: { endCursor: cursor, hasNextPage: cursor !== null } },
     },
   },
-}
+})
+
+const lastPage = laterPage(null)
 
 /** The result for #127 when the first request answers with `first` and every later one with `later`. */
 async function resultFor(
@@ -120,27 +142,48 @@ async function resultFor(
   return result
 }
 
+interface PageCase {
+  readonly first: PullRequestNode
+  readonly later: () => Response
+  readonly diagnostic: Diagnostic
+}
+
 describe("GitHub client on further pages of checks", () => {
-  test("keeps the diagnostic of a further page that fails", async () => {
-    const result = await resultFor(
-      withNextPage("c1"),
-      () => new Response("bad gateway", { status: 502 }),
-    )
-
-    expect(result).toEqual(Exit.succeed({ _tag: "Failed", diagnostic: "GitHubUnavailable" }))
-  })
-
-  test("rejects a further page that carries GraphQL errors", async () => {
-    const result = await resultFor(withNextPage("c1"), () =>
-      Response.json({ data: lastPage, errors: [{ path: ["resource"], type: "INTERNAL" }] }),
-    )
-
-    expect(result).toEqual(Exit.succeed({ _tag: "Failed", diagnostic: "InvalidResponse" }))
-  })
-
-  test("rejects a page that claims more checks without a cursor to them", async () => {
-    const result = await resultFor(withNextPage(null), () => Response.json({ data: lastPage }))
-
-    expect(result).toEqual(Exit.succeed({ _tag: "Failed", diagnostic: "InvalidResponse" }))
+  test.each<readonly [string, PageCase]>([
+    [
+      "a later page that fails, keeping its diagnostic",
+      {
+        diagnostic: "GitHubUnavailable",
+        first: withNextPage("c1"),
+        later: (): Response => new Response("bad gateway", { status: 502 }),
+      },
+    ],
+    [
+      "a later page that carries GraphQL errors",
+      {
+        diagnostic: "InvalidResponse",
+        first: withNextPage("c1"),
+        later: (): Response =>
+          Response.json({ data: lastPage, errors: [{ path: ["resource"], type: "INTERNAL" }] }),
+      },
+    ],
+    [
+      "a page that claims more checks without a cursor to them",
+      {
+        diagnostic: "InvalidResponse",
+        first: withNextPage(null),
+        later: (): Response => Response.json({ data: lastPage }),
+      },
+    ],
+    [
+      "a later page that repeats the cursor it was fetched with",
+      {
+        diagnostic: "InvalidResponse",
+        first: withNextPage("c1"),
+        later: (): Response => Response.json({ data: laterPage("c1") }),
+      },
+    ],
+  ])("fails the pull request on %s", async (_name, { diagnostic, first, later }: PageCase) => {
+    expect(await resultFor(first, later)).toEqual(Exit.succeed({ _tag: "Failed", diagnostic }))
   })
 })
