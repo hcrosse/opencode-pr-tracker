@@ -8,9 +8,9 @@ import { requests, type Change, type Services, type Settings } from "./Requests.
 
 const options = { codemode: true, namespace: "pr", pinned: true } as const
 
-/** A pull request URL or number. Agents may pass a number as a JSON number or a string. */
+/** A pull request URL or number. Agents may pass the number as text or as a JSON integer. */
 export const PullRequestArgument = Schema.Struct({
-  pull_request: Schema.Union([Schema.String, Schema.Number]).annotate({
+  pull_request: Schema.Union([Schema.String, Schema.Int]).annotate({
     description:
       "A pull request URL, such as github.com/owner/repository/pull/123, or a number in this repository",
   }),
