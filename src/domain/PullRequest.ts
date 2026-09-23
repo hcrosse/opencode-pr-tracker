@@ -7,6 +7,9 @@ const pullRequestUrl =
 
 const decimal = /^\d+$/u
 
+/** Printable ASCII only. With the `u` and `i` flags, `\w` also matches letters that fold to ASCII. */
+const printableAscii = /^[\u0021-\u007E]*$/u
+
 export const Segment = Schema.String.check(Schema.isPattern(canonicalSegment))
 
 export const PullRequestNumber = Schema.Int.check(
@@ -58,7 +61,7 @@ export function samePullRequest(left: PullRequestRef, right: PullRequestRef): bo
 export function parsePullRequestUrl(
   input: string,
 ): Result.Result<PullRequestRef, InvalidPullRequestUrl> {
-  const match = pullRequestUrl.exec(input)
+  const match = printableAscii.test(input) ? pullRequestUrl.exec(input) : null
   const groups = match === null ? {} : (match.groups ?? {})
 
   const candidate = {

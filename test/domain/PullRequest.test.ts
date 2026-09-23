@@ -100,6 +100,14 @@ describe("parsePullRequestUrl rejects and formats", () => {
     })
   })
 
+  // With the `u` and `i` flags, `\w` matches characters that case-fold to ASCII, such as U+212A.
+  test.each([
+    ["the Kelvin sign", "https://github.com/\u212A/acme/pull/1"],
+    ["a long s", "https://github.com/acme/\u017Fite/pull/1"],
+  ])("rejects %s, which folds to an ASCII letter", (_name, url: string) => {
+    expect(Result.isFailure(parsePullRequestUrl(url))).toBe(true)
+  })
+
   test("formats a canonical URL and label", () => {
     const ref = Result.getOrThrow(
       parsePullRequestUrl("https://GITHUB.COM/OpenCode-AI/OpenCode/pull/00042"),
