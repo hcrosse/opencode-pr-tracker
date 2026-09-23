@@ -1,0 +1,244 @@
+{
+  "exchanges": [
+    {
+      "response": {
+        "data": {
+          "pr0": {
+            "__typename": "PullRequest",
+            "url": "https://github.com/kubernetes/kubernetes/pull/142335",
+            "title": "feat(scheduler): implement caching mechanism for inter-pod affinity and topology spread plugins",
+            "state": "OPEN",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "BLOCKED",
+            "stack": null,
+            "statusCheckRollup": {
+              "contexts": {
+                "totalCount": 13,
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "MTM"
+                },
+                "nodes": [
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-linter-hints",
+                    "state": "FAILURE",
+                    "createdAt": "2026-09-23T08:21:51Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-verify",
+                    "state": "FAILURE",
+                    "createdAt": "2026-09-23T08:37:02Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "tide",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T08:12:25Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "EasyCLA",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:11:47Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-cmd",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:21:07Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-conformance-kind-ga-only-parallel",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:27:13Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-dependencies",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:13:32Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-e2e-gce",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:57:01Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-e2e-kind",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:38:38Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-integration",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:44:16Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-node-e2e-containerd",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:51:54Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-typecheck",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:14:04Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-unit",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T08:35:12Z"
+                  }
+                ]
+              }
+            }
+          },
+          "pr1": {
+            "__typename": "PullRequest",
+            "url": "https://github.com/kubernetes/kubernetes/pull/142334",
+            "title": "volume: cap recycler timeout at math.MaxInt32",
+            "state": "OPEN",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "BLOCKED",
+            "stack": null,
+            "statusCheckRollup": {
+              "contexts": {
+                "totalCount": 18,
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "MTg"
+                },
+                "nodes": [
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-cmd",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:20Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-conformance-kind-ga-only-parallel",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:20Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-dependencies",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:24Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-e2e-gce",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:22Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-e2e-gce-csi-serial",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:22Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-e2e-gce-storage-slow",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:21Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-e2e-gce-storage-snapshot",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:22Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-e2e-kind",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:20Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-e2e-storage-kind-disruptive",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:23Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-e2e-storage-kind-vac",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:23Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-integration",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:24Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-linter-hints",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:24Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-node-e2e-containerd",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:21Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-typecheck",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:23Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-unit",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:21Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "pull-kubernetes-verify",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T15:11:23Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "tide",
+                    "state": "PENDING",
+                    "createdAt": "2026-09-23T02:18:24Z"
+                  },
+                  {
+                    "__typename": "StatusContext",
+                    "context": "EasyCLA",
+                    "state": "SUCCESS",
+                    "createdAt": "2026-09-23T02:17:15Z"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "variables": {
+        "pr0": "https://github.com/kubernetes/kubernetes/pull/142335",
+        "pr1": "https://github.com/kubernetes/kubernetes/pull/142334"
+      }
+    }
+  ],
+  "pageSize": 100,
+  "recordedAt": "2026-09-23T15:12:30.411Z"
+}

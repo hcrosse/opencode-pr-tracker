@@ -53,8 +53,8 @@
     "eslint/max-lines": ["error", { "max": 250, "skipBlankLines": false, "skipComments": false }],
     // Effect pairs a schema value with a type of the same name; TypeScript reports real redeclarations.
     "eslint/no-redeclare": "off",
-    // Effect tagged unions discriminate on `_tag`.
-    "eslint/no-underscore-dangle": ["error", { "allow": ["_tag"] }],
+    // Effect tagged unions discriminate on `_tag`; GitHub GraphQL responses on `__typename`.
+    "eslint/no-underscore-dangle": ["error", { "allow": ["_tag", "__typename"] }],
     "eslint/max-lines-per-function": [
       "error",
       {
@@ -66,12 +66,17 @@
     ],
     "eslint/max-params": ["error", { "countThis": "except-void", "max": 3 }],
     "oxc/no-accumulating-spread": "error",
-    // Effect data types expose methods such as `pipe`, and Hegel's TestCase is a library class.
+    // Effect values and requests are immutable data that expose methods such as `pipe`; Hegel's
+    // TestCase is a library class.
     "typescript/prefer-readonly-parameter-types": [
       "error",
       {
         "allow": [
-          { "from": "package", "name": ["Option", "Some", "None"], "package": "effect" },
+          {
+            "from": "package",
+            "name": ["Effect", "Layer", "Option", "Some", "None", "HttpClientRequest"],
+            "package": "effect",
+          },
           { "from": "package", "name": "TestCase", "package": "@hegeldev/hegel" },
         ],
         "treatMethodsAsReadonly": true,
@@ -87,8 +92,8 @@
       "rules": { "eslint/no-console": "off" },
     },
     {
-      // A domain module declares its Schema class together with the tagged errors it returns.
-      "files": ["src/domain/**"],
+      // A module declares its Schema or service class together with the tagged errors it returns.
+      "files": ["src/**"],
       "rules": { "eslint/max-classes-per-file": "off" },
     },
   ],
