@@ -3,7 +3,8 @@ import { describe, expect, test } from "bun:test"
 import * as hegel from "@hegeldev/hegel"
 import * as gs from "@hegeldev/hegel/generators"
 
-import { classifyCi, type Check, type CheckOutcome, type Ci } from "../../src/domain/Checks.ts"
+import { classifyCi, type Check, type CheckOutcome } from "../../src/domain/Checks.ts"
+import type { Ci } from "../../src/domain/Snapshot.ts"
 
 const outcomes = gs.sampledFrom<CheckOutcome>(["passed", "pending", "failed", "ignored"])
 

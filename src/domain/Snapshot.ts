@@ -4,6 +4,8 @@ import { PullRequestRef } from "./PullRequest.ts"
 
 export const Ci = Schema.Literals(["passed", "pending", "failed", "none"])
 
+export type Ci = typeof Ci.Type
+
 export const Mergeability = Schema.Literals(["mergeable", "conflicting", "unknown"])
 
 export const PullRequestState = Schema.Union([

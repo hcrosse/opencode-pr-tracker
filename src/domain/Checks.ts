@@ -1,6 +1,6 @@
 import { Array as Arr, Option, Order } from "effect"
 
-export type Ci = "passed" | "pending" | "failed" | "none"
+import type { Ci } from "./Snapshot.ts"
 
 export type CheckOutcome = "passed" | "pending" | "failed" | "ignored"
 

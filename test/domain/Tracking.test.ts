@@ -12,6 +12,7 @@ import {
   maximumAttachments,
   type Tracking,
 } from "../../src/domain/Tracking.ts"
+import type { Stack } from "../support/stacks.ts"
 
 /** Few repositories and numbers, so operations collide: duplicates, overlaps, shared numbers. */
 const pooledRefs = gs.composite((tc) => {
@@ -20,8 +21,6 @@ const pooledRefs = gs.composite((tc) => {
 
   return Result.getOrThrow(parsePullRequestUrl(`github.com/${repository}/pull/${String(number)}`))
 })
-
-type Stack = readonly [PullRequestRef, ...PullRequestRef[]]
 
 type Operation =
   | { readonly kind: "attach"; readonly stack: Stack }

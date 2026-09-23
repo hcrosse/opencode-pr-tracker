@@ -1,4 +1,4 @@
-import { Result, Schema } from "effect"
+import { Option, Result, Schema } from "effect"
 
 const canonicalSegment = /^(?!\.{1,2}$)[a-z0-9._-]+$/u
 
@@ -78,7 +78,7 @@ export function parsePullRequestInput(
   if (Result.isSuccess(reference))
     return Result.succeed({ _tag: "Reference", ref: reference.success })
 
-  const number = decimal.test(input) ? decodeNumber(Number(input)) : decodeNumber(null)
+  const number = decimal.test(input) ? decodeNumber(Number(input)) : Option.none()
 
   return Result.fromOption(number, () => new InvalidPullRequestInput({ input })).pipe(
     Result.map((value) => ({ _tag: "Number", number: value })),

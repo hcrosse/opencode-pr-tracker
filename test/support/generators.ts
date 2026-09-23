@@ -2,7 +2,13 @@ import * as gs from "@hegeldev/hegel/generators"
 import { Result } from "effect"
 
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
-import type { Diagnostic, PullRequestState, Snapshot } from "../../src/domain/Snapshot.ts"
+import {
+  Ci,
+  Diagnostic,
+  Mergeability,
+  type PullRequestState,
+  type Snapshot,
+} from "../../src/domain/Snapshot.ts"
 
 const segmentAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
 
@@ -46,9 +52,9 @@ export const pullRequestRefs: gs.Generator<PullRequestRef> = urlParts.map((parts
   ),
 )
 
-const ci = gs.sampledFrom(["passed", "pending", "failed", "none"] as const)
+const ci = gs.sampledFrom(Ci.literals)
 
-const mergeability = gs.sampledFrom(["mergeable", "conflicting", "unknown"] as const)
+const mergeability = gs.sampledFrom(Mergeability.literals)
 
 export const pullRequestStates: gs.Generator<PullRequestState> = gs.oneOf<PullRequestState>(
   gs.record({
@@ -68,10 +74,4 @@ export const snapshots: gs.Generator<Snapshot> = gs.record({
   title: gs.text(),
 })
 
-export const diagnostics = gs.sampledFrom<Diagnostic>([
-  "GitHubCliMissing",
-  "AuthenticationRequired",
-  "GitHubUnavailable",
-  "NotFound",
-  "InvalidResponse",
-])
+export const diagnostics = gs.sampledFrom<Diagnostic>(Diagnostic.literals)

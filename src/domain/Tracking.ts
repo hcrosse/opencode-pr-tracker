@@ -36,12 +36,6 @@ function isMember(stack: readonly PullRequestRef[], attachment: Attachment): boo
   return stack.some((ref) => samePullRequest(ref, attachment.ref))
 }
 
-function identity(tracking: Tracking): string {
-  return tracking
-    .map((attachment) => `${attachment.ref.url} ${String(attachment.attachedAt)}`)
-    .join("\n")
-}
-
 /**
  * Attaches every member of a stack, bottom to top. A single pull request is a stack of one.
  * Members are placed together where the earliest of them was already attached, or at the end.
@@ -71,7 +65,12 @@ export function attach(
 
   const next = [...others.slice(0, insertAt), ...placed, ...others.slice(insertAt)]
 
-  return Result.succeed({ changed: identity(tracking) !== identity(next), tracking: next })
+  // Existing attachments are reused as they are, so any change shows as a different element.
+  const changed =
+    next.length !== tracking.length ||
+    next.some((attachment, index) => attachment !== tracking[index])
+
+  return Result.succeed({ changed, tracking: next })
 }
 
 export function detach(tracking: Tracking, ref: PullRequestRef): Removal {
