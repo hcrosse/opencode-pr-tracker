@@ -1,17 +1,26 @@
-import solidPlugin from "@opentui/solid/bun-plugin"
 import { rm } from "node:fs/promises"
 
+import solidPlugin from "@opentui/solid/bun-plugin"
+
 const outdir = "./dist"
-await rm(outdir, { recursive: true, force: true })
+
+await rm(outdir, { force: true, recursive: true })
 
 const result = await Bun.build({
-  entrypoints: ["./src/server.ts", "./src/tui.tsx"],
-  outdir,
-  target: "bun",
+  entrypoints: ["./src/server.ts"],
+  external: [
+    "@opencode/plugin",
+    "@opentui/core",
+    "@opentui/solid",
+    "solid-js",
+    "effect",
+    "@effect/platform-node",
+  ],
   format: "esm",
-  sourcemap: "external",
-  external: ["@opencode-ai/plugin", "@opencode-ai/plugin/tui", "@opentui/core", "@opentui/solid", "solid-js"],
+  outdir,
   plugins: [solidPlugin],
+  sourcemap: "external",
+  target: "bun",
 })
 
 if (!result.success) {
@@ -19,6 +28,4 @@ if (!result.success) {
   throw new Error("Failed to build OpenCode PR Tracker")
 }
 
-for (const output of result.outputs) {
-  console.log(`${output.path} ${output.size} bytes`)
-}
+for (const output of result.outputs) console.log(`${output.path} ${output.size} bytes`)

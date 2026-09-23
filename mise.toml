@@ -1,0 +1,8 @@
+[tools]
+bun = "1.4.2"
+prek = "latest"
+"aqua:charmbracelet/freeze" = "latest"
+
+[tasks.setup]
+description = "Resolve dependencies and install Git hooks"
+run = ["bun install", "UV_NO_BUILD=false prek install --prepare-hooks"]

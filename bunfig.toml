@@ -5,9 +5,36 @@ env = false
 auto = "disable"
 exact = true
 ignoreScripts = true
-peer = false
+peer = true
 minimumReleaseAge = 604800
-minimumReleaseAgeExcludes = []
+# OpenCode V2 ships almost daily. The OpenCode plugin API and the Effect release it pins are
+# exempt so the plugin can track the current OpenCode release. Remove an entry once its pinned
+# version is older than seven days.
+minimumReleaseAgeExcludes = [
+  "@opencode/plugin",
+  "@opencode/cli",
+  "@opencode/cli-linux-x64",
+  "@opencode/cli-darwin-x64",
+  "@opencode/cli-linux-arm64",
+  "@opencode/cli-windows-x64",
+  "@opencode/cli-darwin-arm64",
+  "@opencode/cli-windows-arm64",
+  "@opencode/cli-linux-x64-musl",
+  "@opencode/cli-linux-arm64-musl",
+  "@opencode/cli-linux-x64-baseline",
+  "@opencode/cli-darwin-x64-baseline",
+  "@opencode/cli-windows-x64-baseline",
+  "@opencode/cli-linux-x64-baseline-musl",
+  "@opencode/ai",
+  "@opencode/client",
+  "@opencode/protocol",
+  "@opencode/schema",
+  "@opencode/util",
+  "@opencode/theme",
+  "effect",
+  "@effect/platform-node",
+  "@effect/platform-node-shared",
+]
 linker = "isolated"
 hoist = false
 saveTextLockfile = true

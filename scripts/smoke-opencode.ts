@@ -1,318 +1,209 @@
-import { spawn } from "node:child_process"
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
-import { createServer } from "node:net"
-import { tmpdir } from "node:os"
-import { basename, join, resolve } from "node:path"
-import { pathToFileURL } from "node:url"
-import type { Readable } from "node:stream"
+import { NodeRuntime, NodeServices } from "@effect/platform-node"
+import {
+  Array as Arr,
+  Duration,
+  Effect,
+  FileSystem,
+  Option,
+  Path,
+  Schedule,
+  Schema,
+  Stream,
+} from "effect"
+import {
+  FetchHttpClient,
+  HttpClient,
+  HttpClientRequest,
+  HttpClientResponse,
+} from "effect/unstable/http"
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
-import { runCommand as run } from "./run-command.js"
+import packageManifest from "../package.json" with { type: "json" }
 
-async function readStream(stream: Readable): Promise<string> {
-  stream.setEncoding("utf8")
-  let output = ""
-  for await (const chunk of stream) {
-    if (typeof chunk !== "string") throw new Error("Process emitted non-text output")
-    output += chunk
-  }
-  return output
-}
+const pluginID = "opencode-pr-tracker"
 
-async function availablePort(): Promise<number> {
-  return await new Promise((resolvePort, reject) => {
-    const server = createServer()
-    server.once("error", reject)
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address()
-      if (address === null || typeof address === "string") {
-        server.close()
-        reject(new Error("Unable to allocate a local port"))
-        return
-      }
-      server.close((error) => {
-        if (error) reject(error)
-        else resolvePort(address.port)
-      })
-    })
-  })
-}
+const PluginEntry = Schema.Struct({
+  // A plugin that fails while importing has no ID yet; its source path identifies it.
+  id: Schema.optional(Schema.String),
+  source: Schema.Struct({ path: Schema.optional(Schema.String) }),
+  state: Schema.Struct({ error: Schema.optional(Schema.String), status: Schema.String }),
+})
 
-async function waitForServer(url: string, child: ReturnType<typeof spawn>): Promise<void> {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode !== null || child.signalCode !== null) {
-      throw new Error(`OpenCode server exited with code ${child.exitCode ?? child.signalCode}`)
-    }
-    try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(1_000) })
-      if (response.ok) return
-    } catch {
-      // The server may refuse connections while it initializes the plugin.
-    }
-    await Bun.sleep(250)
-  }
-  throw new Error("OpenCode server did not become healthy within 30 seconds")
-}
+const PluginList = Schema.Struct({ data: Schema.Array(PluginEntry) })
 
-async function stopServer(child: ReturnType<typeof spawn>, exited: Promise<void>): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    await exited
-    return
-  }
-  child.kill("SIGTERM")
-  const stopped = await Promise.race([exited.then(() => true), Bun.sleep(5_000).then(() => false)])
-  if (stopped) return
-  child.kill("SIGKILL")
-  await exited
-}
+const ServerAddress = Schema.Struct({ password: Schema.String, url: Schema.String })
 
-function assertTools(value: unknown): void {
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
-    throw new Error("OpenCode returned an invalid tool ID response")
-  }
-  for (const tool of ["pr_list", "pr_attach", "pr_detach", "pr_feedback"]) {
-    if (!value.includes(tool)) throw new Error(`OpenCode did not register ${tool}`)
-  }
-}
+type ServerAddress = typeof ServerAddress.Type
 
-function assertPluginConfig(value: unknown, expectedPlugin: string): void {
-  if (value === null || typeof value !== "object" || !("plugin" in value)) {
-    throw new Error("OpenCode generated an invalid TUI config")
-  }
-  const plugins = value.plugin
-  if (!Array.isArray(plugins) || !plugins.includes(expectedPlugin)) {
-    throw new Error("OpenCode did not install the TUI plugin")
-  }
-}
+const addressPattern = /server listening on (?<url>\S+)\s+server password (?<password>\S+)/u
 
-function packageVersion(value: unknown): string {
-  if (value === null || typeof value !== "object" || !("version" in value) || typeof value.version !== "string") {
-    throw new Error("Installed OpenCode package has an invalid manifest")
-  }
-  return value.version
-}
+const run = Effect.fn("run")(function* (command: string, args: readonly string[], cwd: string) {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+  const options = { cwd, stderr: "inherit", stdout: "inherit" } as const
 
-const tuiSmoke = String.raw`
-import { join } from "node:path"
-import { pathToFileURL } from "node:url"
-
-const moduleUrl = pathToFileURL(join(process.env.PLUGIN_ROOT, "dist/tui.js")).href
-const plugin = (await import(moduleUrl)).default
-const layers = []
-const disposers = []
-let slots
-
-await plugin.tui(
-  {
-    keymap: {
-      registerLayer(layer) {
-        layers.push(layer)
-        return () => undefined
-      },
-    },
-    slots: {
-      register(value) {
-        slots = value.slots
-        return "opencode-pr-tracker-smoke"
-      },
-    },
-    lifecycle: {
-      signal: new AbortController().signal,
-      onDispose(disposer) {
-        disposers.push(disposer)
-        return () => undefined
-      },
-    },
-    event: {
-      on() {
-        return () => undefined
-      },
-    },
-  },
-  undefined,
-  { source: "file" },
-)
-
-const commands = new Map(
-  layers.flatMap((layer) => layer.commands ?? []).map(({ name, slashName }) => [name, slashName]),
-)
-const expected = [
-  { name: "pr.attach", slashName: "pr-attach" },
-  { name: "pr.open", slashName: "pr-open" },
-  { name: "pr.detach", slashName: "pr-detach" },
-  { name: "pr.sync", slashName: "pr-sync" },
-  { name: "pr.tracker.plugin.update", slashName: "pr-tracker-plugin-update" },
-]
-for (const command of expected) {
-  if (commands.get(command.name) !== command.slashName) {
-    throw new Error("Missing TUI command: " + JSON.stringify(command))
-  }
-}
-if (typeof slots?.sidebar_content !== "function" || disposers.length !== 1) {
-  throw new Error("TUI plugin initialization was incomplete")
-}
-`
-
-const repositoryRoot = resolve(import.meta.dir, "..")
-const npmInstallTimeoutMs = 120_000
-const { SMOKE_OPENCODE_VERSION: opencodeRelease = "1.x", ...processEnvironment } = process.env
-const temporaryRoot = await mkdtemp(join(tmpdir(), "opencode-pr-tracker-smoke-"))
-
-try {
-  const packageDirectory = join(temporaryRoot, "package")
-  const installDirectory = join(temporaryRoot, "install")
-  const opencodeDirectory = join(temporaryRoot, "opencode")
-  const projectDirectory = join(temporaryRoot, "project")
-  const homeDirectory = join(temporaryRoot, "home")
-  const configDirectory = join(temporaryRoot, "config")
-  const dataDirectory = join(temporaryRoot, "data")
-  const cacheDirectory = join(temporaryRoot, "cache")
-  await Promise.all(
-    [
-      packageDirectory,
-      installDirectory,
-      opencodeDirectory,
-      projectDirectory,
-      homeDirectory,
-      configDirectory,
-      dataDirectory,
-      cacheDirectory,
-    ].map((directory) => mkdir(directory, { recursive: true })),
-  )
-
-  await run(process.execPath, ["run", "build"], { cwd: repositoryRoot, label: "build package" })
-  const packOutput = await run("npm", ["pack", "--silent", "--pack-destination", packageDirectory], {
-    cwd: repositoryRoot,
-    label: "pack distribution",
-  })
-  const packedNames = packOutput.split(/\r?\n/).filter((line) => line.endsWith(".tgz") && basename(line) === line)
-  if (packedNames.length !== 1) {
-    throw new Error(`npm pack returned unexpected output: ${packOutput}`)
-  }
-  const packedName = packedNames[0]
-  if (packedName === undefined) throw new Error("npm pack did not return a package filename")
-  const packedPath = join(packageDirectory, packedName)
-
-  await run("npm", ["install", "--no-audit", "--no-fund", "--prefix", installDirectory, packedPath], {
-    label: "install distribution",
-    timeoutMs: npmInstallTimeoutMs,
-  })
-  await run(
-    "npm",
-    [
-      "install",
-      "--ignore-scripts",
-      "--no-audit",
-      "--no-fund",
-      "--prefix",
-      opencodeDirectory,
-      `opencode-ai@${opencodeRelease}`,
-    ],
-    { label: `install opencode-ai@${opencodeRelease}`, timeoutMs: npmInstallTimeoutMs },
-  )
-  await run("node", [join(opencodeDirectory, "node_modules", "opencode-ai", "postinstall.mjs")], {
-    label: "prepare OpenCode launcher",
-  })
-
-  const opencodeBinary = join(opencodeDirectory, "node_modules", ".bin", "opencode")
-  const pluginRoot = join(installDirectory, "node_modules", "@hcrosse", "opencode-pr-tracker")
-  const isolatedEnvironment = {
-    ...processEnvironment,
-    HOME: homeDirectory,
-    XDG_CONFIG_HOME: configDirectory,
-    XDG_DATA_HOME: dataDirectory,
-    XDG_CACHE_HOME: cacheDirectory,
-    OPENCODE_DISABLE_AUTOUPDATE: "true",
-    OPENCODE_DISABLE_LSP_DOWNLOAD: "true",
-    OPENCODE_DISABLE_MODELS_FETCH: "true",
-  }
-
-  const opencodePackageSource = await readFile(
-    join(opencodeDirectory, "node_modules", "opencode-ai", "package.json"),
-    "utf8",
-  )
-  const opencodePackage: unknown = JSON.parse(opencodePackageSource)
-  const installedVersion = packageVersion(opencodePackage)
-  for (const [label, directory] of [
-    ["prepare global OpenCode config", join(configDirectory, "opencode")],
-    ["prepare project OpenCode config", join(projectDirectory, ".opencode")],
-  ] as const) {
-    await run(
-      "npm",
-      [
-        "install",
-        "--ignore-scripts",
-        "--no-audit",
-        "--no-fund",
-        "--prefix",
-        directory,
-        `@opencode-ai/plugin@${installedVersion}`,
-      ],
-      { label, timeoutMs: npmInstallTimeoutMs },
+  return yield* spawner
+    .exitCode(ChildProcess.make(command, args, options))
+    .pipe(
+      Effect.flatMap((code) =>
+        code === 0 ? Effect.void : Effect.die(`${command} ${args.join(" ")} exited with ${code}`),
+      ),
     )
-  }
-  const opencodeCliVersion = await run(opencodeBinary, ["--version"], {
-    env: isolatedEnvironment,
-    label: "read OpenCode version",
-  })
-  console.log(`Testing opencode-ai ${installedVersion} (CLI ${opencodeCliVersion})`)
-  const pluginUrl = pathToFileURL(pluginRoot).href
-  await run(opencodeBinary, ["plugin", pluginUrl], {
-    cwd: projectDirectory,
-    env: isolatedEnvironment,
-    label: "register plugin",
-  })
-  const tuiConfigSource = await readFile(join(projectDirectory, ".opencode", "tui.json"), "utf8")
-  const tuiConfig: unknown = JSON.parse(tuiConfigSource)
-  assertPluginConfig(tuiConfig, pluginUrl)
+})
 
-  const port = await availablePort()
-  const serverStartedAt = performance.now()
-  console.log("[smoke] start OpenCode server")
-  const server = spawn(
-    opencodeBinary,
-    ["--print-logs", "--log-level", "DEBUG", "serve", "--hostname", "127.0.0.1", "--port", String(port)],
-    {
-      cwd: projectDirectory,
-      env: isolatedEnvironment,
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  )
-  const serverExited = new Promise<void>((resolveExit, reject) => {
-    server.once("error", reject)
-    server.once("exit", () => resolveExit())
-  })
-  const serverStdout = readStream(server.stdout)
-  const serverStderr = readStream(server.stderr)
-  let serverFailure: unknown
-  try {
-    await waitForServer(`http://127.0.0.1:${port}/global/health`, server)
-    console.log(`[smoke] OpenCode server ready in ${((performance.now() - serverStartedAt) / 1000).toFixed(1)}s`)
-    const toolIdsStartedAt = performance.now()
-    console.log("[smoke] load plugin tool IDs")
-    const response = await fetch(
-      `http://127.0.0.1:${port}/experimental/tool/ids?directory=${encodeURIComponent(projectDirectory)}`,
-      { signal: AbortSignal.timeout(60_000) },
+const opencodeBinary = Effect.fn("opencodeBinary")(function* () {
+  const override = process.env["OPENCODE_BIN"] ?? ""
+
+  if (override !== "") return override
+
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const cli = path.dirname(Bun.resolveSync("@opencode/cli/package.json", import.meta.dir))
+  const platform = process.platform === "win32" ? "windows" : process.platform
+  const base = `@opencode/cli-${platform}-${process.arch}`
+
+  for (const suffix of ["", "-baseline", "-musl", "-baseline-musl"]) {
+    const manifest = yield* Effect.option(
+      Effect.try(() => Bun.resolveSync(`${base}${suffix}/package.json`, cli)),
     )
-    if (!response.ok) throw new Error(`OpenCode tool endpoint returned HTTP ${response.status}`)
-    assertTools(await response.json())
-    console.log(`[smoke] plugin tool IDs loaded in ${((performance.now() - toolIdsStartedAt) / 1000).toFixed(1)}s`)
-  } catch (error) {
-    serverFailure = error
-  } finally {
-    await stopServer(server, serverExited)
-  }
-  const [stdout, stderr] = await Promise.all([serverStdout, serverStderr])
-  if (serverFailure) {
-    console.error(stdout)
-    console.error(stderr)
-    throw serverFailure
+
+    const binary = Option.map(manifest, (found) =>
+      path.join(path.dirname(found), "bin", "opencode"),
+    )
+
+    if (Option.isSome(binary) && (yield* fs.exists(binary.value))) return binary.value
   }
 
-  await run(process.execPath, ["-e", tuiSmoke], {
-    env: { ...isolatedEnvironment, PLUGIN_ROOT: pluginRoot },
-    label: "initialize TUI plugin",
-  })
-  console.log("OpenCode server and TUI plugin smoke checks passed")
-} finally {
-  await rm(temporaryRoot, { recursive: true, force: true })
+  return yield* Effect.die(`No OpenCode binary for ${base}`)
+})
+
+const preparePackage = Effect.fn("preparePackage")(function* (root: string, runDirectory: string) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const project = path.join(runDirectory, "project")
+
+  yield* run("npm", ["pack", "--ignore-scripts", "--pack-destination", runDirectory], root)
+
+  const tarball = Arr.findFirst(yield* fs.readDirectory(runDirectory), (name) =>
+    name.endsWith(".tgz"),
+  )
+
+  const dependencies = {
+    [packageManifest.name]: `file:${path.join(
+      runDirectory,
+      Option.getOrElse(tarball, () => ""),
+    )}`,
+  }
+
+  const config = { plugins: [`../node_modules/${packageManifest.name}`] }
+
+  yield* fs.makeDirectory(path.join(project, ".opencode"), { recursive: true })
+  yield* fs.copyFile(path.join(root, "bunfig.toml"), path.join(project, "bunfig.toml"))
+  yield* fs.writeFileString(path.join(project, "package.json"), JSON.stringify({ dependencies }))
+  yield* fs.writeFileString(
+    path.join(project, ".opencode", "opencode.json"),
+    JSON.stringify(config),
+  )
+  yield* run("bun", ["install"], project)
+
+  return project
+})
+
+function parseAddress(output: string): Option.Option<ServerAddress> {
+  const match = addressPattern.exec(output)
+
+  return Schema.decodeUnknownOption(ServerAddress)(match === null ? null : match.groups)
 }
+
+const startServer = Effect.fn("startServer")(function* (binary: string, runDirectory: string) {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+  const home = `${runDirectory}/home`
+
+  // Isolate OpenCode from the developer's configuration, credentials, and data.
+  const env = {
+    HOME: home,
+    PATH: process.env["PATH"] ?? "",
+    XDG_CACHE_HOME: `${home}/.cache`,
+    XDG_CONFIG_HOME: `${home}/.config`,
+    XDG_DATA_HOME: `${home}/.local/share`,
+    XDG_STATE_HOME: `${home}/.local/state`,
+  }
+
+  const args = ["serve", "--hostname", "127.0.0.1", "--port", "0"]
+
+  const handle = yield* spawner.spawn(
+    ChildProcess.make(binary, args, { cwd: runDirectory, env, stderr: "inherit" }),
+  )
+
+  const address = yield* handle.stdout.pipe(
+    Stream.decodeText(),
+    Stream.scan("", (output, chunk) => output + chunk),
+    Stream.map(parseAddress),
+    Stream.filter(Option.isSome),
+    Stream.runHead,
+    Effect.map(Option.flatten),
+  )
+
+  return yield* Option.match(address, {
+    onNone: () => Effect.die("opencode serve exited before reporting its address"),
+    onSome: Effect.succeed,
+  })
+})
+
+const pluginState = Effect.fn("pluginState")(function* (
+  url: string,
+  password: string,
+  project: string,
+) {
+  const client = yield* HttpClient.HttpClient
+
+  const request = HttpClientRequest.get(`${url}/api/plugin`).pipe(
+    HttpClientRequest.setUrlParam("location[directory]", project),
+    HttpClientRequest.basicAuth("opencode", password),
+  )
+
+  const response = yield* client.execute(request)
+
+  const { body: list } = yield* HttpClientResponse.schemaJson(Schema.Struct({ body: PluginList }))(
+    response,
+  )
+
+  const entry = Arr.findFirst(
+    list.data,
+    (plugin) => plugin.id === pluginID || (plugin.source.path ?? "").endsWith(packageManifest.name),
+  )
+
+  return Option.match(entry, {
+    onNone: () => "absent",
+    onSome: (plugin) => [plugin.state.status, plugin.state.error ?? ""].filter(Boolean).join(": "),
+  })
+})
+
+const smoke = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const root = path.join(import.meta.dir, "..")
+  const runDirectory = yield* fs.makeTempDirectoryScoped({ prefix: "opencode-pr-tracker-smoke-" })
+  const binary = yield* opencodeBinary()
+  const project = yield* preparePackage(root, runDirectory)
+  const { password, url } = yield* startServer(binary, runDirectory)
+
+  yield* pluginState(url, password, project).pipe(
+    Effect.orDie,
+    // Retry while the plugin is absent or loading; stop as soon as it has failed.
+    Effect.filterOrFail(
+      (state) => state === "active",
+      (state) => state,
+    ),
+    Effect.retry({
+      schedule: Schedule.spaced(Duration.millis(500)),
+      times: 180,
+      until: (state) => state.startsWith("failed"),
+    }),
+    Effect.mapError((state) => new Error(`Plugin ${pluginID} did not become active: ${state}`)),
+  )
+  yield* Effect.logInfo(`${pluginID} is active`)
+})
+
+NodeRuntime.runMain(
+  smoke.pipe(Effect.scoped, Effect.provide([NodeServices.layer, FetchHttpClient.layer])),
+)
