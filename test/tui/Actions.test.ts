@@ -111,10 +111,10 @@ describe("attach dialog", () => {
     expect(setup.terminal.notices).toEqual([])
   })
 
-  test("attaches the answer to the dialog", async () => {
+  test("attaches the answer to the dialog, trimmed", async () => {
     const setup = world()
 
-    setup.terminal.answer("github.com/acme/api/pull/7")
+    setup.terminal.answer("  github.com/acme/api/pull/7 ")
     await setup.run((commands) => commands.attach(Option.none()))
 
     expect(setup.tracker.calls).toEqual(["attach ses_test github.com/acme/api/pull/7"])

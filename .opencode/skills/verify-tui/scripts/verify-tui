@@ -116,7 +116,8 @@ plugin_configured() {
     "$RUN_DIR/project/.opencode/opencode.json" "$ROOT"
 }
 build_current() {
-  [[ -z $(find "$ROOT/src" -type f -newer "$ROOT/dist/tui.js") ]] &&
+  [[ -f $ROOT/dist/tui.js && -f $ROOT/dist/server.js ]] &&
+    [[ -z $(find "$ROOT/src" -type f -newer "$ROOT/dist/tui.js") ]] &&
     [[ -z $(find "$ROOT/src" -type f -newer "$ROOT/dist/server.js") ]]
 }
 home_isolated() { [[ -d $RUN_DIR/home/.local/share/opencode ]]; }

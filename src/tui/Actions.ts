@@ -133,17 +133,20 @@ function syncedNotice(view: View): Option.Option<Notice> {
   )
 }
 
+/** What was typed after the command or into the dialog, without surrounding whitespace. */
+const typedTarget = (text: string): Option.Option<string> =>
+  Option.filter(Option.some(text.trim()), (trimmed) => trimmed !== "")
+
 function attach(services: Services, input: Option.Option<string>): Effect.Effect<void> {
   const { terminal, tracker } = services
 
-  const given = Option.filter(
-    Option.map(input, (text) => text.trim()),
-    (text) => text !== "",
-  )
-
   return inSession(terminal, (sessionID) =>
-    Option.match(given, {
-      onNone: () => terminal.prompt("Attach pull request", placeholder),
+    Option.match(Option.flatMap(input, typedTarget), {
+      onNone: () =>
+        Effect.map(
+          terminal.prompt("Attach pull request", placeholder),
+          Option.flatMap(typedTarget),
+        ),
       onSome: (text) => Effect.succeedSome(text),
     }).pipe(
       Effect.flatMap(
