@@ -8,9 +8,14 @@ import { requests, type Change, type Services, type Settings } from "./Requests.
 
 const options = { codemode: true, namespace: "pr", pinned: true } as const
 
-/** A pull request URL or number. Agents may pass the number as text or as a JSON integer. */
+/**
+ * A pull request URL or number. Agents may pass the number as text or as a JSON number.
+ *
+ * OpenCode validates tool input with its own copy of effect, where checks such as `Schema.Int`
+ * reject every value, so tool input schemas use only unchecked types and the tracker validates.
+ */
 export const PullRequestArgument = Schema.Struct({
-  pull_request: Schema.Union([Schema.String, Schema.Int]).annotate({
+  pull_request: Schema.Union([Schema.String, Schema.Number]).annotate({
     description:
       "A pull request URL, such as github.com/owner/repository/pull/123, or a number in this repository",
   }),

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test"
 
-import { Schema } from "effect"
+import { Result, Schema } from "effect"
 
+import { parsePullRequestInput } from "../../src/domain/PullRequest.ts"
 import { PullRequestArgument, targetOf } from "../../src/server/Tools.ts"
 
 const decode = Schema.decodeUnknownSync(PullRequestArgument)
@@ -15,18 +16,27 @@ describe("pull request tool argument", () => {
     expect(targetOf(decode({ pull_request: value }))).toBe(target)
   })
 
-  test.each([
-    ["a boolean", true],
-    ["a fractional number", 7.5],
-  ])("rejects %s before it reaches the tracker", (_name, value: boolean | number) => {
-    expect(() => decode({ pull_request: value })).toThrow()
+  test("rejects a boolean before it reaches the tracker", () => {
+    expect(() => decode({ pull_request: true })).toThrow()
   })
 
-  test("describes the argument to agents as text or a whole number", () => {
-    const { schema } = Schema.toJsonSchemaDocument(PullRequestArgument)
+  test.each([
+    ["a fractional number", 7.5],
+    ["zero", 0],
+    ["a negative number", -1],
+    ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY],
+  ])("leaves the tracker to reject %s", (_name, value: number) => {
+    const target = targetOf(decode({ pull_request: value }))
 
-    expect(schema).toMatchObject({
-      properties: { pull_request: { anyOf: [{ type: "string" }, { type: "integer" }] } },
-    })
+    expect(Result.isFailure(parsePullRequestInput(target))).toBe(true)
+  })
+
+  // OpenCode runs checks with its own copy of effect, where they reject every value.
+  test("declares no checks, which OpenCode would fail", () => {
+    const [text, number] = PullRequestArgument.fields.pull_request.members
+
+    expect(text.ast.checks).toBeUndefined()
+    expect(number.ast.checks).toBeUndefined()
   })
 })
