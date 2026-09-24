@@ -1,4 +1,4 @@
-import { Array as Arr, Context, Effect, Layer, Option, Schema, Semaphore } from "effect"
+import { Array as Arr, Context, Effect, Layer, Option, Schema } from "effect"
 
 import type { PullRequestInput, PullRequestRef } from "../domain/PullRequest.ts"
 import { Diagnostic } from "../domain/Snapshot.ts"
@@ -24,6 +24,7 @@ import {
   type StoredStateInvalid,
   type TrackingRepositoryApi,
 } from "../ports/TrackingRepository.ts"
+import { SessionLocks } from "./SessionLocks.ts"
 import { currentMillis } from "./Time.ts"
 
 /** GitHub could not report the pull request being attached. */
@@ -101,22 +102,6 @@ function discovered(
   })
 }
 
-/** Runs one session's operations one at a time, in the order they were requested. */
-function sessionLocks(): (
-  sessionID: string,
-) => <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R> {
-  const locks = new Map<string, Semaphore.Semaphore>()
-
-  return (sessionID) => (effect) =>
-    Effect.suspend(() => {
-      const lock = locks.get(sessionID) ?? Semaphore.makeUnsafe(1)
-
-      locks.set(sessionID, lock)
-
-      return lock.withPermit(effect)
-    })
-}
-
 interface Services {
   readonly github: GitHubApi
   readonly repository: TrackingRepositoryApi
@@ -176,13 +161,13 @@ export const layer = Layer.effect(
   Tracker,
   Effect.gen(function* () {
     const services: Services = { github: yield* GitHub, repository: yield* TrackingRepository }
-    const locked = sessionLocks()
+    const locks = new SessionLocks()
 
     return Tracker.of({
       attach: (sessionID, input, directory) =>
-        locked(sessionID)(attachTo(services, sessionID, { directory, input })),
-      detach: (sessionID, input) => locked(sessionID)(detachFrom(services, sessionID, input)),
-      forget: (sessionID) => locked(sessionID)(services.repository.remove(sessionID)),
+        locks.run(sessionID, attachTo(services, sessionID, { directory, input })),
+      detach: (sessionID, input) => locks.run(sessionID, detachFrom(services, sessionID, input)),
+      forget: (sessionID) => locks.run(sessionID, services.repository.remove(sessionID)),
       list: (sessionID) => services.repository.load(sessionID),
     })
   }),
