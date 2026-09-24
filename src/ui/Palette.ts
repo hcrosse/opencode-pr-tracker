@@ -1,5 +1,5 @@
 import type { ResolvedTheme } from "@opencode/theme/tui"
-import type { RGBA } from "@opentui/core"
+import { RGBA } from "@opentui/core"
 
 import type { Tone } from "../domain/Appearance.ts"
 
@@ -10,15 +10,23 @@ export interface Palette {
   readonly tones: Readonly<Record<Tone, RGBA>>
 }
 
-/** Themes have no named purple; the accent hue is the closest, and is purple in the default theme. */
-export function paletteOf(theme: ResolvedTheme): Palette {
+/**
+ * GitHub's color for merged pull requests. Themes have no purple of their own, and a theme's accent
+ * can be any hue, so merged uses GitHub's purple for the theme's mode.
+ */
+const merged: Readonly<Record<"dark" | "light", RGBA>> = {
+  dark: RGBA.fromHex("#a371f7"),
+  light: RGBA.fromHex("#8250df"),
+}
+
+export function paletteOf(theme: ResolvedTheme, mode: "dark" | "light"): Palette {
   return {
     muted: theme.text.muted,
     text: theme.text.base,
     tones: {
       gray: theme.text.muted,
       green: theme.text.feedback.success.base,
-      purple: theme.hue.accent[500],
+      purple: merged[mode],
       red: theme.text.feedback.error.base,
       yellow: theme.text.feedback.warning.base,
     },
