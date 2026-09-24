@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.4.2...v0.4.3) (2026-09-24)
+
+
+### Bug Fixes
+
+* accept JSON numbers in the pr tools again ([#149](https://github.com/hcrosse/opencode-pr-tracker/issues/149)) ([723a0de](https://github.com/hcrosse/opencode-pr-tracker/commit/723a0defa405a31732a826ec47a0f48e527706e6))
+
 ## [0.4.2](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.4.1...v0.4.2) (2026-09-24)
 
 
