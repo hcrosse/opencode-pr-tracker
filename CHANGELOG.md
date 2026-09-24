@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.4.1...v0.4.2) (2026-09-24)
+
+
+### Bug Fixes
+
+* release a session's lock once its operations finish ([#147](https://github.com/hcrosse/opencode-pr-tracker/issues/147)) ([218f05b](https://github.com/hcrosse/opencode-pr-tracker/commit/218f05be5657c7f967d8d9fca098b28a98c10b54))
+
 ## [0.4.1](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.4.0...v0.4.1) (2026-09-24)
 
 
