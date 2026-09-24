@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.4.0](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.3.0...v0.4.0) (2026-09-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* adopt the TypeScript baseline and remove the V1 plugin ([#134](https://github.com/hcrosse/opencode-pr-tracker/issues/134))
+
+### Features
+
+* add compact sidebar layout ([#112](https://github.com/hcrosse/opencode-pr-tracker/issues/112)) ([640f0ac](https://github.com/hcrosse/opencode-pr-tracker/commit/640f0ac93e9ab76f15e46b6a19ea53a2f3327c8e))
+* add issue claim commands ([#108](https://github.com/hcrosse/opencode-pr-tracker/issues/108)) ([926c20f](https://github.com/hcrosse/opencode-pr-tracker/commit/926c20faed82fd61cc17c4ae7885fba336aada10))
+* add sidebar list bullets ([#106](https://github.com/hcrosse/opencode-pr-tracker/issues/106)) ([67c055d](https://github.com/hcrosse/opencode-pr-tracker/commit/67c055d2ae6735cd6b0f374d3e812142664870b5))
+* add the GitHub adapter ([#136](https://github.com/hcrosse/opencode-pr-tracker/issues/136)) ([2e60d78](https://github.com/hcrosse/opencode-pr-tracker/commit/2e60d7894f6daa2eeab19a88064fd49114f1e01a))
+* add the pull request tracking domain ([#135](https://github.com/hcrosse/opencode-pr-tracker/issues/135)) ([a19fcd7](https://github.com/hcrosse/opencode-pr-tracker/commit/a19fcd7bea6ca063edb7fc715fbc44243efd9bd6))
+* add the terminal sidebar ([#139](https://github.com/hcrosse/opencode-pr-tracker/issues/139)) ([c779877](https://github.com/hcrosse/opencode-pr-tracker/commit/c779877c115c759045230805112b113ff7f65fe1))
+* add the tracker and monitor services ([#137](https://github.com/hcrosse/opencode-pr-tracker/issues/137)) ([c4549c7](https://github.com/hcrosse/opencode-pr-tracker/commit/c4549c7d86d126366b269739b1d6d40afdaed349))
+* add the V2 server plugin ([#138](https://github.com/hcrosse/opencode-pr-tracker/issues/138)) ([3a4d45c](https://github.com/hcrosse/opencode-pr-tracker/commit/3a4d45c54282d7aaa620b3bae24f4885bb6b4dd0))
+* attach GitHub pull request stacks ([#86](https://github.com/hcrosse/opencode-pr-tracker/issues/86)) ([2f33fe6](https://github.com/hcrosse/opencode-pr-tracker/commit/2f33fe674b92536e0ba595bb41ac3806650f8e6b)), closes [#65](https://github.com/hcrosse/opencode-pr-tracker/issues/65)
+* replace feedback wizard with agent tool ([#95](https://github.com/hcrosse/opencode-pr-tracker/issues/95)) ([1e8928b](https://github.com/hcrosse/opencode-pr-tracker/commit/1e8928be8bae830f8ecc36f8d1625916417a7d71))
+* shorten sidebar status labels ([#107](https://github.com/hcrosse/opencode-pr-tracker/issues/107)) ([56eaa49](https://github.com/hcrosse/opencode-pr-tracker/commit/56eaa49d68c756aa063927e3e187876a5eec17a2)), closes [#98](https://github.com/hcrosse/opencode-pr-tracker/issues/98)
+* show GitHub Stack relationships in sidebar ([#123](https://github.com/hcrosse/opencode-pr-tracker/issues/123)) ([ed76755](https://github.com/hcrosse/opencode-pr-tracker/commit/ed767550166fb463b932aa6f230ddce9e4a13f5e))
+
+
+### Bug Fixes
+
+* collapse sidebar pull request spacing ([#91](https://github.com/hcrosse/opencode-pr-tracker/issues/91)) ([397dbc3](https://github.com/hcrosse/opencode-pr-tracker/commit/397dbc3b34f4362474ca00734796a0c5f74b314c))
+* describe pull request numbers to agents as integers ([#142](https://github.com/hcrosse/opencode-pr-tracker/issues/142)) ([cca3500](https://github.com/hcrosse/opencode-pr-tracker/commit/cca3500ebacb1dbbc232e22860cd995edae6fe84))
+* omit URLs from detach options ([#101](https://github.com/hcrosse/opencode-pr-tracker/issues/101)) ([c492e8d](https://github.com/hcrosse/opencode-pr-tracker/commit/c492e8d9b986bac13c78d864c5f14052fd8903f2))
+* render non-failing draft pull requests gray ([#103](https://github.com/hcrosse/opencode-pr-tracker/issues/103)) ([87f3e7f](https://github.com/hcrosse/opencode-pr-tracker/commit/87f3e7fd8132669b3e7ccce808642b3e69dc0cc1))
+* show merged pull requests in GitHub's purple ([#143](https://github.com/hcrosse/opencode-pr-tracker/issues/143)) ([3261d3d](https://github.com/hcrosse/opencode-pr-tracker/commit/3261d3d879c4fb4fee97c979352b65af82e950d7))
+
+
+### Build System
+
+* adopt the TypeScript baseline and remove the V1 plugin ([#134](https://github.com/hcrosse/opencode-pr-tracker/issues/134)) ([3090b9e](https://github.com/hcrosse/opencode-pr-tracker/commit/3090b9e0accc2e5ed46dd5f8ce135c2b5cd2781e))
+
 ## [0.3.0](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.2.0...v0.3.0) (2026-08-12)
 
 
