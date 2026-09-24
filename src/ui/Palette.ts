@@ -15,8 +15,8 @@ export interface Palette {
  * can be any hue, so merged uses GitHub's purple for the theme's mode.
  */
 const merged: Readonly<Record<"dark" | "light", RGBA>> = {
-  dark: RGBA.fromHex("#a371f7"),
-  light: RGBA.fromHex("#8250df"),
+  dark: RGBA.fromHex("#8957e5"),
+  light: RGBA.fromHex("#8251de"),
 }
 
 export function paletteOf(theme: ResolvedTheme, mode: "dark" | "light"): Palette {
