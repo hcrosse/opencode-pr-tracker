@@ -6,6 +6,7 @@ import {
   attach,
   detach,
   detachNumber,
+  group,
   type AmbiguousPullRequestNumber,
   type AttachmentLimitReached,
   type Removal,
@@ -69,6 +70,14 @@ export interface TrackerApi {
     sessionID: string,
     input: PullRequestInput,
   ) => Effect.Effect<Removal, StoredStateInvalid | AmbiguousPullRequestNumber>
+  /**
+   * Brings each Stack's attached members together, bottom to top, where the earliest of them is
+   * attached. Stacks are listed bottom first. Saves only when the order changes.
+   */
+  readonly regroup: (
+    sessionID: string,
+    stacks: readonly (readonly PullRequestRef[])[],
+  ) => Effect.Effect<Tracking, StoredStateInvalid>
   /** Removes everything stored for a session. Safe to repeat. */
   readonly forget: (sessionID: string) => Effect.Effect<void>
 }
@@ -157,6 +166,18 @@ const detachFrom = Effect.fn("Tracker.detach")(function* (
   return removal
 })
 
+const regroupIn = Effect.fn("Tracker.regroup")(function* (
+  { repository }: Services,
+  sessionID: string,
+  stacks: readonly (readonly PullRequestRef[])[],
+) {
+  const change = group(yield* repository.load(sessionID), stacks)
+
+  if (change.changed) yield* repository.save(sessionID, change.tracking)
+
+  return change.tracking
+})
+
 export const layer = Layer.effect(
   Tracker,
   Effect.gen(function* () {
@@ -169,6 +190,7 @@ export const layer = Layer.effect(
       detach: (sessionID, input) => locks.run(sessionID, detachFrom(services, sessionID, input)),
       forget: (sessionID) => locks.run(sessionID, services.repository.remove(sessionID)),
       list: (sessionID) => services.repository.load(sessionID),
+      regroup: (sessionID, stacks) => locks.run(sessionID, regroupIn(services, sessionID, stacks)),
     })
   }),
 )

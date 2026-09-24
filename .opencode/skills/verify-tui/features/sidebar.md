@@ -9,6 +9,7 @@ The sidebar lists a session's attached pull requests, with each one's repository
 - `sidebar-incomplete`: a lone attached member of a larger Stack uses `├─`, with `┊` below it.
 - `sidebar-status`: each row shows its status label, and in the default layout its title. Merged pull requests are purple, bold and struck through.
 - `sidebar-heading`: with more than two pull requests, the heading gains a `▼` marker.
+- `sidebar-regrouped`: Stack members stored apart, as after `gh stack link`, are regrouped in storage and drawn together again.
 
 ## How to get to it (user POV)
 
@@ -25,6 +26,8 @@ Preconditions: the baseline in `README.md`.
   `python3 -c 'import re,sys; [print(m.group(1).replace("\x1b","ESC"), m.group(2)) for m in re.finditer(r"((?:\x1b\[[0-9;]*m)+)(hcrosse/opencode-pr-tracker#\d+)", open(sys.argv[1]).read())]' "$RUN_DIR/artifacts/sidebar-stack.ansi"`
   Each reference has `ESC[1m` (bold), `ESC[9m` (strikethrough) and one shared `38;2;…` color, the theme's accent.
 - **Heading.** Attach #112 with `/pr-attach https://github.com/hcrosse/opencode-pr-tracker/pull/112`, and wait for `compact sidebar layout`. After the toast clears, run `$V capture "$RUN_DIR" sidebar-heading`. The capture shows `▼ Pull requests`, then the two Stack rows, then `•  hcrosse/opencode-pr-tracker#112`.
+- **Regrouped Stack.** After **Heading**, before detaching anything, reorder the stored attachments so #112 sits between the Stack members. Commands cannot do this, because attaching always groups a Stack. Edit the run's isolated database:
+  `DB="$RUN_DIR/home/.local/share/opencode/opencode.db"; sqlite3 "$DB" "select value from kv where key like '%session/%'"` shows `{"pullRequests":[…#112, #78, #79…],"version":1}`. Write the same entries back in the order #78, #112, #79 with `sqlite3 "$DB" "update kv set value='…' where key like '%session/%'"`. Then run `/pr-sync`, and after the toast clears, run `$V capture "$RUN_DIR" sidebar-regrouped`. The capture shows `┌─ hcrosse/opencode-pr-tracker#78`, `└─ hcrosse/opencode-pr-tracker#79`, then `•  hcrosse/opencode-pr-tracker#112`. The stored value now lists #78, #79, #112, and a second `/pr-sync` leaves its `time_updated` unchanged.
 - **Incomplete Stack.** Detach #79 as in `commands.md`. After the toast clears, run `$V capture "$RUN_DIR" sidebar-incomplete`. The capture shows `├─ hcrosse/opencode-pr-tracker#78`, with `┊  merged` below it, and no `#79` row.
 
 ## Gotchas

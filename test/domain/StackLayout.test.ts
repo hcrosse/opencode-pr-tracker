@@ -5,7 +5,14 @@ import * as gs from "@hegeldev/hegel/generators"
 import { Array as Arr, Option } from "effect"
 
 import type { PullRequestRef } from "../../src/domain/PullRequest.ts"
-import { layout, type Entry, type Membership, type Row } from "../../src/domain/StackLayout.ts"
+import {
+  agreedStacks,
+  layout,
+  type Entry,
+  type Membership,
+  type Row,
+} from "../../src/domain/StackLayout.ts"
+import { Attachment, group, type Tracking } from "../../src/domain/Tracking.ts"
 import {
   consistentEntries,
   entry,
@@ -101,6 +108,65 @@ describe("layout of consistent Stacks", () => {
         ...primary.slice(2).map(() => "middle/continues"),
         "last/none",
       ])
+    })
+  })
+})
+
+describe("agreed Stacks after grouping", () => {
+  test("are all drawn once grouped, however their members were attached", () => {
+    hegel.test((tc) => {
+      const world = tc.draw(worlds)
+
+      const drawnRefs = tc.draw(
+        gs.arrays(gs.oneOf(gs.sampledFrom([...world.primary]), pooledRefs), { maxSize: 20 }),
+      )
+
+      const scattered = Arr.dedupeWith(drawnRefs, (left, right) => left.url === right.url).map(
+        (ref) => new Attachment({ attachedAt: 0, ref }),
+      )
+
+      const entriesOf = (tracking: Tracking): Entry[] =>
+        tracking.map((attachment) => entry(attachment.ref, world.membership(attachment.ref)))
+
+      const agreed = agreedStacks(entriesOf(scattered))
+
+      const grouped = group(
+        scattered,
+        agreed.map((agreedStack) => agreedStack.members),
+      ).tracking
+
+      const drawn = layout(entriesOf(grouped)).flatMap((row) =>
+        row._tag === "PullRequest" && row.marker !== "bullet" ? [row.entry.ref.url] : [],
+      )
+
+      const attached = new Set(scattered.map((attachment) => attachment.ref.url))
+
+      const members = agreed.flatMap((agreedStack) =>
+        agreedStack.members.flatMap((member) => (attached.has(member.url) ? [member.url] : [])),
+      )
+
+      expect(new Set(drawn)).toEqual(new Set(members))
+    })
+  })
+})
+
+describe("agreed Stacks", () => {
+  test("are the Stacks layout draws once their members sit together", () => {
+    hegel.test((tc) => {
+      const world = tc.draw(worlds)
+      const entries = consistentEntries(tc, world)
+
+      const drawn = layout(entries).flatMap((row) =>
+        row._tag === "PullRequest" && row.marker !== "bullet" ? [row.entry.ref.url] : [],
+      )
+
+      const attached = new Set(entries.map((candidate) => candidate.ref.url))
+
+      const agreed = agreedStacks(entries).flatMap((agreedStack) =>
+        agreedStack.members.flatMap((member) => (attached.has(member.url) ? [member.url] : [])),
+      )
+
+      expect(new Set(agreed)).toEqual(new Set(drawn))
     })
   })
 })

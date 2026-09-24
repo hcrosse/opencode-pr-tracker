@@ -18,6 +18,7 @@ import {
   ScriptedGitHub,
   standalone,
   type GitHubScript,
+  type StorageFake,
 } from "./application.ts"
 
 export const ref = (number: number): PullRequestRef =>
@@ -34,10 +35,11 @@ export interface App {
 export async function run<A, E>(
   github: GitHubScript,
   use: (app: App) => Effect.Effect<A, E>,
+  storage: StorageFake = memoryStorage(),
 ): Promise<Exit.Exit<A, E>> {
   const layer = monitorLayer.pipe(
     Layer.provideMerge(trackerLayer),
-    Layer.provide([github.layer, storageLayer(memoryStorage().storage)]),
+    Layer.provide([github.layer, storageLayer(storage.storage)]),
   )
 
   const program = Effect.gen(function* () {

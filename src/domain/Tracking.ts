@@ -36,6 +36,38 @@ function isMember(stack: readonly PullRequestRef[], attachment: Attachment): boo
   return stack.some((ref) => samePullRequest(ref, attachment.ref))
 }
 
+// Attachments are reused as they are, so any change shows as a different element.
+const differs = (before: Tracking, after: Tracking): boolean =>
+  after.length !== before.length || after.some((attachment, index) => attachment !== before[index])
+
+function groupOne(tracking: Tracking, stack: readonly PullRequestRef[]): Tracking {
+  const members = Arr.dedupeWith(stack, samePullRequest)
+  // Every attachment before the earliest member is not a member, so this is also its place among the others.
+  const insertAt = tracking.findIndex((attachment) => isMember(members, attachment))
+
+  if (insertAt === -1) return tracking
+
+  const others = tracking.filter((attachment) => !isMember(members, attachment))
+
+  const placed = members.flatMap((ref) =>
+    Option.toArray(Arr.findFirst(tracking, (attachment) => samePullRequest(attachment.ref, ref))),
+  )
+
+  return [...others.slice(0, insertAt), ...placed, ...others.slice(insertAt)]
+}
+
+/**
+ * Brings each stack's attached members together, bottom to top, where the earliest of them is
+ * attached. Other attachments keep their order. Nothing is attached or detached.
+ */
+export function group(tracking: Tracking, stacks: readonly (readonly PullRequestRef[])[]): Change {
+  let next = tracking
+
+  for (const stack of stacks) next = groupOne(next, stack)
+
+  return { changed: differs(tracking, next), tracking: next }
+}
+
 /**
  * Attaches every member of a stack, bottom to top. A single pull request is a stack of one.
  * Members are placed together where the earliest of them was already attached, or at the end.
@@ -46,31 +78,21 @@ export function attach(
   now: number,
 ): Result.Result<Change, AttachmentLimitReached> {
   const members = Arr.dedupeWith(stack, samePullRequest)
-  const others = tracking.filter((attachment) => !isMember(members, attachment))
-  const requested = others.length + members.length
+
+  const missing = members.filter(
+    (ref) => !tracking.some((attachment) => samePullRequest(attachment.ref, ref)),
+  )
+
+  const requested = tracking.length + missing.length
 
   if (requested > maximumAttachments) {
     return Result.fail(new AttachmentLimitReached({ limit: maximumAttachments, requested }))
   }
 
-  const position = tracking.findIndex((attachment) => isMember(members, attachment))
-  const insertAt = position === -1 ? others.length : position
+  const appended = [...tracking, ...missing.map((ref) => new Attachment({ attachedAt: now, ref }))]
+  const next = group(appended, [members]).tracking
 
-  const placed = members.map((ref) =>
-    Option.getOrElse(
-      Arr.findFirst(tracking, (attachment) => samePullRequest(attachment.ref, ref)),
-      () => new Attachment({ attachedAt: now, ref }),
-    ),
-  )
-
-  const next = [...others.slice(0, insertAt), ...placed, ...others.slice(insertAt)]
-
-  // Existing attachments are reused as they are, so any change shows as a different element.
-  const changed =
-    next.length !== tracking.length ||
-    next.some((attachment, index) => attachment !== tracking[index])
-
-  return Result.succeed({ changed, tracking: next })
+  return Result.succeed({ changed: differs(tracking, next), tracking: next })
 }
 
 export function detach(tracking: Tracking, ref: PullRequestRef): Removal {
