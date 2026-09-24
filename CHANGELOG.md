@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.4.0...v0.4.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* match GitHub's merged purple in each mode ([#144](https://github.com/hcrosse/opencode-pr-tracker/issues/144)) ([df75c38](https://github.com/hcrosse/opencode-pr-tracker/commit/df75c3863201c4022c575ee24b66dde967dd5920))
+
 ## [0.4.0](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.3.0...v0.4.0) (2026-09-24)
 
 
