@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.4.4...v0.5.0) (2026-09-25)
+
+
+### Features
+
+* allow 40 pull requests per session ([#154](https://github.com/hcrosse/opencode-pr-tracker/issues/154)) ([b62d2a1](https://github.com/hcrosse/opencode-pr-tracker/commit/b62d2a1b0aa4e0c5bd154ce311b3cc06ee7b29ee))
+
 ## [0.4.4](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.4.3...v0.4.4) (2026-09-25)
 
 
