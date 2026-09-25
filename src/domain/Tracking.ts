@@ -58,12 +58,21 @@ function groupOne(tracking: Tracking, stack: readonly PullRequestRef[]): Trackin
 
 /**
  * Brings each stack's attached members together, bottom to top, where the earliest of them is
- * attached. Other attachments keep their order. Nothing is attached or detached.
+ * attached. Other attachments keep their order. Nothing is attached or detached. A stack sharing a
+ * member with an earlier one is skipped, since both cannot hold together; this keeps grouping
+ * idempotent.
  */
 export function group(tracking: Tracking, stacks: readonly (readonly PullRequestRef[])[]): Change {
+  const grouped = new Set<string>()
   let next = tracking
 
-  for (const stack of stacks) next = groupOne(next, stack)
+  for (const stack of stacks) {
+    if (stack.some((ref) => grouped.has(ref.url))) continue
+
+    for (const ref of stack) grouped.add(ref.url)
+
+    next = groupOne(next, stack)
+  }
 
   return { changed: differs(tracking, next), tracking: next }
 }

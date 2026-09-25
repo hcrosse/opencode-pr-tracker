@@ -103,6 +103,7 @@ function agrees(
     listed.size === members.length &&
     reports.every((report) => urlsOf(report.stack).join("\n") === members.join("\n")) &&
     members.every((url) => (claimed.get(url) ?? new Set()).size === 1) &&
+    reports.every((report) => listed.has(report.url)) &&
     attachedMembers.length === reports.length
   )
 }

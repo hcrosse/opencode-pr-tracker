@@ -232,6 +232,24 @@ describe("grouping stacks", () => {
       expect(group(once, chosen)).toEqual({ changed: false, tracking: once })
     })
   })
+})
+
+describe("grouping examples", () => {
+  test("keeps the first of overlapping stacks, so grouping settles", () => {
+    const [a, b, c] = [acmeRef(1), acmeRef(2), acmeRef(3)] as const
+    const before = attachedOneByOne([a, b, c])
+
+    const overlapping = [
+      [a, b],
+      [b, c],
+      [c, a],
+    ]
+
+    const once = group(before, overlapping)
+
+    expect(once.tracking.map((attachment) => attachment.ref.number)).toEqual([1, 2, 3])
+    expect(group(once.tracking, overlapping).changed).toBe(false)
+  })
 
   test("groups a stack whose members were linked after they were attached", () => {
     const attached = [1925, 1927, 1928, 1929, 1931, 1932, 1934, 1937, 1935, 1938, 1943]
