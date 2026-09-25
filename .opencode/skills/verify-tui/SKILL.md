@@ -71,6 +71,8 @@ $V capture "$RUN_DIR" <name>   # lowercase-with-hyphens
 
 `capture` writes `$RUN_DIR/artifacts/<name>.txt` (plain screen), `<name>.ansi` (colors and attributes), and `<name>.png` (a `freeze` screenshot for pull request descriptions). `/pr-open` appends each opened URL to `$RUN_DIR/artifacts/opened.txt`.
 
+To show a screenshot in a pull request, reference its local path in the body, such as `![Merged rows in Catppuccin](./sidebar-stack.png)`, and upload it with the same path: `gh pr edit <number> --body-file <body.md> --attach ./sidebar-stack.png`. GitHub CLI uploads the file and rewrites the reference. `gh pr create` accepts `--attach` too.
+
 - **Pass:** each recipe's expected text appears in the named capture, and `opened.txt` lists exactly the URLs chosen.
 - **Fail:** a toast shows an error you did not provoke, or the sidebar contradicts the expected rows.
 - **Inconclusive:** Doctor failed, GitHub was unreachable (the toast says so), or no `GH_TOKEN` was available. Report it as such, and do not claim a pass from a lower-level test.
