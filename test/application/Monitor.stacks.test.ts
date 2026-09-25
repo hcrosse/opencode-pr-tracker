@@ -4,32 +4,14 @@ import { Effect, Exit } from "effect"
 import { TestClock } from "effect/testing"
 
 import type { PullRequestRef } from "../../src/domain/PullRequest.ts"
-import type { Membership } from "../../src/domain/StackLayout.ts"
 import {
   memoryStorage,
   openState,
   reported,
   ScriptedGitHub,
   standalone,
-  type GitHubScript,
 } from "../support/application.ts"
-import { ref, run, watching, type App } from "../support/monitor.ts"
-
-const stackOf = (id: string, numbers: readonly number[]): Membership => {
-  const [head = 1, ...tail] = numbers
-
-  return { _tag: "Stack", id, members: [ref(head), ...tail.map((number) => ref(number))] }
-}
-
-function scriptAll(
-  github: Readonly<GitHubScript>,
-  numbers: readonly number[],
-  membership: Membership,
-): void {
-  for (const number of numbers) {
-    github.script(ref(number), reported(ref(number), openState, membership))
-  }
-}
+import { numbersOf, ref, run, scriptAll, stackOf, watching, type App } from "../support/monitor.ts"
 
 /**
  * #5, #6 and #7 form a Stack; #1 and #8 to #13 are standalone. Attaching them in this order puts
@@ -50,9 +32,6 @@ function beforeLinking(): ScriptedGitHub {
 const attachedInOrder: readonly PullRequestRef[] = [1, 5, 8, 9, 10, 11, 12, 13].map((number) =>
   ref(number),
 )
-
-const numbersOf = (app: App): Effect.Effect<readonly number[], unknown> =>
-  Effect.map(app.monitor.view("a"), (view) => view.entries.map((entry) => entry.ref.number))
 
 describe("Monitor Stack order", () => {
   test("stores a Stack's members together once GitHub reports them linked", async () => {

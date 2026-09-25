@@ -7,7 +7,7 @@ import { group, type Attachment, type Tracking } from "../domain/Tracking.ts"
 import { GitHub, type GitHubApi, type ItemResult, type Report } from "../ports/GitHub.ts"
 import type { StoredStateInvalid } from "../ports/TrackingRepository.ts"
 import { FetchQueue } from "./FetchQueue.ts"
-import { afterRefresh, isDue, unknown, withoutUnattached, type Known } from "./Known.ts"
+import { isDue, recorded, unknown, withoutUnattached, type Known } from "./Known.ts"
 import { currentMillis } from "./Time.ts"
 import { Tracker, type TrackerApi } from "./Tracker.ts"
 
@@ -85,14 +85,9 @@ function remember(cache: Cache, results: ReadonlyMap<string, ItemResult>): Effec
   return Effect.gen(function* () {
     const now = yield* currentMillis
 
-    yield* Ref.update(cache.known, (current: ReadonlyMap<string, Known>) => {
-      const next = new Map(current)
-
-      for (const [url, result] of results)
-        next.set(url, afterRefresh(current.get(url) ?? unknown, result, now))
-
-      return next
-    })
+    yield* Ref.update(cache.known, (current: ReadonlyMap<string, Known>) =>
+      recorded(current, results, now),
+    )
   })
 }
 

@@ -11,6 +11,7 @@ import {
 import { layer as trackerLayer, Tracker, type TrackerApi } from "../../src/application/Tracker.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
 import type { PullRequestState } from "../../src/domain/Snapshot.ts"
+import type { Membership } from "../../src/domain/StackLayout.ts"
 import {
   memoryStorage,
   openState,
@@ -97,4 +98,28 @@ export const statusOf = (app: App): Effect.Effect<string, unknown> =>
       onNone: () => "none",
       onSome: (entry) => entry.status._tag,
     }),
+  )
+
+/** Stack `id` with the pull requests `numbers`, bottom first. */
+export const stackOf = (id: string, numbers: readonly number[]): Membership => {
+  const [head = 1, ...tail] = numbers
+
+  return { _tag: "Stack", id, members: [ref(head), ...tail.map((number) => ref(number))] }
+}
+
+/** Scripts each of `numbers` as open, with `membership`. */
+export function scriptAll(
+  github: Readonly<GitHubScript>,
+  numbers: readonly number[],
+  membership: Membership,
+): void {
+  for (const number of numbers) {
+    github.script(ref(number), reported(ref(number), openState, membership))
+  }
+}
+
+/** The pull request numbers of session "a", in display order. */
+export const numbersOf = (app: App): Effect.Effect<readonly number[], unknown> =>
+  Effect.map(app.monitor.view("a"), (view: SessionView) =>
+    view.entries.map((entry) => entry.ref.number),
   )
