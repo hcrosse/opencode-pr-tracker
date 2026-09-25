@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.5.1...v0.5.2) (2026-09-25)
+
+
+### Bug Fixes
+
+* fetch unknown statuses before the list tool answers ([#159](https://github.com/hcrosse/opencode-pr-tracker/issues/159)) ([c484b12](https://github.com/hcrosse/opencode-pr-tracker/commit/c484b12e141516955dd8ba393e95b040e9726e76))
+
 ## [0.5.1](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.5.0...v0.5.1) (2026-09-25)
 
 
