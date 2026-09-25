@@ -5,7 +5,7 @@ description: Use when verifying the opencode-pr-tracker terminal sidebar or its 
 
 # Verify the terminal UI
 
-Proves the plugin's terminal behavior by running OpenCode with this checkout's build in an isolated, headless Herdr session. You type the commands a user types, then read the screen. Every run owns a directory under `$TMPDIR` and a Herdr session named `prt-verify-<run id>`. Nothing else is touched.
+Proves the plugin's terminal behavior by running OpenCode with this checkout's build in an isolated, headless Herdr session. You type the commands a user types, then read the screen. Every run owns a directory under `$TMPDIR` and a Herdr session named `prt-verify-<run id>`. Outside those, `start` changes only this checkout's gitignored `node_modules/`, through `bun install --frozen-lockfile` and Bun's shared cache, and `dist/`, through `bun run build`.
 
 The helper is `.opencode/skills/verify-tui/scripts/verify-tui`, run from the repository root. Driving uses raw `herdr` commands so each step matches what a user does.
 
@@ -24,8 +24,8 @@ If each command runs in a fresh shell, as agent tools do, restore these at the s
 
 `start` does the following:
 
-1. Runs `bun run build`, which rewrites the gitignored `dist/` in this checkout. That is the build under test.
-2. Creates `$RUN_DIR` with an isolated `home/`, a scratch git `project/` whose `.opencode/opencode.json` loads the plugin from this checkout, and `bin/` with recording `open` and `xdg-open`.
+1. Runs `bun install --frozen-lockfile` and `bun run build`, which rewrites the gitignored `dist/` in this checkout. That is the build under test. A stale `node_modules` would build but fail to load in OpenCode.
+2. Creates `$RUN_DIR` with an isolated `home/`, a scratch git `project/` whose `.opencode/opencode.json` loads the plugin from this checkout and denies every agent tool, and `bin/` with recording `open` and `xdg-open`. The deny rule means text that reaches a model, such as a command the plugin failed to register, cannot run anything. `!` shell commands you type still run.
 3. Starts `herdr --session $SESSION server`.
 4. Runs `$OPENCODE --standalone` in its pane, with `bin/` first on `PATH` and `GH_TOKEN` passed through.
 5. Waits up to 60 seconds for `ctrl+p commands` on screen.
@@ -44,6 +44,8 @@ Every line must read `ok:`, and the exit code must be 0. It checks:
 - the Herdr session is running
 - OpenCode is the pane's foreground process
 - the project loads this checkout's plugin
+- OpenCode loaded the plugin without errors, according to the run's log
+- agent tools are denied
 - `dist/` is newer than every file in `src/`
 - OpenCode keeps its data in the run's home
 - the OpenCode process has the recording openers first on `PATH`, so `/pr-open` cannot launch a real browser
@@ -60,6 +62,8 @@ h wait-output "$PANE" --source visible --match 'session ready' --timeout 20000
 h send-keys "$PANE" ctrl+x; h send-keys "$PANE" b
 h wait-output "$PANE" --source visible --match 'No pull requests attached' --timeout 20000
 ```
+
+Before sending a slash command, type its name and wait for the autocomplete entry, such as `Attach pull request` for `/pr-attach`. If it does not appear, the plugin did not register it. Stop the run instead of pressing Enter, which would send the text to a model.
 
 Then follow the feature recipes in [`features/README.md`](features/README.md).
 

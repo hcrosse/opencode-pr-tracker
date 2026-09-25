@@ -6,7 +6,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  verify-tui start             Build the plugin, start OpenCode in a new Herdr session, print RUN_DIR
+  verify-tui start             Install and build the plugin, start OpenCode in a new Herdr session, print RUN_DIR
   verify-tui doctor RUN_DIR    Check the run is this checkout's build, ready, and correctly isolated
   verify-tui capture RUN_DIR NAME
                                Save the visible screen as NAME.txt, NAME.ansi and NAME.png
@@ -48,7 +48,8 @@ start() {
   local token=${GH_TOKEN:-}
   if [[ -z $token ]] && command -v gh >/dev/null; then token=$(gh auth token 2>/dev/null || true); fi
 
-  (cd "$root" && bun run build >/dev/null)
+  # A stale node_modules builds but fails to load in OpenCode, so install before building.
+  (cd "$root" && bun install --frozen-lockfile >/dev/null && bun run build >/dev/null)
 
   local run_id
   run_id=$(date +%Y%m%d%H%M%S)-$$
@@ -57,8 +58,10 @@ start() {
   local session=prt-verify-$run_id
   mkdir -p "$run_dir"/{home,project/.opencode,bin,artifacts}
 
-  # The plugin loads from this checkout, whose root server.js and tui.js point at dist/.
-  python3 -c 'import json, sys; print(json.dumps({"plugins": [sys.argv[1]]}))' "$root" \
+  # The plugin loads from this checkout, whose root server.js and tui.js point at dist/. Agent
+  # tools are denied: text that reaches a model, such as a command the plugin failed to register,
+  # cannot run anything.
+  python3 -c 'import json, sys; print(json.dumps({"plugins": [sys.argv[1]], "permissions": [{"action": "*", "resource": "*", "effect": "deny"}]}))' "$root" \
     >"$run_dir/project/.opencode/opencode.json"
   git -C "$run_dir/project" init -q
 
@@ -115,6 +118,16 @@ plugin_configured() {
   python3 -c 'import json, sys; sys.exit(json.load(open(sys.argv[1]))["plugins"] != [sys.argv[2]])' \
     "$RUN_DIR/project/.opencode/opencode.json" "$ROOT"
 }
+tools_denied() {
+  python3 -c 'import json, sys; sys.exit(json.load(open(sys.argv[1])).get("permissions") != [{"action": "*", "resource": "*", "effect": "deny"}])' \
+    "$RUN_DIR/project/.opencode/opencode.json"
+}
+# OpenCode logs a plugin that fails to import, such as one missing a dependency, and starts anyway.
+plugin_loaded() {
+  local log=$RUN_DIR/home/.local/share/opencode/log/opencode.log
+  grep -qF "msg=\"loading plugin\" id=$ROOT " "$log" 2>/dev/null &&
+    ! grep -F "failed to load plugin" "$log" | grep -qF "target=$ROOT "
+}
 build_current() {
   [[ -f $ROOT/dist/tui.js && -f $ROOT/dist/server.js ]] &&
     [[ -z $(find "$ROOT/src" -type f -newer "$ROOT/dist/tui.js") ]] &&
@@ -141,6 +154,8 @@ doctor() {
     "session_running:the Herdr session is running"
     "opencode_running:OpenCode is the pane's foreground process"
     "plugin_configured:the project loads the plugin from this checkout"
+    "plugin_loaded:OpenCode loaded the plugin without errors"
+    "tools_denied:agent tools are denied, so misrouted text cannot run commands"
     "build_current:dist/ is newer than every source file"
     "home_isolated:OpenCode keeps its data in the run's home"
     "openers_recorded:opening a pull request is recorded instead of launching a browser"
