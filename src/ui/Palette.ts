@@ -76,21 +76,27 @@ function linearOf({ c, h, l }: Oklch): Linear {
 const inGamut = ({ blue, green, red }: Linear): boolean =>
   [red, green, blue].every((channel) => channel >= -1e-6 && channel <= 1 + 1e-6)
 
-/** The color, with chroma reduced as needed to fit sRGB. */
+/** The color, with the largest chroma up to the requested one that fits sRGB. Gray always fits. */
 function rgbaOf({ c, h, l }: Oklch): RGBA {
-  let chroma = c
+  let fits = 0
+  let fails = c
 
-  for (let step = 0; step < 32 && !inGamut(linearOf({ c: chroma, h, l })); step += 1) {
-    chroma *= 0.95
+  if (inGamut(linearOf({ c, h, l }))) fits = c
+
+  for (let step = 0; step < 20 && fits < fails; step += 1) {
+    const chroma = (fits + fails) / 2
+
+    if (inGamut(linearOf({ c: chroma, h, l }))) fits = chroma
+    else fails = chroma
   }
 
-  const { blue, green, red } = linearOf({ c: chroma, h, l })
+  const { blue, green, red } = linearOf({ c: fits, h, l })
 
   return RGBA.fromValues(fromLinear(red), fromLinear(green), fromLinear(blue))
 }
 
-/** GitHub's merged badge purple, which sets the hue of merged pull requests. */
-const githubMerged = RGBA.fromHex("#8957e5")
+/** The hue of GitHub's merged badge purple, `#8957e5`. */
+const mergedHue = oklchOf(RGBA.fromHex("#8957e5")).h
 
 /**
  * The color for merged pull requests. Themes have no dependable purple: the V1 `secondary` color
@@ -104,7 +110,7 @@ function mergedOf(theme: ThemeColors): RGBA {
 
   return rgbaOf({
     c: (error.c + success.c) / 2,
-    h: oklchOf(githubMerged).h,
+    h: mergedHue,
     l: (error.l + success.l) / 2,
   })
 }
