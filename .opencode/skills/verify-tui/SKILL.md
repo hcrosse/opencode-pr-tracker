@@ -5,7 +5,7 @@ description: Use when verifying the opencode-pr-tracker terminal sidebar or its 
 
 # Verify the terminal UI
 
-Proves the plugin's terminal behavior by running OpenCode with this checkout's build in an isolated, headless Herdr session. You type the commands a user types, then read the screen. Every run owns a directory under `$TMPDIR` and a Herdr session named `prt-verify-<run id>`. Nothing else is touched.
+Proves the plugin's terminal behavior by running OpenCode with this checkout's build in an isolated, headless Herdr session. You type the commands a user types, then read the screen. Every run owns a directory under `$TMPDIR` and a Herdr session named `prt-verify-<run id>`. Outside those, `start` changes only this checkout's gitignored `node_modules/`, through `bun install --frozen-lockfile` and Bun's shared cache, and `dist/`, through `bun run build`.
 
 The helper is `.opencode/skills/verify-tui/scripts/verify-tui`, run from the repository root. Driving uses raw `herdr` commands so each step matches what a user does.
 
