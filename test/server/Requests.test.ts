@@ -4,7 +4,8 @@ import { Effect, Exit, Fiber, Option, Stream } from "effect"
 
 import type { SessionView } from "../../src/application/Monitor.ts"
 import { requests, type Requests } from "../../src/server/Requests.ts"
-import { closed, open, run, scripted, type App } from "../support/monitor.ts"
+import { memoryStorage } from "../support/application.ts"
+import { closed, merged, open, run, scripted, type App } from "../support/monitor.ts"
 
 const numbers = (view: SessionView): number[] => view.entries.map((entry) => entry.ref.number)
 
@@ -64,5 +65,27 @@ describe("attachment requests", () => {
 
     expect(result).toEqual(Exit.succeed(["Fresh"]))
     expect(github.fetches).toEqual([[open.url]])
+  })
+})
+
+describe("listing requests", () => {
+  test("listing right after a restart fetches statuses instead of reporting them as loading", async () => {
+    const storage = memoryStorage()
+    const before = scripted()
+
+    await run(before, (app: App) => over(app).attach("a", open.url), storage)
+    await run(before, (app: App) => over(app).attach("a", merged.url), storage)
+
+    const github = scripted()
+
+    const result = await run(
+      github,
+      (app: App) =>
+        Effect.map(over(app).list("a"), (view) => view.entries.map((entry) => entry.status._tag)),
+      storage,
+    )
+
+    expect(result).toEqual(Exit.succeed(["Fresh", "Fresh"]))
+    expect(github.fetches).toEqual([[open.url, merged.url]])
   })
 })

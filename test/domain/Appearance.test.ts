@@ -70,8 +70,8 @@ describe("appearance of unloaded, unavailable and stale statuses", () => {
     })
   })
 
-  test("shows a pull request that has not loaded yet as unavailable", () => {
-    expect(appearance({ _tag: "Pending" }).label).toBe("unavailable")
+  test("shows a pull request that has not loaded yet as loading", () => {
+    expect(appearance({ _tag: "Pending" }).label).toBe("loading")
   })
 
   test("shows a stale status like its last snapshot, marked stale", () => {

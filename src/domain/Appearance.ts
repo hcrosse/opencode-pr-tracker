@@ -58,7 +58,7 @@ function markStale(fresh: Appearance): Appearance {
 export function appearance(status: Status): Appearance {
   return Match.valueTags(status, {
     Fresh: ({ snapshot }) => stateAppearance(snapshot.state),
-    Pending: () => shown("gray", "unavailable"),
+    Pending: () => shown("gray", "loading"),
     Stale: ({ snapshot }) => markStale(stateAppearance(snapshot.state)),
     Unavailable: ({ diagnostic }) => shown("gray", diagnosticLabels[diagnostic]),
   })

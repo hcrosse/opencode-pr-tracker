@@ -45,6 +45,11 @@ export interface Requests {
   readonly attach: Change
   /** Detaches `target`, then publishes the session's view, fetching only statuses not yet known. */
   readonly detach: Change
+  /**
+   * The session's view for a one-time answer, such as an agent tool's. Statuses not yet known, as
+   * after the plugin restarts, are fetched first instead of being reported as loading.
+   */
+  readonly list: (sessionID: string) => Effect.Effect<SessionView, RequestFailure>
 }
 
 export function requests({ monitor, tracker }: Services, settings: Settings): Requests {
@@ -68,5 +73,6 @@ export function requests({ monitor, tracker }: Services, settings: Settings): Re
 
         return { message: detachedMessage(removal, target), view: toView(view, settings.layout) }
       }),
+    list: (sessionID) => monitor.show(sessionID),
   }
 }
