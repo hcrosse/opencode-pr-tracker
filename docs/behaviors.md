@@ -13,14 +13,14 @@ Each item names the V2 module that owns it.
 
 ## Attachments per session (`domain/Tracking`, `application/Tracker`)
 
-- A session tracks at most 20 pull requests.
+- A session tracks at most 40 pull requests.
 - Attaching an already attached pull request succeeds without duplicating it.
 - Attaching any member of a GitHub Stack attaches the whole Stack in bottom-to-top order.
   - A Stack is inserted at the position of its earliest already-attached member. Other attachments keep their order.
   - When refreshes later report a changed Stack, such as pull requests linked into it after they were attached, its attached members are regrouped the same way. The order is saved only when it changes, and only once every attached member agrees on the Stack and no other Stack claims any of them.
   - Merged pull requests stop refreshing, so when a Stack member reports a changed Stack, attached merged members whose known membership contradicts it are refreshed once. This lets a Stack with a merged member regroup after a link or unlink.
   - Existing members keep their original attachment time.
-  - Attaching fails without changing state when the Stack cannot be discovered, when the pull request is missing or inaccessible, or when the result would exceed 20.
+  - Attaching fails without changing state when the Stack cannot be discovered, when the pull request is missing or inaccessible, or when the result would exceed 40.
 - Attachments to one session happen in the order they were requested. Different sessions don't block each other.
 - Attaching by number resolves the current repository with `gh repo view` in the session's directory. If that fails, the error suggests attaching with a full URL.
 - Detaching a pull request that isn't attached reports that without failing.

@@ -274,7 +274,9 @@ describe("Tracking examples", () => {
 
     const result = attach(tracking, [acmeRef(99), acmeRef(99)], 1)
 
-    expect(Result.map(result, (change) => change.tracking.length)).toEqual(Result.succeed(20))
+    expect(Result.map(result, (change) => change.tracking.length)).toEqual(
+      Result.succeed(maximumAttachments),
+    )
   })
 
   test("attaching a stack member moves the whole stack to that member's place", () => {

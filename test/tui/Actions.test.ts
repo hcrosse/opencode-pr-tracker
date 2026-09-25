@@ -91,11 +91,11 @@ describe("attach command", () => {
   test("shows why the tracker refused", async () => {
     const setup = world()
 
-    setup.tracker.fail("A session can track at most 20 pull requests.")
+    setup.tracker.fail("A session can track at most 40 pull requests.")
     await setup.run((commands) => commands.attach(Option.some("123")))
 
     expect(setup.terminal.notices).toEqual([
-      ["error", "A session can track at most 20 pull requests."],
+      ["error", "A session can track at most 40 pull requests."],
     ])
   })
 })

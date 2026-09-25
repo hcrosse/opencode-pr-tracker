@@ -3,7 +3,7 @@ import { Effect, Exit, Layer } from "effect"
 import { layer as storageLayer } from "../../src/adapters/Storage.ts"
 import { layer as trackerLayer, Tracker, type TrackerApi } from "../../src/application/Tracker.ts"
 import type { PullRequestInput, PullRequestRef } from "../../src/domain/PullRequest.ts"
-import type { Tracking } from "../../src/domain/Tracking.ts"
+import { maximumAttachments, type Tracking } from "../../src/domain/Tracking.ts"
 import {
   memoryStorage,
   openState,
@@ -30,11 +30,11 @@ export interface World {
   readonly storage: StorageFake
 }
 
-/** Pull requests 1 to 30 in acme/api are open and standalone. */
+/** Pull requests 1 to one past the attachment limit in acme/api are open and standalone. */
 export function world(): World {
   const github = new ScriptedGitHub()
 
-  for (let number = 1; number <= 30; number += 1) {
+  for (let number = 1; number <= maximumAttachments + 1; number += 1) {
     github.script(ref(number), reported(ref(number), openState, standalone))
   }
 
