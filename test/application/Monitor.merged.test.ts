@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { Effect, Exit } from "effect"
+import { Effect, Exit, Option } from "effect"
 import { TestClock } from "effect/testing"
 
 import type { PullRequestRef } from "../../src/domain/PullRequest.ts"
@@ -136,5 +136,29 @@ describe("Monitor Stack order after unlinking", () => {
         stacks: [[5, 6]],
       }),
     )
+  })
+})
+
+describe("Monitor Stack order after a failed refresh", () => {
+  test("retries a merged member whose refresh failed, then groups", async () => {
+    const github = mergedBottom()
+
+    const result = await run(github, (app: App) =>
+      Effect.gen(function* () {
+        yield* watching(app, "a", refs([5, 8, 10]))
+        yield* app.monitor.poll
+        linkTen(github, stackOf("s", [5, 6, 7, 10]))
+        yield* pollAfter(app)
+
+        github.failRequests(Option.some("GitHubUnavailable"))
+        yield* pollAfter(app)
+        github.failRequests(Option.none())
+        yield* pollAfter(app)
+
+        return yield* numbersOf(app)
+      }),
+    )
+
+    expect(result).toEqual(Exit.succeed([5, 6, 7, 10, 8]))
   })
 })

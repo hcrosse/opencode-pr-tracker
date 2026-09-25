@@ -27,17 +27,15 @@ describe("nextRefresh", () => {
       "an unavailable pull request",
       { _tag: "Unavailable", diagnostic: "GitHubUnavailable" } satisfies Status,
     ],
-  ])("refreshes %s every 15 seconds", (_name, status) => {
-    expect(nextRefresh(status)).toEqual(Option.some(Duration.seconds(15)))
-  })
-
-  test.each([
-    ["a merged pull request", fresh({ _tag: "Merged" })],
     [
       "a merged pull request whose last refresh failed",
       failed(fresh({ _tag: "Merged" }), "GitHubUnavailable", 0),
     ],
-  ])("stops refreshing %s", (_name, status) => {
-    expect(nextRefresh(status)).toEqual(Option.none())
+  ])("refreshes %s every 15 seconds", (_name, status) => {
+    expect(nextRefresh(status)).toEqual(Option.some(Duration.seconds(15)))
+  })
+
+  test("stops refreshing a merged pull request", () => {
+    expect(nextRefresh(fresh({ _tag: "Merged" }))).toEqual(Option.none())
   })
 })

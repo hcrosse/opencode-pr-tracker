@@ -45,7 +45,7 @@ Each item names the V2 module that owns it.
 
 ## Refresh (`domain/RefreshPolicy`, `application/Monitor`)
 
-- Open and closed pull requests refresh. Closed pull requests keep refreshing so a reopen is noticed. Merged pull requests stop refreshing, except for one refresh when a changed Stack report contradicts their membership (see Attaching).
+- Open and closed pull requests refresh. Closed pull requests keep refreshing so a reopen is noticed. Merged pull requests stop refreshing once a refresh succeeds, except for one refresh when a changed Stack report contradicts their membership (see Attaching). A failed refresh is retried.
 - One batch covers every due pull request, and a pull request attached in several sessions is fetched once.
 - A manual sync reports its outcome. Refresh requests made during a running refresh join a single trailing refresh.
 - After a failed refresh, the last good status stays and is marked stale with a diagnostic. After 5 minutes of continuous failure it becomes unavailable. The next success clears the diagnostic.
