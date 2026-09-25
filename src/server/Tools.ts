@@ -4,7 +4,7 @@ import { Effect, Schema, type Scope } from "effect"
 
 import { appearance } from "../domain/Appearance.ts"
 import { failureMessage, type RequestFailure } from "../messages.ts"
-import { requests, type Change, type Services, type Settings } from "./Requests.ts"
+import { requests, type Change, type Requests, type Services, type Settings } from "./Requests.ts"
 
 const options = { codemode: true, namespace: "pr", pinned: true } as const
 
@@ -35,10 +35,10 @@ type NoArguments = typeof NoArguments
 const asToolError = (failure: RequestFailure): Tool.Error =>
   new Tool.Error({ message: failureMessage(failure) })
 
-const listTool = ({ monitor }: Services): Tool.Info<NoArguments> => ({
+const listTool = (list: Requests["list"]): Tool.Info<NoArguments> => ({
   description: "List the pull requests attached to this session, with their status.",
   execute: (_input, context) =>
-    monitor.view(context.sessionID).pipe(
+    list(context.sessionID).pipe(
       Effect.map((view) => ({
         content:
           view.entries.length === 0
@@ -83,7 +83,7 @@ export function registerTools(
     })
     const changes = requests(services, settings)
 
-    editor.add(listTool(services))
+    editor.add(listTool(changes.list))
     editor.add(
       changeTool(
         "attach",

@@ -84,7 +84,7 @@ Each item names the V2 module that owns it.
 
 - Slash commands: `/pr-attach`, `/pr-open`, `/pr-detach`, `/pr-sync`. Without a session they warn. With no attachments, `/pr-open` and `/pr-detach` report that.
 - Agent tools: list, attach and detach, scoped to the calling session.
-  - List returns canonical URLs in attachment order.
+  - List returns canonical URLs in attachment order. It fetches statuses that are not yet known, as after the plugin restarts, before answering. The sidebar shows a pull request as `loading` until its first fetch.
   - Detach accepts a URL or a positive safe integer.
   - Invalid input returns a structured tool error.
 - Dialogs close when the plugin unloads.

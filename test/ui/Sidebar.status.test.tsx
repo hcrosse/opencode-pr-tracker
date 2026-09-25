@@ -50,6 +50,12 @@ describe("Sidebar failed refreshes", () => {
 
     expect(style("stale")).toEqual(Option.some(styled(palette.muted, { italic: true })))
   })
+
+  test("shows a pull request that has not been fetched yet as loading", async () => {
+    const { lines } = await showSidebar(ready(viewOf([entryOf(bottom, { _tag: "Pending" })])))
+
+    expect(lines()).toEqual(["Pull requests", "", "•  acme/api#1 loading", "   Loading title"])
+  })
 })
 
 describe("Sidebar status colors", () => {

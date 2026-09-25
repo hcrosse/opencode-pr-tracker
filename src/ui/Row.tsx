@@ -103,7 +103,7 @@ function Marked(props: {
 const titleOf = (status: Status): string =>
   Match.valueTags(status, {
     Fresh: ({ snapshot }) => snapshot.title,
-    Pending: () => "Title unavailable",
+    Pending: () => "Loading title",
     Stale: ({ snapshot }) => snapshot.title,
     Unavailable: () => "Title unavailable",
   })
