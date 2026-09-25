@@ -16,6 +16,8 @@ export interface StorageFake {
   readonly storage: StorageDomain
   /** The stored values, by key. */
   readonly values: ReadonlyMap<string, Schema.Json>
+  /** How many times a value was set. */
+  readonly writes: () => number
 }
 
 /**
@@ -24,6 +26,7 @@ export interface StorageFake {
  */
 export function memoryStorage(): StorageFake {
   const values = new Map<string, Schema.Json>()
+  let writes = 0
 
   const storage: StorageDomain = {
     get: (key: string) =>
@@ -45,12 +48,13 @@ export function memoryStorage(): StorageFake {
       Effect.andThen(
         Effect.yieldNow,
         Effect.sync(() => {
+          writes += 1
           values.set(key, value)
         }),
       ),
   }
 
-  return { storage, values }
+  return { storage, values, writes: () => writes }
 }
 
 export const standalone: Membership = { _tag: "Standalone" }

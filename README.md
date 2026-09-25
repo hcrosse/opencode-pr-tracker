@@ -52,7 +52,7 @@ Agents get three tools in the `pr` namespace: `pr.list`, `pr.attach` and `pr.det
 
 Each attached pull request shows its repository, number, status, and title. Open the sidebar with ctrl+x b if your terminal is narrow enough to hide it. Click a row to open its pull request. With more than two pull requests attached, click the **Pull requests** heading to collapse or expand the list.
 
-Stack members appear together in Stack order, joined by `┌─`, `├─` and `└─`. `├┄ 2 PRs not attached` marks Stack members between attached ones. Other pull requests use `•`.
+Stack members appear together in Stack order, including pull requests linked into a Stack after they were attached, joined by `┌─`, `├─` and `└─`. `├┄ 2 PRs not attached` marks Stack members between attached ones. Other pull requests use `•`.
 
 | Status          | Appearance             |
 | --------------- | ---------------------- |

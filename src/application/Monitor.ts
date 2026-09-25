@@ -2,12 +2,12 @@ import { Context, Effect, Layer, Option, PubSub, Ref, Result, Stream } from "eff
 
 import type { PullRequestRef } from "../domain/PullRequest.ts"
 import type { Status } from "../domain/Snapshot.ts"
-import type { Membership } from "../domain/StackLayout.ts"
-import type { Attachment, Tracking } from "../domain/Tracking.ts"
+import { agreedStacks, type Membership } from "../domain/StackLayout.ts"
+import { group, type Attachment, type Tracking } from "../domain/Tracking.ts"
 import { GitHub, type GitHubApi, type ItemResult, type Report } from "../ports/GitHub.ts"
 import type { StoredStateInvalid } from "../ports/TrackingRepository.ts"
 import { FetchQueue } from "./FetchQueue.ts"
-import { afterRefresh, isDue, unknown, withoutUnattached, type Known } from "./Known.ts"
+import { isDue, recorded, unknown, withoutUnattached, type Known } from "./Known.ts"
 import { currentMillis } from "./Time.ts"
 import { Tracker, type TrackerApi } from "./Tracker.ts"
 
@@ -85,14 +85,9 @@ function remember(cache: Cache, results: ReadonlyMap<string, ItemResult>): Effec
   return Effect.gen(function* () {
     const now = yield* currentMillis
 
-    yield* Ref.update(cache.known, (current: ReadonlyMap<string, Known>) => {
-      const next = new Map(current)
-
-      for (const [url, result] of results)
-        next.set(url, afterRefresh(current.get(url) ?? unknown, result, now))
-
-      return next
-    })
+    yield* Ref.update(cache.known, (current: ReadonlyMap<string, Known>) =>
+      recorded(current, results, now),
+    )
   })
 }
 
@@ -113,10 +108,18 @@ function update(cache: Cache, refs: readonly PullRequestRef[]): Effect.Effect<vo
   })
 }
 
+/** The session's view. Agreed Stacks whose attached members sit apart are regrouped first. */
 function viewOf(state: State, sessionID: string): Effect.Effect<SessionView, StoredStateInvalid> {
   return Effect.gen(function* () {
-    const tracking = yield* state.tracker.list(sessionID)
+    const stored = yield* state.tracker.list(sessionID)
     const current = yield* Ref.get(state.known)
+    const entries = stored.map((attachment) => entryOf(current, attachment))
+    const stacks = agreedStacks(entries).map((stack) => stack.members)
+
+    if (!group(stored, stacks).changed) return { entries, sessionID }
+    // A failed regroup leaves the stored order as it was.
+    const regrouped = Effect.orElseSucceed(state.tracker.regroup(sessionID, stacks), () => stored)
+    const tracking = yield* regrouped
 
     return { entries: tracking.map((attachment) => entryOf(current, attachment)), sessionID }
   })

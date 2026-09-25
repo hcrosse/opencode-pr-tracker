@@ -1,3 +1,4 @@
+// oxlint-disable max-lines -- attach and group share the placement check, so their tests stay together.
 import { describe, expect, test } from "bun:test"
 
 import * as hegel from "@hegeldev/hegel"
@@ -9,6 +10,7 @@ import {
   attach,
   detach,
   detachNumber,
+  group,
   maximumAttachments,
   type Tracking,
 } from "../../src/domain/Tracking.ts"
@@ -184,6 +186,81 @@ describe("attaching stacks", () => {
 
       expect(attach(before, [...stack, ...repeats], 1)).toEqual(attach(before, unique, 1))
     })
+  })
+})
+
+/** Attaches each pull request on its own, in order, skipping repeats. */
+function attachedOneByOne(refs: readonly PullRequestRef[]): Tracking {
+  let tracking: Tracking = []
+
+  for (const [step, ref] of refs.entries()) {
+    const next = attach(tracking, [ref], step)
+
+    if (Result.isSuccess(next)) tracking = next.success.tracking
+  }
+
+  return tracking
+}
+
+/** Attachments in any order, as when Stacks are linked after their members were attached. */
+const scattered = gs
+  .arrays(pooledRefs, { maxSize: maximumAttachments })
+  .map((refs: readonly PullRequestRef[]) => attachedOneByOne(refs))
+
+describe("grouping stacks", () => {
+  test("gathers a stack's attached members at the earliest of them, and nothing else moves", () => {
+    hegel.test((tc) => {
+      const before = tc.draw(scattered)
+      const stack = tc.draw(stacks(8))
+      const { changed, tracking } = group(before, [stack])
+      const attached = uniqueUrls(stack).filter((url) => urls(before).includes(url))
+
+      checkPlacement(urls(before), urls(tracking), attached)
+
+      expect(tracking.length).toBe(before.length)
+      expect(tracking.every((attachment) => before.includes(attachment))).toBe(true)
+      expect(changed).toBe(JSON.stringify(urls(tracking)) !== JSON.stringify(urls(before)))
+    })
+  })
+
+  test("grouping again changes nothing", () => {
+    hegel.test((tc) => {
+      const before = tc.draw(scattered)
+      const chosen = tc.draw(gs.arrays(stacks(5), { maxSize: 3 }))
+      const once = group(before, chosen).tracking
+
+      expect(group(once, chosen)).toEqual({ changed: false, tracking: once })
+    })
+  })
+})
+
+describe("grouping examples", () => {
+  test("keeps the first of overlapping stacks, so grouping settles", () => {
+    const [a, b, c] = [acmeRef(1), acmeRef(2), acmeRef(3)] as const
+    const before = attachedOneByOne([a, b, c])
+
+    const overlapping = [
+      [a, b],
+      [b, c],
+      [c, a],
+    ]
+
+    const once = group(before, overlapping)
+
+    expect(once.tracking.map((attachment) => attachment.ref.number)).toEqual([1, 2, 3])
+    expect(group(once.tracking, overlapping).changed).toBe(false)
+  })
+
+  test("groups a stack whose members were linked after they were attached", () => {
+    const attached = [1925, 1927, 1928, 1929, 1931, 1932, 1934, 1937, 1935, 1938, 1943]
+    const before = attachedOneByOne(attached.map((number) => acmeRef(number)))
+    const linked = [1927, 1928, 1929, 1937, 1938].map((number) => acmeRef(number))
+    const { changed, tracking } = group(before, [linked])
+
+    expect(changed).toBe(true)
+    expect(tracking.map((attachment) => attachment.ref.number)).toEqual([
+      1925, 1927, 1928, 1929, 1937, 1938, 1931, 1932, 1934, 1935, 1943,
+    ])
   })
 })
 

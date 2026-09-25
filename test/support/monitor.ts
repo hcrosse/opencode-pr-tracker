@@ -11,6 +11,7 @@ import {
 import { layer as trackerLayer, Tracker, type TrackerApi } from "../../src/application/Tracker.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
 import type { PullRequestState } from "../../src/domain/Snapshot.ts"
+import type { Membership } from "../../src/domain/StackLayout.ts"
 import {
   memoryStorage,
   openState,
@@ -18,6 +19,7 @@ import {
   ScriptedGitHub,
   standalone,
   type GitHubScript,
+  type StorageFake,
 } from "./application.ts"
 
 export const ref = (number: number): PullRequestRef =>
@@ -34,10 +36,11 @@ export interface App {
 export async function run<A, E>(
   github: GitHubScript,
   use: (app: App) => Effect.Effect<A, E>,
+  storage: StorageFake = memoryStorage(),
 ): Promise<Exit.Exit<A, E>> {
   const layer = monitorLayer.pipe(
     Layer.provideMerge(trackerLayer),
-    Layer.provide([github.layer, storageLayer(memoryStorage().storage)]),
+    Layer.provide([github.layer, storageLayer(storage.storage)]),
   )
 
   const program = Effect.gen(function* () {
@@ -95,4 +98,32 @@ export const statusOf = (app: App): Effect.Effect<string, unknown> =>
       onNone: () => "none",
       onSome: (entry) => entry.status._tag,
     }),
+  )
+
+/** Pull requests with these numbers, in order. */
+export const refs = (numbers: readonly number[]): PullRequestRef[] =>
+  numbers.map((number) => ref(number))
+
+/** Stack `id` with the pull requests `numbers`, bottom first. */
+export const stackOf = (id: string, numbers: Arr.NonEmptyReadonlyArray<number>): Membership => ({
+  _tag: "Stack",
+  id,
+  members: Arr.map(numbers, (number) => ref(number)),
+})
+
+/** Scripts each of `numbers` as open, with `membership`. */
+export function scriptAll(
+  github: Readonly<GitHubScript>,
+  numbers: readonly number[],
+  membership: Membership,
+): void {
+  for (const number of numbers) {
+    github.script(ref(number), reported(ref(number), openState, membership))
+  }
+}
+
+/** The pull request numbers of session "a", in display order. */
+export const numbersOf = (app: App): Effect.Effect<readonly number[], unknown> =>
+  Effect.map(app.monitor.view("a"), (view: SessionView) =>
+    view.entries.map((entry) => entry.ref.number),
   )

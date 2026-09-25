@@ -13,7 +13,7 @@ export const Membership = Schema.Union([
 
 export type Membership = typeof Membership.Type
 
-type StackMembership = Extract<Membership, { readonly _tag: "Stack" }>
+export type StackMembership = Extract<Membership, { readonly _tag: "Stack" }>
 
 export interface Entry {
   readonly ref: PullRequestRef
@@ -103,6 +103,7 @@ function agrees(
     listed.size === members.length &&
     reports.every((report) => urlsOf(report.stack).join("\n") === members.join("\n")) &&
     members.every((url) => (claimed.get(url) ?? new Set()).size === 1) &&
+    reports.every((report) => listed.has(report.url)) &&
     attachedMembers.length === reports.length
   )
 }
@@ -126,14 +127,29 @@ function placements(reports: readonly Reported[]): Option.Option<Placed[]> {
   return ordered ? Option.some(placed) : Option.none()
 }
 
-/** Each entry that belongs to a consistent Stack, with its place among the attached members. */
-function consistentStacks(entries: readonly Entry[]): Map<number, Place> {
+/** The reports of each Stack whose attached members all agree on it, and no other Stack claims. */
+function agreedReports(entries: readonly Entry[]): (readonly Reported[])[] {
   const byId = reportsById(entries)
   const claimed = claims(byId)
+
+  return [...byId.values()].filter((reports: readonly Reported[]) =>
+    agrees(reports, entries, claimed),
+  )
+}
+
+/** Stacks the entries report consistently: the ones `layout` can draw once their members sit together. */
+export function agreedStacks(entries: readonly Entry[]): StackMembership[] {
+  return agreedReports(entries).flatMap((reports: readonly Reported[]) =>
+    Option.toArray(Option.map(Arr.head(reports), (report) => report.stack)),
+  )
+}
+
+/** Each entry that belongs to a consistent Stack, with its place among the attached members. */
+function consistentStacks(entries: readonly Entry[]): Map<number, Place> {
   const places = new Map<number, Place>()
 
-  for (const reports of byId.values()) {
-    const placed = agrees(reports, entries, claimed) ? placements(reports) : Option.none()
+  for (const reports of agreedReports(entries)) {
+    const placed = placements(reports)
 
     for (const group of Option.toArray(placed)) {
       for (const [step, current] of group.entries()) {

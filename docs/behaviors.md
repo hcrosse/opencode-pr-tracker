@@ -17,6 +17,8 @@ Each item names the V2 module that owns it.
 - Attaching an already attached pull request succeeds without duplicating it.
 - Attaching any member of a GitHub Stack attaches the whole Stack in bottom-to-top order.
   - A Stack is inserted at the position of its earliest already-attached member. Other attachments keep their order.
+  - When refreshes later report a changed Stack, such as pull requests linked into it after they were attached, its attached members are regrouped the same way. The order is saved only when it changes, and only once every attached member agrees on the Stack and no other Stack claims any of them.
+  - Merged pull requests stop refreshing, so when a Stack member reports a changed Stack, attached merged members whose known membership contradicts it are refreshed once. This lets a Stack with a merged member regroup after a link or unlink.
   - Existing members keep their original attachment time.
   - Attaching fails without changing state when the Stack cannot be discovered, when the pull request is missing or inaccessible, or when the result would exceed 20.
 - Attachments to one session happen in the order they were requested. Different sessions don't block each other.
@@ -43,7 +45,7 @@ Each item names the V2 module that owns it.
 
 ## Refresh (`domain/RefreshPolicy`, `application/Monitor`)
 
-- Open and closed pull requests refresh. Closed pull requests keep refreshing so a reopen is noticed. Merged pull requests stop refreshing.
+- Open and closed pull requests refresh. Closed pull requests keep refreshing so a reopen is noticed. Merged pull requests stop refreshing once a refresh succeeds, except for one refresh when a changed Stack report contradicts their membership (see Attaching). A failed refresh is retried.
 - One batch covers every due pull request, and a pull request attached in several sessions is fetched once.
 - A manual sync reports its outcome. Refresh requests made during a running refresh join a single trailing refresh.
 - After a failed refresh, the last good status stays and is marked stale with a diagnostic. After 5 minutes of continuous failure it becomes unavailable. The next success clears the diagnostic.

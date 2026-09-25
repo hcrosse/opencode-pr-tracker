@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { layout, type Entry } from "../../src/domain/StackLayout.ts"
+import { agreedStacks, layout, type Entry } from "../../src/domain/StackLayout.ts"
 import { entry, ref, rendered, stack, type Stack } from "../support/stacks.ts"
 
 const members: Stack = [
@@ -76,5 +76,21 @@ describe("layout of inconsistent membership", () => {
     ["members are attached in reverse order", attachedAt([1, 0])],
   ])("falls back to bullets when %s", (_name: string, entries: readonly Entry[]) => {
     expect(rendered(layout(entries)).every((drawn) => drawn === "bullet/none")).toBe(true)
+  })
+})
+
+describe("agreed Stacks with a reporter it does not list", () => {
+  test("agrees on nothing while an attached member reports a Stack without it", () => {
+    const [first, second] = members
+    const reportedStack: Stack = [first, second ?? first]
+    const outsider = ref("acme/api", 9)
+
+    const entries = [
+      entry(first, stack("s", reportedStack)),
+      entry(outsider, stack("s", reportedStack)),
+      entry(second ?? first, { _tag: "Standalone" }),
+    ]
+
+    expect(agreedStacks(entries)).toEqual([])
   })
 })
