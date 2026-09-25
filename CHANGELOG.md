@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.5.0...v0.5.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* tint merged pull requests to match the theme ([#156](https://github.com/hcrosse/opencode-pr-tracker/issues/156)) ([c4fc5e7](https://github.com/hcrosse/opencode-pr-tracker/commit/c4fc5e7834fde905c0fc5c115168ee3b38fd5941))
+
 ## [0.5.0](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.4.4...v0.5.0) (2026-09-25)
 
 
