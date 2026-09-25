@@ -11,6 +11,7 @@ import {
   type Entry,
   type Membership,
   type Row,
+  type StackMembership,
 } from "../../src/domain/StackLayout.ts"
 import { Attachment, group, type Tracking } from "../../src/domain/Tracking.ts"
 import {
@@ -112,6 +113,28 @@ describe("layout of consistent Stacks", () => {
   })
 })
 
+/** Pull requests drawn with a Stack marker. */
+const drawnInStacks = (rows: readonly Row<Entry>[]): Set<string> =>
+  new Set(
+    rows.flatMap((row) =>
+      row._tag === "PullRequest" && row.marker !== "bullet" ? [row.entry.ref.url] : [],
+    ),
+  )
+
+/** The attached members of `stacks`. */
+const attachedMembers = (
+  stacks: readonly StackMembership[],
+  entries: readonly Entry[],
+): Set<string> => {
+  const attached = new Set(entries.map((candidate) => candidate.ref.url))
+
+  return new Set(
+    stacks.flatMap((agreed) =>
+      agreed.members.flatMap((member) => (attached.has(member.url) ? [member.url] : [])),
+    ),
+  )
+}
+
 describe("agreed Stacks after grouping", () => {
   test("are all drawn once grouped, however their members were attached", () => {
     hegel.test((tc) => {
@@ -135,17 +158,9 @@ describe("agreed Stacks after grouping", () => {
         agreed.map((agreedStack) => agreedStack.members),
       ).tracking
 
-      const drawn = layout(entriesOf(grouped)).flatMap((row) =>
-        row._tag === "PullRequest" && row.marker !== "bullet" ? [row.entry.ref.url] : [],
+      expect(drawnInStacks(layout(entriesOf(grouped)))).toEqual(
+        attachedMembers(agreed, entriesOf(scattered)),
       )
-
-      const attached = new Set(scattered.map((attachment) => attachment.ref.url))
-
-      const members = agreed.flatMap((agreedStack) =>
-        agreedStack.members.flatMap((member) => (attached.has(member.url) ? [member.url] : [])),
-      )
-
-      expect(new Set(drawn)).toEqual(new Set(members))
     })
   })
 })
@@ -156,17 +171,9 @@ describe("agreed Stacks", () => {
       const world = tc.draw(worlds)
       const entries = consistentEntries(tc, world)
 
-      const drawn = layout(entries).flatMap((row) =>
-        row._tag === "PullRequest" && row.marker !== "bullet" ? [row.entry.ref.url] : [],
+      expect(drawnInStacks(layout(entries))).toEqual(
+        attachedMembers(agreedStacks(entries), entries),
       )
-
-      const attached = new Set(entries.map((candidate) => candidate.ref.url))
-
-      const agreed = agreedStacks(entries).flatMap((agreedStack) =>
-        agreedStack.members.flatMap((member) => (attached.has(member.url) ? [member.url] : [])),
-      )
-
-      expect(new Set(agreed)).toEqual(new Set(drawn))
     })
   })
 })

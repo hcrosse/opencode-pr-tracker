@@ -100,10 +100,11 @@ export function recorded(
   for (const [url, result] of results)
     next.set(url, afterRefresh(current.get(url) ?? unknown, result, now))
 
+  // Contradicted pull requests are known and were not in `results`, so they are as in `current`.
   for (const url of contradicted(current, results)) {
-    for (const known of Option.toArray(Option.fromNullishOr(next.get(url)))) {
-      next.set(url, { dueAt: Option.some(now), membership: known.membership, status: known.status })
-    }
+    const { membership, status } = current.get(url) ?? unknown
+
+    next.set(url, { dueAt: Option.some(now), membership, status })
   }
 
   return next

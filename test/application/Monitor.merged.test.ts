@@ -3,13 +3,13 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Exit, Option } from "effect"
 import { TestClock } from "effect/testing"
 
-import type { PullRequestRef } from "../../src/domain/PullRequest.ts"
 import { agreedStacks, type Membership } from "../../src/domain/StackLayout.ts"
 import { reported, ScriptedGitHub, standalone, type GitHubScript } from "../support/application.ts"
 import {
   fetchedSince,
   numbersOf,
   ref,
+  refs,
   run,
   scriptAll,
   stackOf,
@@ -43,8 +43,6 @@ function unlinkSeven(github: Readonly<GitHubScript>): void {
   scriptAll(github, [7], standalone)
   github.script(ref(5), reported(ref(5), { _tag: "Merged" }, remaining))
 }
-
-const refs = (numbers: readonly number[]): PullRequestRef[] => numbers.map((number) => ref(number))
 
 const pollAfter = (app: App): Effect.Effect<void> =>
   Effect.andThen(TestClock.adjust("15 seconds"), app.monitor.poll)

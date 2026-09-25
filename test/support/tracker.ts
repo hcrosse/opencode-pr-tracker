@@ -13,9 +13,9 @@ import {
   type GitHubScript,
   type StorageFake,
 } from "./application.ts"
-import { ref } from "./monitor.ts"
+import { ref, refs } from "./monitor.ts"
 
-export { ref }
+export { ref, refs }
 
 export const byUrl = (pullRequest: PullRequestRef): PullRequestInput => ({
   _tag: "Reference",

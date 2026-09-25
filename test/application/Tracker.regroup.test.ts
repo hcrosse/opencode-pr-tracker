@@ -4,9 +4,7 @@ import { Effect, Exit } from "effect"
 
 import type { TrackerApi } from "../../src/application/Tracker.ts"
 import type { PullRequestRef } from "../../src/domain/PullRequest.ts"
-import { byUrl, numbers, ref, run, world } from "../support/tracker.ts"
-
-const refs = (values: readonly number[]): PullRequestRef[] => values.map((value) => ref(value))
+import { byUrl, numbers, ref, refs, run, world } from "../support/tracker.ts"
 
 const attachAll = (tracker: TrackerApi, values: readonly number[]): Effect.Effect<void, unknown> =>
   Effect.forEach(

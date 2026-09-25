@@ -100,12 +100,16 @@ export const statusOf = (app: App): Effect.Effect<string, unknown> =>
     }),
   )
 
-/** Stack `id` with the pull requests `numbers`, bottom first. */
-export const stackOf = (id: string, numbers: readonly number[]): Membership => {
-  const [head = 1, ...tail] = numbers
+/** Pull requests with these numbers, in order. */
+export const refs = (numbers: readonly number[]): PullRequestRef[] =>
+  numbers.map((number) => ref(number))
 
-  return { _tag: "Stack", id, members: [ref(head), ...tail.map((number) => ref(number))] }
-}
+/** Stack `id` with the pull requests `numbers`, bottom first. */
+export const stackOf = (id: string, numbers: Arr.NonEmptyReadonlyArray<number>): Membership => ({
+  _tag: "Stack",
+  id,
+  members: Arr.map(numbers, (number) => ref(number)),
+})
 
 /** Scripts each of `numbers` as open, with `membership`. */
 export function scriptAll(

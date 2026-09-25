@@ -4,14 +4,8 @@ import { Effect, Exit } from "effect"
 import { TestClock } from "effect/testing"
 
 import type { PullRequestRef } from "../../src/domain/PullRequest.ts"
-import {
-  memoryStorage,
-  openState,
-  reported,
-  ScriptedGitHub,
-  standalone,
-} from "../support/application.ts"
-import { numbersOf, ref, run, scriptAll, stackOf, watching, type App } from "../support/monitor.ts"
+import { memoryStorage, ScriptedGitHub, standalone } from "../support/application.ts"
+import { numbersOf, refs, run, scriptAll, stackOf, watching, type App } from "../support/monitor.ts"
 
 /**
  * #5, #6 and #7 form a Stack; #1 and #8 to #13 are standalone. Attaching them in this order puts
@@ -20,18 +14,13 @@ import { numbersOf, ref, run, scriptAll, stackOf, watching, type App } from "../
 function beforeLinking(): ScriptedGitHub {
   const github = new ScriptedGitHub()
 
-  for (const number of [1, 8, 9, 10, 11, 12, 13]) {
-    github.script(ref(number), reported(ref(number), openState, standalone))
-  }
-
+  scriptAll(github, [1, 8, 9, 10, 11, 12, 13], standalone)
   scriptAll(github, [5, 6, 7], stackOf("s", [5, 6, 7]))
 
   return github
 }
 
-const attachedInOrder: readonly PullRequestRef[] = [1, 5, 8, 9, 10, 11, 12, 13].map((number) =>
-  ref(number),
-)
+const attachedInOrder: readonly PullRequestRef[] = refs([1, 5, 8, 9, 10, 11, 12, 13])
 
 describe("Monitor Stack order", () => {
   test("stores a Stack's members together once GitHub reports them linked", async () => {
