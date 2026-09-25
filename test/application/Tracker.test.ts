@@ -8,6 +8,7 @@ import {
   type PullRequestInput,
   type PullRequestRef,
 } from "../../src/domain/PullRequest.ts"
+import { maximumAttachments } from "../../src/domain/Tracking.ts"
 import { openState, reported, reportOf, standalone } from "../support/application.ts"
 import { byUrl, numbers, ref, run, world } from "../support/tracker.ts"
 
@@ -101,16 +102,20 @@ describe("Tracker attachment limit", () => {
         yield* attachAll(
           tracker,
           "session",
-          Array.from({ length: 20 }, (_, index: number) => ref(index + 1)),
+          Array.from({ length: maximumAttachments }, (_, index: number) => ref(index + 1)),
         )
 
-        const rejected = yield* Effect.flip(tracker.attach("session", byUrl(ref(21)), "/work"))
+        const rejected = yield* Effect.flip(
+          tracker.attach("session", byUrl(ref(maximumAttachments + 1)), "/work"),
+        )
 
         return { rejected: rejected._tag, tracking: (yield* tracker.list("session")).length }
       }),
     )
 
-    expect(result).toEqual(Exit.succeed({ rejected: "AttachmentLimitReached", tracking: 20 }))
+    expect(result).toEqual(
+      Exit.succeed({ rejected: "AttachmentLimitReached", tracking: maximumAttachments }),
+    )
   })
 })
 

@@ -2,7 +2,7 @@ import { Array as Arr, Option, Result, Schema } from "effect"
 
 import { PullRequestRef, samePullRequest } from "./PullRequest.ts"
 
-export const maximumAttachments = 20
+export const maximumAttachments = 40
 
 export class Attachment extends Schema.Class<Attachment>("Attachment")({
   attachedAt: Schema.Int,

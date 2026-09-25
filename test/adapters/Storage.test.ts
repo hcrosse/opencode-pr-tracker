@@ -5,7 +5,7 @@ import * as gs from "@hegeldev/hegel/generators"
 import { Effect, Exit, Option, Result, type Schema } from "effect"
 
 import { layer } from "../../src/adapters/Storage.ts"
-import { attach, type Tracking } from "../../src/domain/Tracking.ts"
+import { attach, maximumAttachments, type Tracking } from "../../src/domain/Tracking.ts"
 import {
   TrackingRepository,
   type TrackingRepositoryApi,
@@ -27,7 +27,9 @@ async function run<A, E>(
 const trackings = gs.composite((tc): Tracking => {
   let tracking: Tracking = []
 
-  for (const [time, ref] of tc.draw(gs.arrays(pullRequestRefs, { maxSize: 20 })).entries()) {
+  for (const [time, ref] of tc
+    .draw(gs.arrays(pullRequestRefs, { maxSize: maximumAttachments }))
+    .entries()) {
     const next = attach(tracking, [ref], time * 1000)
 
     if (Result.isSuccess(next)) tracking = next.success.tracking

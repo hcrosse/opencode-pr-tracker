@@ -35,7 +35,7 @@ In a session, run `/pr-attach` followed by a pull request URL, with or without `
 /pr-attach 123
 ```
 
-Without an argument, `/pr-attach` asks for one. Attaching any member of a GitHub Stack attaches the whole Stack, bottom first. If GitHub returns only part of the Stack, nothing is attached. A session can track up to 20 pull requests.
+Without an argument, `/pr-attach` asks for one. Attaching any member of a GitHub Stack attaches the whole Stack, bottom first. If GitHub returns only part of the Stack, nothing is attached. A session can track up to 40 pull requests.
 
 | Command      | What it does                                                    |
 | ------------ | --------------------------------------------------------------- |
