@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.4](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.4.3...v0.4.4) (2026-09-25)
+
+
+### Bug Fixes
+
+* regroup Stack members linked after they were attached ([#151](https://github.com/hcrosse/opencode-pr-tracker/issues/151)) ([ad9149d](https://github.com/hcrosse/opencode-pr-tracker/commit/ad9149d62146344d4e726dd75d5e3e159204c42b))
+
 ## [0.4.3](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.4.2...v0.4.3) (2026-09-24)
 
 
