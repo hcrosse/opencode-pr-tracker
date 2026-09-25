@@ -95,8 +95,8 @@ function rgbaOf({ c, h, l }: Oklch): RGBA {
   return RGBA.fromValues(fromLinear(red), fromLinear(green), fromLinear(blue))
 }
 
-/** The hue of GitHub's merged badge purple, `#8957e5`. */
-const mergedHue = oklchOf(RGBA.fromHex("#8957e5")).h
+/** The hue of GitHub's merged purple, `#8250df`. */
+const mergedHue = oklchOf(RGBA.fromHex("#8250df")).h
 
 /**
  * The color for merged pull requests. Themes have no dependable purple: the V1 `secondary` color
