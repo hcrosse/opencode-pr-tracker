@@ -94,7 +94,7 @@ export function SessionSidebar(props: {
       onToggle={() => {
         props.collapsed.toggle(props.sessionID)
       }}
-      palette={paletteOf(context.theme, context.themeMode)}
+      palette={paletteOf(context.theme)}
       state={state()}
     />
   )
