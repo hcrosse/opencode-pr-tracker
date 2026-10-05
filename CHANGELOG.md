@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.5.1...v0.6.0) (2026-10-05)
+
+
+### Features
+
+* poll only sessions a terminal shows, and settled pull requests less often ([#164](https://github.com/hcrosse/opencode-pr-tracker/issues/164)) ([b947c0c](https://github.com/hcrosse/opencode-pr-tracker/commit/b947c0c6283f522ff7f271d7292df452331c0b5e))
+
+
+### Bug Fixes
+
+* back off when GitHub rate limits the tracker ([#163](https://github.com/hcrosse/opencode-pr-tracker/issues/163)) ([4eb7d89](https://github.com/hcrosse/opencode-pr-tracker/commit/4eb7d89f00ce14fc0940185715ae92d933d99812))
+* fetch unknown statuses before the list tool answers ([#159](https://github.com/hcrosse/opencode-pr-tracker/issues/159)) ([c484b12](https://github.com/hcrosse/opencode-pr-tracker/commit/c484b12e141516955dd8ba393e95b040e9726e76))
+
 ## [0.5.1](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.5.0...v0.5.1) (2026-09-25)
 
 
