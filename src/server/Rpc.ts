@@ -34,5 +34,6 @@ export function handlers(services: Services, settings: Settings): RpcHandlers<Pu
         Effect.mapError(failureMessage),
         Effect.mapError((message) => context.error("rejected", message, { message })),
       ),
+    watch: ({ sessionID }) => Effect.as(services.monitor.watch(sessionID), {}),
   }
 }

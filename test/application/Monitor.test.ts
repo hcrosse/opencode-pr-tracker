@@ -6,6 +6,7 @@ import { TestClock } from "effect/testing"
 import type { SessionView } from "../../src/application/Monitor.ts"
 import { openState, reported } from "../support/application.ts"
 import {
+  checking,
   fetchedSince,
   merged,
   open,
@@ -39,31 +40,30 @@ describe("Monitor polling", () => {
 })
 
 describe("Monitor refresh intervals", () => {
-  test("refreshes open and closed pull requests every 15 seconds and stops for merged ones", async () => {
+  test("refreshes pull requests as their state calls for and stops for merged ones", async () => {
     const github = scripted()
 
     const result = await run(github, (app: App) =>
       Effect.gen(function* () {
-        yield* watching(app, "a", [open, closed, merged])
+        yield* watching(app, "a", [open, closed, merged, checking])
 
-        const before = github.fetches.length
+        const fetched: number[][][] = []
 
-        yield* app.monitor.poll
-        yield* TestClock.adjust("10 seconds")
-        yield* app.monitor.poll
-        yield* TestClock.adjust("5 seconds")
-        yield* app.monitor.poll
+        for (const elapsed of ["0 seconds", "15 seconds", "45 seconds", "4 minutes"] as const) {
+          const before = github.fetches.length
 
-        return fetchedSince(github, before)
+          yield* TestClock.adjust(elapsed)
+          yield* app.monitor.watch("a")
+          yield* app.monitor.poll
+          fetched.push(fetchedSince(github, before))
+        }
+
+        return fetched
       }),
     )
 
-    expect(result).toEqual(
-      Exit.succeed([
-        [1, 2, 3],
-        [1, 2],
-      ]),
-    )
+    // Polls at 0:00, 0:15, 1:00 and 5:00.
+    expect(result).toEqual(Exit.succeed([[[1, 2, 3, 5]], [[5]], [[1, 5]], [[1, 2, 5]]]))
   })
 })
 

@@ -47,7 +47,8 @@ export interface Requests {
   readonly detach: Change
   /**
    * The session's view for a one-time answer, such as an agent tool's. Statuses not yet known, as
-   * after the plugin restarts, are fetched first instead of being reported as loading.
+   * after the plugin restarts, or due for a refresh, as when no terminal shows the session, are
+   * fetched first.
    */
   readonly list: (sessionID: string) => Effect.Effect<SessionView, RequestFailure>
 }
@@ -73,6 +74,6 @@ export function requests({ monitor, tracker }: Services, settings: Settings): Re
 
         return { message: detachedMessage(removal, target), view: toView(view, settings.layout) }
       }),
-    list: (sessionID) => monitor.show(sessionID),
+    list: (sessionID) => monitor.current(sessionID),
   }
 }

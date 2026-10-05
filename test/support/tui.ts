@@ -122,6 +122,7 @@ export function fakeTracker(): TrackerScript {
       list: (sessionID) => respond(`list ${sessionID}`, () => view),
       onUpdate: () => constVoid,
       refresh: (sessionID) => respond(`refresh ${sessionID}`, () => view),
+      watch: (sessionID) => respond(`watch ${sessionID}`, constVoid),
     },
     fail: (message) => {
       failure = Option.some(message)

@@ -7,6 +7,7 @@ import {
   fetchedSince,
   merged,
   open,
+  checking,
   closed,
   other,
   run,
@@ -28,8 +29,9 @@ describe("Monitor failures", () => {
 
         const seen: string[] = []
 
-        for (const elapsed of ["15 seconds", "4 minutes", "45 seconds", "15 seconds"] as const) {
+        for (const elapsed of ["60 seconds", "4 minutes", "45 seconds", "15 seconds"] as const) {
           yield* TestClock.adjust(elapsed)
+          yield* app.monitor.watch("a")
           yield* app.monitor.poll
           seen.push(yield* statusOf(app))
         }
@@ -38,7 +40,7 @@ describe("Monitor failures", () => {
       }),
     )
 
-    // Failures begin at 0:15; 5:00 is 4:45 of failing, 5:15 is five minutes.
+    // Failures begin at 1:00; 5:45 is 4:45 of failing, 6:00 is five minutes.
     expect(result).toEqual(Exit.succeed(["Stale", "Stale", "Stale", "Unavailable"]))
   })
 })
@@ -71,7 +73,7 @@ describe("Monitor sessions in use", () => {
 
     const result = await run(github, (app: App) =>
       Effect.gen(function* () {
-        for (const pullRequest of [open, merged]) {
+        for (const pullRequest of [checking, merged]) {
           yield* app.tracker.attach("a", { _tag: "Reference", ref: pullRequest }, "/work")
         }
 
@@ -87,7 +89,7 @@ describe("Monitor sessions in use", () => {
       }),
     )
 
-    expect(result).toEqual(Exit.succeed([[1]]))
+    expect(result).toEqual(Exit.succeed([[5]]))
   })
 })
 
@@ -100,12 +102,14 @@ describe("Monitor forgetting", () => {
         yield* watching(app, "a", [open, closed])
         yield* watching(app, "b", [other])
         yield* app.monitor.poll
+        yield* TestClock.adjust("5 minutes")
+        yield* app.monitor.watch("a")
+        yield* app.monitor.watch("b")
         yield* app.tracker.detach("a", { _tag: "Reference", ref: closed })
         yield* app.monitor.forget("b")
 
         const before = github.fetches.length
 
-        yield* TestClock.adjust("15 seconds")
         yield* app.monitor.poll
 
         return fetchedSince(github, before)

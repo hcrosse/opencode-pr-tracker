@@ -15,6 +15,9 @@ export interface Collapsed {
   readonly toggle: (sessionID: string) => void
 }
 
+/** How often a shown session's lease is renewed, well within the server's 45-second lease. */
+const renewalInterval = 20_000
+
 /** Numbers requests; each listing and each published update supersedes the listings before it. */
 interface Listings {
   readonly next: () => number
@@ -34,9 +37,26 @@ function newestFirst(): Listings {
   }
 }
 
+/** Renews the session's lease until the owning reactive scope is cleaned up. */
+function renewWhileShown(
+  sessionID: string,
+  tracker: TrackerClientApi,
+  run: (effect: Effect.Effect<void>) => void,
+): void {
+  const renewal = setInterval(() => {
+    // A failed renewal is retried at the next one.
+    run(Effect.ignore(tracker.watch(sessionID)))
+  }, renewalInterval)
+
+  onCleanup(() => {
+    clearInterval(renewal)
+  })
+}
+
 /**
  * The session's view, owned by the server: listed when the sidebar is shown or switches session,
- * then replaced by each published update. Answers to superseded listings are ignored.
+ * then replaced by each published update. Answers to superseded listings are ignored. While the
+ * session is shown, its lease is renewed so the server keeps refreshing it.
  */
 export function sessionView(
   sessionID: Accessor<string>,
@@ -71,6 +91,8 @@ export function sessionView(
           )
         }),
       )
+
+      renewWhileShown(current, tracker, run)
     }),
   )
 

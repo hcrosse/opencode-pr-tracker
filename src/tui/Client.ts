@@ -1,7 +1,7 @@
 /** The terminal's view of the tracker: RPC calls routed to each session's location, decoded on arrival. */
 import { Effect, Option, Schema } from "effect"
 
-import { Changed, View, type ViewData } from "../rpc.ts"
+import { Changed, Done, View, type ViewData } from "../rpc.ts"
 
 export class RequestFailed extends Schema.TaggedError<RequestFailed>()("RequestFailed", {
   message: Schema.String,
@@ -12,6 +12,8 @@ export interface TrackerClientApi {
   readonly refresh: (sessionID: string) => Effect.Effect<View, RequestFailed>
   readonly attach: (sessionID: string, target: string) => Effect.Effect<Changed, RequestFailed>
   readonly detach: (sessionID: string, target: string) => Effect.Effect<Changed, RequestFailed>
+  /** Renews the session's lease, so the server keeps refreshing it. */
+  readonly watch: (sessionID: string) => Effect.Effect<void, RequestFailed>
   /** Calls `handler` with each view the server publishes. Returns a function that stops the calls. */
   readonly onUpdate: (handler: (view: View) => void) => () => void
 }
@@ -42,6 +44,7 @@ export interface TrackerRpc {
   readonly refresh: (input: Session, options: CallOptions) => Promise<ViewData>
   readonly attach: (input: Target, options: CallOptions) => Promise<ChangedData>
   readonly detach: (input: Target, options: CallOptions) => Promise<ChangedData>
+  readonly watch: (input: Session, options: CallOptions) => Promise<typeof Done.Encoded>
   readonly events: {
     readonly on: (
       name: "updated",
@@ -100,31 +103,32 @@ function decoded<S extends Schema.Decoder<unknown>>(
   )
 }
 
+/** Where to send a call about the session. */
+const callOptions = (host: Host, sessionID: string): CallOptions =>
+  Option.match(host.locationOf(sessionID), {
+    onNone: () => ({}),
+    onSome: (location) => ({ location }),
+  })
+
 export function makeClient(host: Host): TrackerClientApi {
   const { rpc } = host
-
-  const options = (sessionID: string): CallOptions =>
-    Option.match(host.locationOf(sessionID), {
-      onNone: () => ({}),
-      onSome: (location) => ({ location }),
-    })
 
   return {
     attach: (sessionID, target) =>
       decoded(Changed, async () => {
-        const output = await rpc.attach({ sessionID, target }, options(sessionID))
+        const output = await rpc.attach({ sessionID, target }, callOptions(host, sessionID))
 
         return output
       }),
     detach: (sessionID, target) =>
       decoded(Changed, async () => {
-        const output = await rpc.detach({ sessionID, target }, options(sessionID))
+        const output = await rpc.detach({ sessionID, target }, callOptions(host, sessionID))
 
         return output
       }),
     list: (sessionID) =>
       decoded(View, async () => {
-        const output = await rpc.list({ sessionID }, options(sessionID))
+        const output = await rpc.list({ sessionID }, callOptions(host, sessionID))
 
         return output
       }),
@@ -134,9 +138,15 @@ export function makeClient(host: Host): TrackerClientApi {
       }),
     refresh: (sessionID) =>
       decoded(View, async () => {
-        const output = await rpc.refresh({ sessionID }, options(sessionID))
+        const output = await rpc.refresh({ sessionID }, callOptions(host, sessionID))
 
         return output
       }),
+    watch: (sessionID) =>
+      decoded(Done, async () => {
+        const output = await rpc.watch({ sessionID }, callOptions(host, sessionID))
+
+        return output
+      }).pipe(Effect.asVoid),
   }
 }
