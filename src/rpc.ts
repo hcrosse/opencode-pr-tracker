@@ -47,6 +47,9 @@ export type Changed = typeof Changed.Type
 /** A request that could not be carried out, with a message for the person who made it. */
 const Rejected = Schema.Struct({ message: Schema.String })
 
+/** The answer to a request that has nothing to report. */
+export const Done = Schema.Struct({})
+
 /**
  * The wire form of `schema`: plain JSON data, validated by the plugin's own copy of Effect.
  * OpenCode would handle an Effect schema with its own copy, which can reject values this one
@@ -83,6 +86,11 @@ export const PullRequestTracker = Rpc.define({
       errors: { rejected: portable(Rejected) },
       input: portable(Session),
       output: portable(View),
+    },
+    /** Renews the session's lease, so the server keeps refreshing it while a terminal shows it. */
+    watch: {
+      input: portable(Session),
+      output: portable(Done),
     },
   },
 })

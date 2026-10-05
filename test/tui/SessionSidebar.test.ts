@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, jest, test } from "bun:test"
 
 import { Array as Arr, Deferred, Effect, Option } from "effect"
 import { constVoid } from "effect/Function"
@@ -52,6 +52,7 @@ function heldLists(): HeldLists {
         return constVoid
       },
       refresh: base.refresh,
+      watch: base.watch,
     },
   }
 }
@@ -69,6 +70,10 @@ function titleOf(state: SidebarState): string {
 
 const run = (effect: Effect.Effect<void>): void => {
   Effect.runFork(effect)
+}
+
+const runNow = (effect: Effect.Effect<void>): void => {
+  Effect.runSync(effect)
 }
 
 /** Which listing to answer, and the title its answer shows. */
@@ -111,5 +116,32 @@ describe("sidebar view of a session", () => {
     )
 
     expect(titleOf(state())).toBe("published")
+  })
+})
+
+describe("sidebar lease renewal", () => {
+  test("renews the shown session's lease every 20 seconds until it switches or unmounts", () => {
+    const tracker = fakeTracker()
+    const [session, setSession] = createSignal("a")
+
+    jest.useFakeTimers()
+
+    try {
+      const dispose = createRoot((disposeRoot) => {
+        sessionView(session, tracker.client, runNow)
+
+        return disposeRoot
+      })
+
+      jest.advanceTimersByTime(40_000)
+      setSession("b")
+      jest.advanceTimersByTime(20_000)
+      dispose()
+      jest.advanceTimersByTime(20_000)
+    } finally {
+      jest.useRealTimers()
+    }
+
+    expect(tracker.calls).toEqual(["list a", "watch a", "watch a", "list b", "watch b"])
   })
 })

@@ -25,7 +25,7 @@ import {
 export const ref = (number: number): PullRequestRef =>
   Result.getOrThrow(parsePullRequestUrl(`github.com/acme/api/pull/${String(number)}`))
 
-export const [open, closed, merged, other] = [ref(1), ref(2), ref(3), ref(4)]
+export const [open, closed, merged, other, checking] = [ref(1), ref(2), ref(3), ref(4), ref(5)]
 
 export interface App {
   readonly monitor: MonitorApi
@@ -56,7 +56,7 @@ export async function run<A, E>(
   return result
 }
 
-/** #1 and #4 are open, #2 closed, #3 merged. */
+/** #1 and #4 are open, #2 closed, #3 merged, #5 open with checks running. */
 export function scripted(): GitHubScript {
   const github = new ScriptedGitHub()
 
@@ -65,6 +65,10 @@ export function scripted(): GitHubScript {
     [closed, { _tag: "Closed" }],
     [merged, { _tag: "Merged" }],
     [other, openState],
+    [
+      checking,
+      { _tag: "Open", behind: false, ci: "pending", draft: false, mergeability: "mergeable" },
+    ],
   ]
 
   for (const [pullRequest, state] of states) {
@@ -74,7 +78,7 @@ export function scripted(): GitHubScript {
   return github
 }
 
-/** Attaches pull requests to a session and marks the session in use. */
+/** Attaches pull requests to a session and renews its lease. */
 export const watching = (
   app: App,
   sessionID: string,

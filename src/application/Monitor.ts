@@ -8,6 +8,7 @@ import { GitHub, type GitHubApi, type ItemResult, type Report } from "../ports/G
 import type { StoredStateInvalid } from "../ports/TrackingRepository.ts"
 import { FetchQueue } from "./FetchQueue.ts"
 import { isDue, recorded, unknown, withoutUnattached, type Known } from "./Known.ts"
+import { Leases } from "./Leases.ts"
 import { currentMillis } from "./Time.ts"
 import { Tracker, type TrackerApi } from "./Tracker.ts"
 
@@ -24,9 +25,12 @@ export interface SessionView {
 }
 
 export interface MonitorApi {
-  /** The session's pull requests with their latest known status. Marks the session as in use. */
+  /** The session's pull requests with their latest known status. Renews the session's lease. */
   readonly view: (sessionID: string) => Effect.Effect<SessionView, StoredStateInvalid>
-  /** Refreshes the session's pull requests now, except merged ones, and returns the result. */
+  /**
+   * Refreshes the session's pull requests now, except merged ones, and returns the result. Renews
+   * the session's lease.
+   */
   readonly refresh: (sessionID: string) => Effect.Effect<SessionView, StoredStateInvalid>
   /**
    * Shows a session after `ref` was attached: records what GitHub reported for `ref` so it is not
@@ -39,12 +43,16 @@ export interface MonitorApi {
   ) => Effect.Effect<SessionView, StoredStateInvalid>
   /**
    * Fetches the session's pull requests whose status is not yet known, publishes its view, and
-   * returns it. Marks the session as in use. Use after its attachments change.
+   * returns it. Use after its attachments change.
    */
   readonly show: (sessionID: string) => Effect.Effect<SessionView, StoredStateInvalid>
+  /** Fetches due or unknown statuses for a one-time answer, and renews the session's lease. */
+  readonly current: (sessionID: string) => Effect.Effect<SessionView, StoredStateInvalid>
+  /** Renews the session's lease: `poll` refreshes it until the lease lapses. */
+  readonly watch: (sessionID: string) => Effect.Effect<void>
   /** Stops watching a session. Safe to repeat. */
   readonly forget: (sessionID: string) => Effect.Effect<void>
-  /** Refreshes every due pull request of the sessions in use. Run it repeatedly. */
+  /** Refreshes every due pull request of the sessions whose lease is live. Run it repeatedly. */
   readonly poll: Effect.Effect<void>
   /** A session's view after each refresh of it, including refreshes that `poll` runs. */
   readonly changes: Stream.Stream<SessionView>
@@ -74,7 +82,7 @@ interface Cache {
 
 interface State extends Cache {
   readonly tracker: TrackerApi
-  readonly working: Ref.Ref<ReadonlySet<string>>
+  readonly leases: Leases
   readonly published: PubSub.PubSub<SessionView>
   /** Fetches pull requests and records the results; see `FetchQueue`. */
   readonly fetch: (refs: readonly PullRequestRef[]) => Effect.Effect<void>
@@ -132,12 +140,9 @@ function publish(state: State, sessionID: string): Effect.Effect<void> {
   )
 }
 
-const use = (state: State, sessionID: string): Effect.Effect<void> =>
-  Ref.update(state.working, (sessions: ReadonlySet<string>) => new Set(sessions).add(sessionID))
-
 function poll(state: State): Effect.Effect<void> {
   return Effect.gen(function* () {
-    const sessions = [...(yield* Ref.get(state.working))]
+    const sessions = yield* state.leases.live()
     // Taken before listing attachments: statuses recorded after this belong to newer attachments.
     const known = yield* Ref.get(state.known)
 
@@ -154,9 +159,11 @@ function poll(state: State): Effect.Effect<void> {
     const current = yield* Ref.get(state.known)
     const due = [...attached.values()].filter((ref: PullRequestRef) => isDue(current, now, ref))
 
-    yield* Ref.update(state.known, (entries: ReadonlyMap<string, Known>) =>
-      withoutUnattached(entries, known, attached),
-    )
+    // A session renewed while listing has statuses a reader may need, so pruning waits a poll.
+    if ((yield* state.leases.live()).every((id) => sessions.includes(id)))
+      yield* Ref.update(state.known, (entries: ReadonlyMap<string, Known>) =>
+        withoutUnattached(entries, known, attached),
+      )
 
     if (due.length === 0) return
 
@@ -174,22 +181,21 @@ function poll(state: State): Effect.Effect<void> {
   })
 }
 
+type Selection = (known: ReadonlyMap<string, Known>, now: number, ref: PullRequestRef) => boolean
+
 /** Fetches the session's pull requests that `select` picks, then publishes and returns its view. */
 function fetchAndShow(
   state: State,
   sessionID: string,
-  select: (known: Option.Option<Known>) => boolean,
+  select: Selection,
 ): Effect.Effect<SessionView, StoredStateInvalid> {
   return Effect.gen(function* () {
-    yield* use(state, sessionID)
-
     const tracking = yield* state.tracker.list(sessionID)
     const known = yield* Ref.get(state.known)
+    const now = yield* currentMillis
 
     yield* state.fetch(
-      tracking
-        .map((attachment) => attachment.ref)
-        .filter((ref) => select(Option.fromNullishOr(known.get(ref.url)))),
+      tracking.map((attachment) => attachment.ref).filter((ref) => select(known, now, ref)),
     )
     const view = yield* viewOf(state, sessionID)
 
@@ -199,10 +205,10 @@ function fetchAndShow(
   })
 }
 
-const refreshable = (known: Option.Option<Known>): boolean =>
-  Option.isSome(Option.getOrElse(known, () => unknown).dueAt)
+const refreshable: Selection = (known, _now, ref) =>
+  Option.isSome((known.get(ref.url) ?? unknown).dueAt)
 
-const notYetKnown = (known: Option.Option<Known>): boolean => Option.isNone(known)
+const notYetKnown: Selection = (known, _now, ref) => !known.has(ref.url)
 
 export const layer = Layer.effect(
   Monitor,
@@ -219,27 +225,26 @@ export const layer = Layer.effect(
       github: cache.github,
       known: cache.known,
       published: yield* PubSub.unbounded<SessionView>(),
+      leases: new Leases(),
       tracker: yield* Tracker,
-      working: yield* Ref.make<ReadonlySet<string>>(new Set()),
     }
 
     return Monitor.of({
       changes: Stream.fromPubSub(state.published),
-      forget: (sessionID) =>
-        Ref.update(
-          state.working,
-          (sessions: ReadonlySet<string>) =>
-            new Set([...sessions].filter((id) => id !== sessionID)),
-        ),
+      current: (sessionID) =>
+        Effect.andThen(state.leases.renew(sessionID), fetchAndShow(state, sessionID, isDue)),
+      forget: (sessionID) => state.leases.end(sessionID),
       poll: poll(state),
       attached: (sessionID, ref, report) =>
         Effect.andThen(
           remember(cache, new Map([[ref.url, { _tag: "Reported", report }]])),
           fetchAndShow(state, sessionID, notYetKnown),
         ),
-      refresh: (sessionID) => fetchAndShow(state, sessionID, refreshable),
+      refresh: (sessionID) =>
+        Effect.andThen(state.leases.renew(sessionID), fetchAndShow(state, sessionID, refreshable)),
       show: (sessionID) => fetchAndShow(state, sessionID, notYetKnown),
-      view: (sessionID) => Effect.andThen(use(state, sessionID), viewOf(state, sessionID)),
+      view: (sessionID) => Effect.andThen(state.leases.renew(sessionID), viewOf(state, sessionID)),
+      watch: (sessionID) => state.leases.renew(sessionID),
     })
   }),
 )

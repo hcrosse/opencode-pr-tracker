@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { Effect, Exit, Fiber, Option, Stream } from "effect"
+import { TestClock } from "effect/testing"
 
 import type { SessionView } from "../../src/application/Monitor.ts"
 import { requests, type Requests } from "../../src/server/Requests.ts"
@@ -87,5 +88,21 @@ describe("listing requests", () => {
 
     expect(result).toEqual(Exit.succeed(["Fresh", "Fresh"]))
     expect(github.fetches).toEqual([[open.url, merged.url]])
+  })
+
+  test("listing a session no terminal shows fetches statuses due for a refresh", async () => {
+    const github = scripted()
+
+    await run(github, (app: App) =>
+      Effect.gen(function* () {
+        const session = over(app)
+
+        yield* session.attach("a", open.url)
+        yield* TestClock.adjust("60 seconds")
+        yield* session.list("a")
+      }),
+    )
+
+    expect(github.fetches).toEqual([[open.url], [open.url]])
   })
 })

@@ -94,6 +94,7 @@ function fakeRpc(outcome: Outcome): FakeRpc {
       },
       list: call("list"),
       refresh: call("refresh"),
+      watch: call("watch"),
     },
   }
 }
@@ -119,11 +120,18 @@ describe("tracker client routing", () => {
     const fake = fakeRpc(Result.succeed(listed))
     const client = clientOver(fake)
 
-    await Effect.runPromise(Effect.all([client.list("ses_known"), client.refresh("ses_elsewhere")]))
+    await Effect.runPromise(
+      Effect.all([
+        client.list("ses_known"),
+        client.refresh("ses_elsewhere"),
+        client.watch("ses_known"),
+      ]),
+    )
 
     expect(fake.calls).toEqual([
       { location: Option.some(here), method: "list" },
       { location: Option.none(), method: "refresh" },
+      { location: Option.some(here), method: "watch" },
     ])
   })
 

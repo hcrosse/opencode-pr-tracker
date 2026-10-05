@@ -44,8 +44,11 @@ function unlinkSeven(github: Readonly<GitHubScript>): void {
   github.script(ref(5), reported(ref(5), { _tag: "Merged" }, remaining))
 }
 
+/** Polls once open pull requests are due again, with session "a" still watched. */
 const pollAfter = (app: App): Effect.Effect<void> =>
-  Effect.andThen(TestClock.adjust("15 seconds"), app.monitor.poll)
+  Effect.all([TestClock.adjust("60 seconds"), app.monitor.watch("a"), app.monitor.poll], {
+    discard: true,
+  })
 
 describe("Monitor Stack order with a merged member", () => {
   test("asks about a merged member again once a linked Stack contradicts it, then groups", async () => {
