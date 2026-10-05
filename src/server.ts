@@ -40,7 +40,7 @@ export default Plugin.define({
     Effect.gen(function* () {
       const application = monitorLayer.pipe(
         Layer.provideMerge(trackerLayer),
-        Layer.provide([githubLive, storageLayer(ctx.storage)]),
+        Layer.provide([githubLive(ctx.storage), storageLayer(ctx.storage)]),
       )
 
       const context = yield* Layer.build(application)

@@ -19,6 +19,7 @@ const diagnosticLabels: Record<Diagnostic, string> = {
   GitHubUnavailable: "GitHub unavailable",
   InvalidResponse: "invalid response",
   NotFound: "inaccessible",
+  RateLimited: "rate limited",
 }
 
 const shown = (tone: Tone, label: string, strikethrough = false): Appearance => ({

@@ -39,6 +39,7 @@ export const Diagnostic = Schema.Literals([
   "GitHubUnavailable",
   "NotFound",
   "InvalidResponse",
+  "RateLimited",
 ])
 
 export type Diagnostic = typeof Diagnostic.Type
@@ -65,13 +66,16 @@ export function succeeded(snapshot: Snapshot): Status {
   return { _tag: "Fresh", snapshot }
 }
 
-/** The status after a failed refresh at `now`, in epoch milliseconds. */
+/**
+ * The status after a failed refresh at `now`, in epoch milliseconds. A rate-limited refresh keeps
+ * the last snapshot for as long as the limit lasts.
+ */
 export function failed(status: Status, diagnostic: Diagnostic, now: number): Status {
   return Match.valueTags(status, {
     Fresh: ({ snapshot }): Status => ({ _tag: "Stale", diagnostic, failingSince: now, snapshot }),
     Pending: (): Status => ({ _tag: "Unavailable", diagnostic }),
     Stale: ({ failingSince, snapshot }): Status =>
-      now - failingSince >= Duration.toMillis(staleLimit)
+      diagnostic !== "RateLimited" && now - failingSince >= Duration.toMillis(staleLimit)
         ? { _tag: "Unavailable", diagnostic }
         : { _tag: "Stale", diagnostic, failingSince, snapshot },
     Unavailable: (): Status => ({ _tag: "Unavailable", diagnostic }),

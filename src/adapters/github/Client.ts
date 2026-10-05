@@ -1,11 +1,14 @@
-import { Array as Arr, Effect, Layer, Option, Redacted, Result, Schema } from "effect"
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
+import type { StorageDomain } from "@opencode/plugin/effect/storage"
+import { Array as Arr, Effect, Layer, Option, Result, Schema } from "effect"
+import { FetchHttpClient } from "effect/unstable/http"
 
 import type { PullRequestRef } from "../../domain/PullRequest.ts"
 import type { Diagnostic } from "../../domain/Snapshot.ts"
-import { GitHub, GitHubFailure, maximumBatch, type ItemResult } from "../../ports/GitHub.ts"
+import { GitHub, maximumBatch, type ItemResult } from "../../ports/GitHub.ts"
 import { CommandRunner, layer as commandLayer } from "../Command.ts"
+import { failure, makePost, type Envelope, type Post } from "./Post.ts"
 import { alias, batch, continuation } from "./Query.ts"
+import { RateLimit, layer as rateLimitLayer } from "./RateLimit.ts"
 import { resolveInRepository } from "./Repository.ts"
 import {
   combined,
@@ -16,78 +19,13 @@ import {
   type ContextNode,
   type Entry,
 } from "./Response.ts"
-import { Token, layer as tokenLayer } from "./Token.ts"
-
-const endpoint = "https://api.github.com/graphql"
-
-const GraphQlError = Schema.Struct({
-  path: Schema.optional(Schema.Array(Schema.Union([Schema.String, Schema.Number]))),
-  type: Schema.optional(Schema.String),
-})
-
-const Envelope = Schema.Struct({
-  data: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
-  errors: Schema.optional(Schema.Array(GraphQlError)),
-})
-
-type Envelope = typeof Envelope.Type
+import { layer as tokenLayer } from "./Token.ts"
 
 const ContinuationData = Schema.Struct({
   resource: Schema.Struct({ statusCheckRollup: Schema.Struct({ contexts: Contexts }) }),
 })
 
-const failure = (diagnostic: Diagnostic): GitHubFailure => new GitHubFailure({ diagnostic })
-
-/** A 401 from GitHub: the cached token may be stale. */
-class Unauthorized extends Schema.TaggedError<Unauthorized>()("Unauthorized", {}) {}
-
 const failed = (diagnostic: Diagnostic): ItemResult => ({ _tag: "Failed", diagnostic })
-
-const decodeEnvelope = Schema.decodeUnknownEffect(Envelope)
-
-type Variables = Readonly<Record<string, string>>
-
-/** Posts one GraphQL document and decodes GitHub's response envelope. */
-type Post = (query: string, variables: Variables) => Effect.Effect<Envelope, GitHubFailure>
-
-/** Posts one GraphQL document. A 401 refreshes the token and retries once. */
-const makePost = Effect.fn("makePost")(function* (): Effect.fn.Return<
-  Post,
-  never,
-  HttpClient.HttpClient | Token
-> {
-  const http = yield* HttpClient.HttpClient
-  const token = yield* Token
-
-  const attempt = Effect.fn("attempt")(function* (query: string, variables: Variables) {
-    const bearer = yield* token.get
-
-    const request = HttpClientRequest.post(endpoint).pipe(
-      HttpClientRequest.bearerToken(Redacted.value(bearer)),
-      HttpClientRequest.bodyJsonUnsafe({ query, variables }),
-    )
-
-    const response = yield* http
-      .execute(request)
-      .pipe(Effect.mapError(() => failure("GitHubUnavailable")))
-
-    if (response.status === 401) return yield* new Unauthorized()
-
-    if (response.status < 200 || response.status >= 300) return yield* failure("GitHubUnavailable")
-
-    const body = yield* response.json.pipe(Effect.mapError(() => failure("InvalidResponse")))
-
-    return yield* decodeEnvelope(body).pipe(Effect.mapError(() => failure("InvalidResponse")))
-  })
-
-  return (query: string, variables: Variables): Effect.Effect<Envelope, GitHubFailure> =>
-    attempt(query, variables).pipe(
-      Effect.catchTag("Unauthorized", () =>
-        Effect.andThen(token.invalidate, attempt(query, variables)),
-      ),
-      Effect.catchTag("Unauthorized", () => Effect.fail(failure("AuthenticationRequired"))),
-    )
-})
 
 /** Every check context for a pull request, following continuation pages. */
 const allContexts = Effect.fn("allContexts")(function* (post: Post, node: PullRequestNode) {
@@ -177,9 +115,6 @@ const fetchBatch = Effect.fn("fetchBatch")(function* (post: Post, refs: readonly
   const variables = Object.fromEntries(refs.map((ref, index) => [alias(index), ref.url]))
   const envelope = yield* post(batch(refs.length), variables)
 
-  // GitHub answers a request it could not run at all, such as a rate-limited one, without data.
-  if (Option.isNone(Option.fromNullishOr(envelope.data))) return yield* failure("GitHubUnavailable")
-
   const results = yield* Effect.forEach(
     refs,
     (ref, index) =>
@@ -210,12 +145,13 @@ const outcomeOf = (post: Post, refs: readonly PullRequestRef[]): Effect.Effect<B
     }
   })
 
-/** The GitHub port over GraphQL. Requires an HTTP client, a token source, and `gh`. */
+/** The GitHub port over GraphQL. Requires an HTTP client, a token source, a rate limit, and `gh`. */
 export const layer = Layer.effect(
   GitHub,
   Effect.gen(function* () {
     const post = yield* makePost()
     const runner = yield* CommandRunner
+    const rateLimit = yield* RateLimit
 
     return GitHub.of({
       fetch: (refs) => {
@@ -233,14 +169,22 @@ export const layer = Layer.effect(
           Effect.mapError(failure),
         )
       },
+      // `gh repo view` queries GitHub, so it waits out a rate limit too.
       pullRequestInRepository: (directory, number) =>
-        resolveInRepository(directory, number).pipe(Effect.provideService(CommandRunner, runner)),
+        Effect.andThen(
+          rateLimit.check,
+          resolveInRepository(directory, number).pipe(Effect.provideService(CommandRunner, runner)),
+        ),
     })
   }),
 )
 
-/** The GitHub port over `api.github.com`, with tokens from the environment or `gh`. */
-export const live = layer.pipe(
-  Layer.provide(tokenLayer),
-  Layer.provide([commandLayer, FetchHttpClient.layer]),
-)
+/**
+ * The GitHub port over `api.github.com`, with tokens from the environment or `gh`, and rate-limit
+ * waits kept in plugin storage.
+ */
+export const live = (storage: StorageDomain): Layer.Layer<GitHub> =>
+  layer.pipe(
+    Layer.provide([tokenLayer, rateLimitLayer(storage)]),
+    Layer.provide([commandLayer, FetchHttpClient.layer]),
+  )

@@ -64,7 +64,17 @@ function expectedAfterFailure(log: readonly Event[], last: Failure): Status {
         onSome: (event) => event.at,
       })
 
-      return last.at - failingSince >= fiveMinutes
+      // Only a failure other than a rate limit, five minutes or more into failing, withdraws it.
+      const withdrawn = log
+        .slice(index + 1)
+        .some(
+          (event) =>
+            event.kind === "failure" &&
+            event.diagnostic !== "RateLimited" &&
+            event.at - failingSince >= fiveMinutes,
+        )
+
+      return withdrawn
         ? unavailable
         : { _tag: "Stale", diagnostic: last.diagnostic, failingSince, snapshot: success.snapshot }
     },
@@ -120,6 +130,23 @@ describe("refresh status", () => {
       expect(failed(stale, "GitHubUnavailable", fiveMinutes)).toEqual({
         _tag: "Unavailable",
         diagnostic: "GitHubUnavailable",
+      })
+    })
+  })
+})
+
+describe("refresh status while rate limited", () => {
+  test("keeps the last snapshot, marked stale, however long GitHub rate limits", () => {
+    hegel.test((tc) => {
+      const snapshot = tc.draw(snapshots)
+      const later = tc.draw(gs.integers({ minValue: fiveMinutes }))
+      const stale = failed(succeeded(snapshot), "RateLimited", 0)
+
+      expect(failed(stale, "RateLimited", later)).toEqual({
+        _tag: "Stale",
+        diagnostic: "RateLimited",
+        failingSince: 0,
+        snapshot,
       })
     })
   })

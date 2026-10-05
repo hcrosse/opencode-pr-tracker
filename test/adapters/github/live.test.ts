@@ -4,6 +4,7 @@ import { Effect } from "effect"
 
 import { live } from "../../../src/adapters/github/Client.ts"
 import { GitHub } from "../../../src/ports/GitHub.ts"
+import { memoryStorage } from "../../support/application.ts"
 import { trackerRef } from "../../support/github.ts"
 
 const enabled = process.env["GITHUB_LIVE"] === "1"
@@ -14,7 +15,7 @@ describe.skipIf(!enabled)("GitHub client against api.github.com", () => {
     const results = await Effect.runPromise(
       GitHub.use((github) =>
         github.fetch([trackerRef(78), trackerRef(79), trackerRef(999999)]),
-      ).pipe(Effect.provide(live)),
+      ).pipe(Effect.provide(live(memoryStorage().storage))),
     )
 
     expect(results.get(trackerRef(78).url)).toMatchObject({
@@ -27,7 +28,7 @@ describe.skipIf(!enabled)("GitHub client against api.github.com", () => {
   test("resolves a number in this checkout's repository", async () => {
     const found = await Effect.runPromise(
       GitHub.use((github) => github.pullRequestInRepository(import.meta.dir, 78)).pipe(
-        Effect.provide(live),
+        Effect.provide(live(memoryStorage().storage)),
       ),
     )
 
