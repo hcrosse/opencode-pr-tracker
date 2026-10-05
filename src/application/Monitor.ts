@@ -159,9 +159,11 @@ function poll(state: State): Effect.Effect<void> {
     const current = yield* Ref.get(state.known)
     const due = [...attached.values()].filter((ref: PullRequestRef) => isDue(current, now, ref))
 
-    yield* Ref.update(state.known, (entries: ReadonlyMap<string, Known>) =>
-      withoutUnattached(entries, known, attached),
-    )
+    // A session renewed while listing has statuses a reader may need, so pruning waits a poll.
+    if ((yield* state.leases.live()).every((id) => sessions.includes(id)))
+      yield* Ref.update(state.known, (entries: ReadonlyMap<string, Known>) =>
+        withoutUnattached(entries, known, attached),
+      )
 
     if (due.length === 0) return
 
