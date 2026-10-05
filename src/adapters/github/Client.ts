@@ -8,7 +8,7 @@ import { GitHub, maximumBatch, type ItemResult } from "../../ports/GitHub.ts"
 import { CommandRunner, layer as commandLayer } from "../Command.ts"
 import { failure, makePost, type Envelope, type Post } from "./Post.ts"
 import { alias, batch, continuation } from "./Query.ts"
-import { layer as rateLimitLayer } from "./RateLimit.ts"
+import { RateLimit, layer as rateLimitLayer } from "./RateLimit.ts"
 import { resolveInRepository } from "./Repository.ts"
 import {
   combined,
@@ -151,6 +151,7 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const post = yield* makePost()
     const runner = yield* CommandRunner
+    const rateLimit = yield* RateLimit
 
     return GitHub.of({
       fetch: (refs) => {
@@ -168,8 +169,12 @@ export const layer = Layer.effect(
           Effect.mapError(failure),
         )
       },
+      // `gh repo view` queries GitHub, so it waits out a rate limit too.
       pullRequestInRepository: (directory, number) =>
-        resolveInRepository(directory, number).pipe(Effect.provideService(CommandRunner, runner)),
+        Effect.andThen(
+          rateLimit.check,
+          resolveInRepository(directory, number).pipe(Effect.provideService(CommandRunner, runner)),
+        ),
     })
   }),
 )

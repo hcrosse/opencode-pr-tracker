@@ -4,6 +4,7 @@ import { Effect, Exit } from "effect"
 
 import type { PullRequestRef } from "../../../src/domain/PullRequest.ts"
 import type { GitHubApi } from "../../../src/ports/GitHub.ts"
+import { memoryStorage } from "../../support/application.ts"
 import {
   exitWith,
   fixedCommands,
@@ -160,5 +161,27 @@ describe("GitHub client repository lookup", () => {
     const result = await runClient({ commands: fixedCommands(outcomes), http }, lookup)
 
     expect(Exit.findErrorOption(result)).toMatchObject({ value: expected })
+  })
+})
+
+describe("GitHub client repository lookup during a rate limit", () => {
+  const view = "gh repo view --json url"
+  const http = httpClient(() => Response.json({ data: {} }))
+
+  test("waits out a recorded rate limit without running gh", async () => {
+    const storage = memoryStorage()
+
+    const limited = httpClient(
+      () => new Response("", { headers: { "retry-after": "60" }, status: 403 }),
+    )
+
+    const commands = fixedCommands({ [view]: output('{"url":"https://github.com/acme/api"}\n') })
+
+    await runClient({ http: limited, storage }, fetchOne)
+
+    const result = await runClient({ commands, http, storage }, lookup)
+
+    expect(Exit.findErrorOption(result)).toMatchObject({ value: { diagnostic: "RateLimited" } })
+    expect(commands.calls).toEqual([])
   })
 })

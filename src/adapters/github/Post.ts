@@ -99,6 +99,29 @@ const refused = Effect.fn("refused")(function* (
   return yield* failure("RateLimited")
 })
 
+/** The body of a response, logging a body that could not be read. */
+const readBody = (
+  response: HttpClientResponse.HttpClientResponse,
+  started: number,
+): Effect.Effect<string, GitHubFailure> =>
+  response.text.pipe(
+    Effect.tapError((error: { readonly message: string }) =>
+      logFailure(
+        {
+          evidence: {
+            body: error.message,
+            errorTypes: [],
+            headers: response.headers,
+            status: response.status,
+          },
+          messages: [],
+        },
+        started,
+      ),
+    ),
+    Effect.mapError(() => failure("InvalidResponse")),
+  )
+
 /**
  * The envelope of a 2xx response. An envelope without data means GitHub could not run the query,
  * as when rate limited or timed out. A `RATE_LIMITED` error fails the request even with data.
@@ -108,7 +131,7 @@ const answered = Effect.fn("answered")(function* (
   response: HttpClientResponse.HttpClientResponse,
   started: number,
 ) {
-  const text = yield* response.text.pipe(Effect.mapError(() => failure("InvalidResponse")))
+  const text = yield* readBody(response, started)
 
   const evidenceOf = (errorTypes: readonly string[]): Evidence => ({
     body: text,

@@ -217,3 +217,19 @@ describe("GitHub client logs of answers it cannot use", () => {
     expect(warningsIn(lines)).toEqual([{ annotations: { body, headers: {}, status: 200 } }])
   })
 })
+
+describe("GitHub client logs of bodies it cannot read", () => {
+  test("logs a 2xx response whose body fails to arrive", async () => {
+    const broken = new ReadableStream({
+      start: (controller: ReadableStreamDefaultController): void => {
+        controller.error(new Error("connection reset"))
+      },
+    })
+
+    const http = httpClient(() => new Response(broken))
+    const result = await runClient({ http }, loggedFetch)
+    const lines = Exit.isSuccess(result) ? result.value : []
+
+    expect(warningsIn(lines)).toMatchObject([{ annotations: { headers: {}, status: 200 } }])
+  })
+})
