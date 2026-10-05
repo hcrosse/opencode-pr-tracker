@@ -1,14 +1,17 @@
 import { readFileSync } from "node:fs"
 import path from "node:path"
 
-import { Effect, Exit, Layer, Option, Redacted, Result, Schema } from "effect"
+import { Effect, Exit, Layer, Logger, Option, Redacted, Result, Schema } from "effect"
+import { TestClock } from "effect/testing"
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from "effect/unstable/http"
 
 import { CommandFailed, CommandMissing, CommandRunner } from "../../src/adapters/Command.ts"
 import { layer as clientLayer } from "../../src/adapters/github/Client.ts"
+import { layer as rateLimitLayer } from "../../src/adapters/github/RateLimit.ts"
 import { Token } from "../../src/adapters/github/Token.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
 import { GitHub, type GitHubApi, type ItemResult } from "../../src/ports/GitHub.ts"
+import { memoryStorage, type StorageFake } from "./application.ts"
 
 const Exchange = Schema.Struct({
   response: Schema.Json,
@@ -186,23 +189,46 @@ export const fetchOne = (
   github: GitHubApi,
 ): Effect.Effect<ReadonlyMap<string, ItemResult>, unknown> => github.fetch([acmeRef(1)])
 
+/** Fetches at each time on a test clock, returning how many requests had been sent after each. */
+export const requestsAt =
+  (http: HttpFake, times: readonly number[]) =>
+  (github: GitHubApi): Effect.Effect<readonly number[]> =>
+    Effect.forEach(times, (time: number) =>
+      TestClock.setTime(time).pipe(
+        Effect.andThen(Effect.exit(fetchOne(github))),
+        Effect.andThen(Effect.sync(() => http.requests.length)),
+      ),
+    ).pipe(Effect.provide(TestClock.layer()))
+
 export const recordedPullRequest = recordedNode("standalone", "pr0")
 
 export interface ClientSetup {
   readonly http: HttpFake
   readonly commands?: CommandsFake
   readonly token?: TokenFake
+  /** Plugin storage, where rate-limit waits are kept. Share one to model several plugin instances. */
+  readonly storage?: StorageFake
 }
 
-/** Runs `use` against the real GitHub client over fake HTTP, token and `gh`. */
+/** Runs `use` against the real GitHub client over fake HTTP, token, storage and `gh`. */
 export async function runClient<A, E>(
   setup: ClientSetup,
   use: (github: GitHubApi) => Effect.Effect<A, E>,
 ): Promise<Exit.Exit<A, E>> {
   const token = setup.token ?? fixedToken()
   const commands = setup.commands ?? fixedCommands({})
-  const layer = clientLayer.pipe(Layer.provide([setup.http.layer, token.layer, commands.layer]))
-  const result = await Effect.runPromise(Effect.exit(GitHub.use(use).pipe(Effect.provide(layer))))
+  const storage = setup.storage ?? memoryStorage()
+
+  const layer = clientLayer.pipe(
+    Layer.provide([setup.http.layer, token.layer, commands.layer, rateLimitLayer(storage.storage)]),
+  )
+
+  // Failed requests log warnings. Tests that check them provide their own logger.
+  const quiet = Logger.layer([])
+
+  const result = await Effect.runPromise(
+    Effect.exit(GitHub.use(use).pipe(Effect.provide([layer, quiet]))),
+  )
 
   return result
 }

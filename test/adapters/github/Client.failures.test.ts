@@ -57,9 +57,9 @@ describe("GitHub client failures of a whole request", () => {
       "InvalidResponse",
     ],
     [
-      "errors without data, as when rate limited",
+      "a rate limit given as errors without data",
       (): Response => Response.json({ errors: [{ type: "RATE_LIMITED" }] }),
-      "GitHubUnavailable",
+      "RateLimited",
     ],
   ] as const)("reports %s", async (_name, respond, diagnostic) => {
     const result = await runClient({ http: httpClient(respond) }, fetchOne)

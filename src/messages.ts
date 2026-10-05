@@ -19,6 +19,7 @@ const diagnosticMessages: Record<Diagnostic, string> = {
   GitHubUnavailable: "GitHub is not responding right now. Try again shortly.",
   InvalidResponse: "GitHub returned a response the tracker could not read.",
   NotFound: "The pull request does not exist, or your GitHub account cannot see it.",
+  RateLimited: "GitHub's rate limit was reached. Try again in a few minutes.",
 }
 
 const list = (refs: readonly PullRequestRef[]): string => {
