@@ -164,7 +164,7 @@ export class ScriptedGitHub implements GitHubScript {
       Option.toArray(Option.fromNullishOr(this.held.get(ref.url))),
     )
 
-    const missing: ItemResult = { _tag: "Failed", diagnostic: "NotFound" }
+    const missing: ItemResult = { _tag: "Failed", charged: false, diagnostic: "NotFound" }
 
     const waitForRelease = Effect.forEach(
       holds,

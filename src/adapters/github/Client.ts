@@ -1,12 +1,12 @@
 import type { StorageDomain } from "@opencode/plugin/effect/storage"
-import { Array as Arr, Effect, Layer, Option, Result, Schema } from "effect"
+import { Array as Arr, Effect, Layer, Option, Ref, Result, Schema } from "effect"
 import { FetchHttpClient } from "effect/unstable/http"
 
 import type { PullRequestRef } from "../../domain/PullRequest.ts"
 import type { Diagnostic } from "../../domain/Snapshot.ts"
-import { GitHub, maximumBatch, type ItemResult } from "../../ports/GitHub.ts"
+import { GitHub, GitHubFailure, type ItemResult } from "../../ports/GitHub.ts"
 import { CommandRunner, layer as commandLayer } from "../Command.ts"
-import { failure, makePost, type Envelope, type Post } from "./Post.ts"
+import { failure, makePost, type Envelope, type Post, type RequestFailed } from "./Post.ts"
 import { alias, batch, continuation } from "./Query.ts"
 import { RateLimit, layer as rateLimitLayer } from "./RateLimit.ts"
 import { resolveInRepository } from "./Repository.ts"
@@ -19,13 +19,21 @@ import {
   type ContextNode,
   type Entry,
 } from "./Response.ts"
+import { Suspects } from "./Suspects.ts"
 import { layer as tokenLayer } from "./Token.ts"
 
 const ContinuationData = Schema.Struct({
   resource: Schema.Struct({ statusCheckRollup: Schema.Struct({ contexts: Contexts }) }),
 })
 
-const failed = (diagnostic: Diagnostic): ItemResult => ({ _tag: "Failed", diagnostic })
+const failed = (diagnostic: Diagnostic, charged: boolean): ItemResult => ({
+  _tag: "Failed",
+  charged,
+  diagnostic,
+})
+
+const failedBy = (requestFailure: RequestFailed): ItemResult =>
+  failed(requestFailure.diagnostic, requestFailure.cost !== "Free")
 
 /** Every check context for a pull request, following continuation pages. */
 const allContexts = Effect.fn("allContexts")(function* (post: Post, node: PullRequestNode) {
@@ -41,16 +49,16 @@ const allContexts = Effect.fn("allContexts")(function* (post: Post, node: PullRe
     // A claimed next page needs a new cursor, or CI would be judged on part or paging never end.
     const after = page.value.pageInfo.endCursor ?? ""
 
-    if (after === "" || followed.has(after)) return yield* failure("InvalidResponse")
+    if (after === "" || followed.has(after)) return yield* failure("InvalidResponse", "Free")
 
     followed.add(after)
 
     const envelope = yield* post(continuation(), { cursor: after, url: node.url })
 
-    if ((envelope.errors ?? []).length > 0) return yield* failure("InvalidResponse")
+    if ((envelope.errors ?? []).length > 0) return yield* failure("InvalidResponse", "Free")
 
     const data = yield* Schema.decodeUnknownEffect(ContinuationData)(envelope.data).pipe(
-      Effect.mapError(() => failure("InvalidResponse")),
+      Effect.mapError(() => failure("InvalidResponse", "Free")),
     )
 
     page = Option.some(data.resource.statusCheckRollup.contexts)
@@ -79,6 +87,7 @@ function aliasFailure(request: Batch, key: string): Option.Option<Diagnostic> {
 
 interface Batch {
   readonly post: Post
+  readonly suspects: Suspects
   readonly envelope: Envelope
   /** The aliases of this batch's pull requests. */
   readonly aliases: ReadonlySet<string>
@@ -93,17 +102,21 @@ const itemResult = Effect.fn("itemResult")(function* (
   const reported = aliasFailure(request, key)
   const raw = Option.fromNullishOr((envelope.data ?? {})[key])
 
-  if (Option.isSome(reported)) return failed(reported.value)
+  if (Option.isSome(reported)) return failed(reported.value, false)
 
-  if (Option.isNone(raw)) return failed("NotFound")
+  if (Option.isNone(raw)) return failed("NotFound", false)
 
   const node = Schema.decodeUnknownOption(PullRequestNode)(raw.value)
 
-  if (Option.isNone(node)) return failed("InvalidResponse")
+  if (Option.isNone(node)) return failed("InvalidResponse", false)
 
   const contexts = yield* Effect.result(allContexts(post, node.value))
 
-  if (Result.isFailure(contexts)) return failed(contexts.failure.diagnostic)
+  if (Result.isFailure(contexts)) {
+    if (contexts.failure.cost === "TimedOut") request.suspects.timedOut([ref.url])
+
+    return failedBy(contexts.failure)
+  }
 
   return {
     _tag: "Reported",
@@ -111,14 +124,18 @@ const itemResult = Effect.fn("itemResult")(function* (
   } satisfies ItemResult
 })
 
-const fetchBatch = Effect.fn("fetchBatch")(function* (post: Post, refs: readonly PullRequestRef[]) {
+const fetchBatch = Effect.fn("fetchBatch")(function* (
+  sending: Sending,
+  refs: readonly PullRequestRef[],
+) {
+  const { post, suspects } = sending
   const variables = Object.fromEntries(refs.map((ref, index) => [alias(index), ref.url]))
   const envelope = yield* post(batch(refs.length), variables)
+  const aliases = new Set(Object.keys(variables))
 
   const results = yield* Effect.forEach(
     refs,
-    (ref, index) =>
-      itemResult({ aliases: new Set(Object.keys(variables)), envelope, post }, ref, alias(index)),
+    (ref, index) => itemResult({ aliases, envelope, post, suspects }, ref, alias(index)),
     {
       concurrency: 4,
     },
@@ -130,18 +147,46 @@ const fetchBatch = Effect.fn("fetchBatch")(function* (post: Post, refs: readonly
   )
 })
 
-/** A batch's results; when the whole batch failed, a failure for each of its pull requests. */
-const outcomeOf = (post: Post, refs: readonly PullRequestRef[]): Effect.Effect<BatchOutcome> =>
+interface Sending {
+  readonly post: Post
+  readonly suspects: Suspects
+  /** Set once a batch times out: the fetch's remaining batches are not sent. */
+  readonly stopped: Ref.Ref<boolean>
+}
+
+const failedAll = (refs: readonly PullRequestRef[], result: ItemResult): Entry[] =>
+  refs.map((ref): Entry => [ref.url, result])
+
+/**
+ * A batch's results. A batch that failed as a whole fails each of its pull requests, and counts as
+ * a whole failure only when it cost GitHub nothing. A timed-out batch stops the fetch.
+ */
+const outcomeOf = (
+  sending: Sending,
+  refs: readonly PullRequestRef[],
+): Effect.Effect<BatchOutcome> =>
   Effect.gen(function* () {
-    const result = yield* Effect.result(fetchBatch(post, refs))
+    if (yield* Ref.get(sending.stopped))
+      return { entries: failedAll(refs, failed("GitHubUnavailable", true)), failure: Option.none() }
 
-    if (Result.isSuccess(result)) return { entries: result.success, failure: Option.none() }
+    const result = yield* Effect.result(fetchBatch(sending, refs))
 
-    const { diagnostic } = result.failure
+    if (Result.isSuccess(result)) {
+      sending.suspects.recorded(result.success)
+
+      return { entries: result.success, failure: Option.none() }
+    }
+
+    const { cost, diagnostic } = result.failure
+
+    if (cost === "TimedOut") {
+      yield* Ref.set(sending.stopped, true)
+      sending.suspects.timedOut(refs.map((ref) => ref.url))
+    }
 
     return {
-      entries: refs.map((ref): Entry => [ref.url, { _tag: "Failed", diagnostic }]),
-      failure: Option.some(diagnostic),
+      entries: failedAll(refs, failedBy(result.failure)),
+      failure: cost === "Free" ? Option.some(diagnostic) : Option.none(),
     }
   })
 
@@ -152,23 +197,23 @@ export const layer = Layer.effect(
     const post = yield* makePost()
     const runner = yield* CommandRunner
     const rateLimit = yield* RateLimit
+    const suspects = new Suspects()
 
     return GitHub.of({
-      fetch: (refs) => {
-        const batches = Arr.chunksOf(
-          Arr.dedupeWith(refs, (left, right) => left.url === right.url),
-          maximumBatch,
-        )
+      fetch: (refs) =>
+        Effect.gen(function* () {
+          const sending: Sending = { post, stopped: yield* Ref.make(false), suspects }
+          const unique = Arr.dedupeWith(refs, (left, right) => left.url === right.url)
 
-        return Effect.forEach(batches, (refsInBatch: readonly PullRequestRef[]) =>
-          outcomeOf(post, refsInBatch),
-        ).pipe(
-          Effect.flatMap((outcomes: readonly BatchOutcome[]) =>
-            Effect.fromResult(combined(outcomes)),
-          ),
-          Effect.mapError(failure),
-        )
-      },
+          const outcomes = yield* Effect.forEach(
+            suspects.batches(unique),
+            (refsInBatch: readonly PullRequestRef[]) => outcomeOf(sending, refsInBatch),
+          )
+
+          return yield* Effect.fromResult(combined(outcomes)).pipe(
+            Effect.mapError((diagnostic: Diagnostic) => new GitHubFailure({ diagnostic })),
+          )
+        }),
       // `gh repo view` queries GitHub, so it waits out a rate limit too.
       pullRequestInRepository: (directory, number) =>
         Effect.andThen(

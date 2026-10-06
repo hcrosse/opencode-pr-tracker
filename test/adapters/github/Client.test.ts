@@ -74,7 +74,11 @@ describe("GitHub client on recorded standalone pull requests", () => {
     expect(stateOf(results, ref("github.com/anomalyco/opencode/pull/50760"))).toEqual(
       open("passed", false, false),
     )
-    expect(results.get(trackerRef(999999).url)).toEqual({ _tag: "Failed", diagnostic: "NotFound" })
+    expect(results.get(trackerRef(999999).url)).toEqual({
+      _tag: "Failed",
+      charged: false,
+      diagnostic: "NotFound",
+    })
   })
 
   test("classifies commit statuses", async () => {

@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, PubSub, Ref, Result, Stream } from "effect"
+import { Context, Effect, Layer, Option, PubSub, Ref, Stream } from "effect"
 
 import type { PullRequestRef } from "../domain/PullRequest.ts"
 import type { Status } from "../domain/Snapshot.ts"
@@ -7,7 +7,15 @@ import { group, type Attachment, type Tracking } from "../domain/Tracking.ts"
 import { GitHub, type GitHubApi, type ItemResult, type Report } from "../ports/GitHub.ts"
 import type { StoredStateInvalid } from "../ports/TrackingRepository.ts"
 import { FetchQueue } from "./FetchQueue.ts"
-import { isDue, recorded, unknown, withoutUnattached, type Known } from "./Known.ts"
+import {
+  dueOf,
+  failedEach,
+  isDue,
+  recorded,
+  unknown,
+  withoutUnattached,
+  type Known,
+} from "./Known.ts"
 import { Leases } from "./Leases.ts"
 import { currentMillis } from "./Time.ts"
 import { Tracker, type TrackerApi } from "./Tracker.ts"
@@ -101,19 +109,10 @@ function remember(cache: Cache, results: ReadonlyMap<string, ItemResult>): Effec
 
 /** Fetches `refs` and records what GitHub said; a failed request counts against each of them. */
 function update(cache: Cache, refs: readonly PullRequestRef[]): Effect.Effect<void> {
-  return Effect.gen(function* () {
-    const outcome = yield* Effect.result(cache.github.fetch(refs))
-
-    const results: ReadonlyMap<string, ItemResult> = Result.isSuccess(outcome)
-      ? outcome.success
-      : new Map(
-          refs.map(
-            (ref) => [ref.url, { _tag: "Failed", diagnostic: outcome.failure.diagnostic }] as const,
-          ),
-        )
-
-    yield* remember(cache, results)
-  })
+  return cache.github.fetch(refs).pipe(
+    Effect.catchTag("GitHubFailure", (failure) => Effect.succeed(failedEach(refs, failure))),
+    Effect.flatMap((results: ReadonlyMap<string, ItemResult>) => remember(cache, results)),
+  )
 }
 
 /** The session's view. Agreed Stacks whose attached members sit apart are regrouped first. */
@@ -157,7 +156,7 @@ function poll(state: State): Effect.Effect<void> {
     const now = yield* currentMillis
     // Choose from the cache as it is now: an attach may have recorded a report while listing.
     const current = yield* Ref.get(state.known)
-    const due = [...attached.values()].filter((ref: PullRequestRef) => isDue(current, now, ref))
+    const due = dueOf(current, now, [...attached.values()])
 
     // A session renewed while listing has statuses a reader may need, so pruning waits a poll.
     if ((yield* state.leases.live()).every((id) => sessions.includes(id)))

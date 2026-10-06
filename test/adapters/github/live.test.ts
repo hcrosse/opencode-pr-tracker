@@ -22,7 +22,11 @@ describe.skipIf(!enabled)("GitHub client against api.github.com", () => {
       _tag: "Reported",
       report: { snapshot: { state: { _tag: "Merged" } } },
     })
-    expect(results.get(trackerRef(999999).url)).toEqual({ _tag: "Failed", diagnostic: "NotFound" })
+    expect(results.get(trackerRef(999999).url)).toEqual({
+      _tag: "Failed",
+      charged: false,
+      diagnostic: "NotFound",
+    })
   })
 
   test("resolves a number in this checkout's repository", async () => {

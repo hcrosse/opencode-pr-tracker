@@ -133,7 +133,7 @@ const attachTo = Effect.fn("Tracker.attach")(function* (
 ) {
   const ref = yield* resolve(services, target.input, target.directory)
   const reports = yield* services.github.fetch([ref])
-  const missing: ItemResult = { _tag: "Failed", diagnostic: "NotFound" }
+  const missing: ItemResult = { _tag: "Failed", charged: false, diagnostic: "NotFound" }
   const { report, stack } = yield* discovered(ref, reports.get(ref.url) ?? missing)
   const current = yield* services.repository.load(sessionID)
   const change = yield* Effect.fromResult(attach(current, stack, yield* currentMillis))

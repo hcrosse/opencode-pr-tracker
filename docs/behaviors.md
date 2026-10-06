@@ -46,9 +46,13 @@ Each item names the V2 module that owns it.
 ## Refresh (`domain/RefreshPolicy`, `application/Monitor`)
 
 - Open and closed pull requests refresh. Closed pull requests keep refreshing so a reopen is noticed. Merged pull requests stop refreshing once a refresh succeeds, except for one refresh when a changed Stack report contradicts their membership (see Attaching). A failed refresh is retried.
-- One batch covers every due pull request, and a pull request attached in several sessions is fetched once.
+- One refresh fetches every due pull request, and a pull request attached in several sessions is fetched once.
 - A manual sync reports its outcome. Refresh requests made during a running refresh join a single trailing refresh.
 - After a failed refresh, the last good status stays and is marked stale with a diagnostic. After 5 minutes of continuous failure it becomes unavailable. The next success clears the diagnostic.
+- A rate limit (429, a 403 rate limit, or GraphQL `RATE_LIMITED`) stops every GitHub request from every plugin instance for a while: GitHub's `retry-after` if given, else its reset time once the remaining budget is spent (at most an hour away), otherwise 1 minute, doubling up to 15 until a request succeeds.
+- A query GitHub could not finish in time (502, 504, or a cut-off answer) shows "GitHub unavailable" and stops that refresh: its remaining requests are not sent. It pauses nothing else. A page of checks that times out fails only its pull request, and the refresh goes on.
+- The pull requests in a timed-out query or check page become suspects. Suspects are sent last, one per request, until GitHub answers for them without a timeout or server error, even to say one is missing; one that times out again goes behind the other suspects. Among the other due pull requests, those that failed most go first.
+- A pull request whose refresh failed in a way that cost GitHub work (a timeout, another server error, or being left unsent after a timeout) waits 15 seconds before its next refresh, doubling with each such failure up to 15 minutes. Other failures, such as rate limits or no connection, retry after 15 seconds and leave the count of such failures unchanged, so the next one continues the doubling. A success resets the count.
 - Detached pull requests leave the cache.
 - Stopping the plugin cancels in-flight requests and publishes nothing afterwards.
 

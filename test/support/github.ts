@@ -3,7 +3,12 @@ import path from "node:path"
 
 import { Effect, Exit, Layer, Logger, Option, Redacted, Result, Schema } from "effect"
 import { TestClock } from "effect/testing"
-import { HttpClient, HttpClientResponse, type HttpClientRequest } from "effect/unstable/http"
+import {
+  HttpClient,
+  HttpClientError,
+  HttpClientResponse,
+  type HttpClientRequest,
+} from "effect/unstable/http"
 
 import { CommandFailed, CommandMissing, CommandRunner } from "../../src/adapters/Command.ts"
 import { layer as clientLayer } from "../../src/adapters/github/Client.ts"
@@ -59,7 +64,8 @@ function bodyOf(request: HttpClientRequest.HttpClientRequest): RequestBody {
   return Schema.decodeUnknownSync(RequestBody)(new TextDecoder().decode(bytes))
 }
 
-export type Responder = (body: RequestBody, count: number) => Response
+/** A response, or `"unreachable"` for a request that never reached GitHub. */
+export type Responder = (body: RequestBody, count: number) => Response | "unreachable"
 
 export interface HttpFake {
   readonly layer: Layer.Layer<HttpClient.HttpClient>
@@ -72,12 +78,20 @@ export function httpClient(respond: Responder): HttpFake {
   const requests: RequestBody[] = []
 
   const client = HttpClient.make((request: HttpClientRequest.HttpClientRequest) =>
-    Effect.sync(() => {
+    Effect.suspend(() => {
       const body = bodyOf(request)
 
       requests.push(body)
 
-      return HttpClientResponse.fromWeb(request, respond(body, requests.length))
+      const response = respond(body, requests.length)
+
+      return response === "unreachable"
+        ? Effect.fail(
+            new HttpClientError.HttpClientError({
+              reason: new HttpClientError.TransportError({ request }),
+            }),
+          )
+        : Effect.succeed(HttpClientResponse.fromWeb(request, response))
     }),
   )
 

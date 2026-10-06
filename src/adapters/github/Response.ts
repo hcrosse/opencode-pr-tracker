@@ -206,13 +206,13 @@ export function toReport(
 
 export type Entry = readonly [url: string, result: ItemResult]
 
-/** One batch's results, and why it failed as a whole, if it did. */
+/** One batch's results, and why it failed as a whole, if it did without costing GitHub work. */
 export interface BatchOutcome {
   readonly entries: readonly Entry[]
   readonly failure: Option.Option<Diagnostic>
 }
 
-/** Every batch's results together, or a failure when every batch failed. */
+/** Every batch's results together, or a failure when every batch failed at no cost to GitHub. */
 export function combined(
   outcomes: readonly BatchOutcome[],
 ): Result.Result<ReadonlyMap<string, ItemResult>, Diagnostic> {
