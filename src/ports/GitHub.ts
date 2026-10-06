@@ -50,6 +50,7 @@ export interface GitHubApi {
   ) => Effect.Effect<PullRequestRef, GitHubFailure | RepositoryUnavailable>
 }
 
-export const maximumBatch = 20
+/** Larger batches approach GitHub's 10-second query limit, and a timeout fails the whole batch. */
+export const maximumBatch = 5
 
 export class GitHub extends Context.Service<GitHub, GitHubApi>()("opencode-pr-tracker/GitHub") {}
