@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.1](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.6.0...v0.6.1) (2026-10-06)
+
+
+### Bug Fixes
+
+* back off when GitHub queries time out ([#166](https://github.com/hcrosse/opencode-pr-tracker/issues/166)) ([437fef5](https://github.com/hcrosse/opencode-pr-tracker/commit/437fef554c1698af864df301f3a986b9fa723574))
+
+
+### Performance Improvements
+
+* query at most 5 pull requests per GitHub request ([#167](https://github.com/hcrosse/opencode-pr-tracker/issues/167)) ([4bafb26](https://github.com/hcrosse/opencode-pr-tracker/commit/4bafb26a2e38e92379b4cc16b552859faad9c7ee))
+
 ## [0.6.0](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.5.1...v0.6.0) (2026-10-05)
 
 
