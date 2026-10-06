@@ -117,6 +117,7 @@
             "name": ["GitHubFailure", "RepositoryUnavailable"],
             "path": "src/ports/GitHub.ts",
           },
+          { "from": "file", "name": "RequestFailed", "path": "src/adapters/github/Post.ts" },
           {
             "from": "file",
             "name": "StoredStateInvalid",

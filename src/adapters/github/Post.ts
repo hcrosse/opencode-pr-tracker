@@ -2,8 +2,8 @@
 import { Clock, Effect, Option, Redacted, Schema } from "effect"
 import { HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/unstable/http"
 
-import type { Diagnostic } from "../../domain/Snapshot.ts"
-import { GitHubFailure } from "../../ports/GitHub.ts"
+import { Diagnostic } from "../../domain/Snapshot.ts"
+import type { GitHubFailure } from "../../ports/GitHub.ts"
 import { RateLimit, verdictOf, type Evidence, type RateLimitApi } from "./RateLimit.ts"
 import { Token, type TokenApi } from "./Token.ts"
 
@@ -22,14 +22,34 @@ const Envelope = Schema.Struct({
 
 export type Envelope = typeof Envelope.Type
 
-const decodeEnvelope = Schema.decodeUnknownOption(Schema.fromJsonString(Envelope))
+const parseJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))
+
+const decodeEnvelope = Schema.decodeUnknownOption(Envelope)
 
 export type Variables = Readonly<Record<string, string>>
 
-/** Posts one GraphQL document and decodes GitHub's response envelope. */
-export type Post = (query: string, variables: Variables) => Effect.Effect<Envelope, GitHubFailure>
+/**
+ * What a failed request cost GitHub. `TimedOut` is a query GitHub could not finish in time: a 502,
+ * a 504, or a 2xx answer cut off before its end. `Charged` is another server error.
+ */
+const Cost = Schema.Literals(["Free", "Charged", "TimedOut"])
 
-export const failure = (diagnostic: Diagnostic): GitHubFailure => new GitHubFailure({ diagnostic })
+export type Cost = typeof Cost.Type
+
+/** A request that got no usable answer. */
+export class RequestFailed extends Schema.TaggedError<RequestFailed>()("RequestFailed", {
+  cost: Cost,
+  diagnostic: Diagnostic,
+}) {}
+
+/** Posts one GraphQL document and decodes GitHub's response envelope. */
+export type Post = (query: string, variables: Variables) => Effect.Effect<Envelope, RequestFailed>
+
+export const failure = (diagnostic: Diagnostic, cost: Cost): RequestFailed =>
+  new RequestFailed({ cost, diagnostic })
+
+/** A failure found before any request reached GitHub. */
+const free = (refused: GitHubFailure): RequestFailed => failure(refused.diagnostic, "Free")
 
 /** A 401 from GitHub: the cached token may be stale. */
 class Unauthorized extends Schema.TaggedError<Unauthorized>()("Unauthorized", {}) {}
@@ -65,23 +85,42 @@ function logFailure(
   })
 }
 
+const timeoutStatuses = new Set([502, 504])
+
+/** How a failed response's cost is judged once it is known not to be a rate limit. */
+function costOf(evidence: Evidence, cutOff: boolean): Cost {
+  if (cutOff || timeoutStatuses.has(evidence.status)) return "TimedOut"
+
+  return evidence.status >= 500 ? "Charged" : "Free"
+}
+
+/** What a 2xx body holds, if it is not a usable answer. */
+type Unusable = "CutOff" | "NotEnvelope" | "Other"
+
+function unusableBody(json: Option.Option<unknown>, envelope: Option.Option<Envelope>): Unusable {
+  if (Option.isNone(json)) return "CutOff"
+
+  return Option.isNone(envelope) ? "NotEnvelope" : "Other"
+}
+
 /** The failure for a response that was not a usable answer, recording any rate limit it reports. */
 const unanswered = Effect.fn("unanswered")(function* (
   rateLimit: RateLimitApi,
   evidence: Evidence,
-  undecodable: boolean,
+  unusable: Unusable,
 ) {
   if (evidence.status === 401) return yield* new Unauthorized()
 
-  if (undecodable) return yield* failure("InvalidResponse")
+  if (unusable === "NotEnvelope") return yield* failure("InvalidResponse", "Free")
 
   const verdict = verdictOf(evidence, yield* millis)
 
-  if (verdict._tag === "Allowed") return yield* failure("GitHubUnavailable")
+  if (verdict._tag === "Allowed")
+    return yield* failure("GitHubUnavailable", costOf(evidence, unusable === "CutOff"))
 
   yield* rateLimit.limited(verdict.until)
 
-  return yield* failure("RateLimited")
+  return yield* failure("RateLimited", "Free")
 })
 
 interface Services {
@@ -99,9 +138,11 @@ const read = Effect.fn("read")(function* (
   response: HttpClientResponse.HttpClientResponse,
   started: number,
 ) {
+  // A body that could not be read counts as cut off, like one that ended early.
   const body = yield* Effect.orElseSucceed(response.text, () => "")
   const ok = response.status >= 200 && response.status < 300
-  const envelope = ok ? decodeEnvelope(body) : Option.none()
+  const json = ok ? parseJson(body) : Option.none()
+  const envelope = Option.flatMap(json, decodeEnvelope)
   const errors = Option.match(envelope, { onNone: () => [], onSome: (found) => found.errors ?? [] })
   const errorTypes = errors.map((error) => error.type ?? "")
 
@@ -121,7 +162,9 @@ const read = Effect.fn("read")(function* (
     started,
   )
 
-  return yield* unanswered(rateLimit, evidence, ok && Option.isNone(envelope))
+  const unusable = ok ? unusableBody(json, envelope) : "Other"
+
+  return yield* unanswered(rateLimit, evidence, unusable)
 })
 
 const attempt = Effect.fn("attempt")(function* (
@@ -129,9 +172,9 @@ const attempt = Effect.fn("attempt")(function* (
   query: string,
   variables: Variables,
 ) {
-  yield* services.rateLimit.check
+  yield* Effect.mapError(services.rateLimit.check, free)
 
-  const bearer = yield* services.token.get
+  const bearer = yield* Effect.mapError(services.token.get, free)
   const started = yield* millis
 
   const request = HttpClientRequest.post(endpoint).pipe(
@@ -143,7 +186,7 @@ const attempt = Effect.fn("attempt")(function* (
     Effect.tapError((error: { readonly message: string }) =>
       logFailure({ body: error.message, errorTypes: [], headers: {}, status: 0 }, [], started),
     ),
-    Effect.mapError(() => failure("GitHubUnavailable")),
+    Effect.mapError(() => failure("GitHubUnavailable", "Free")),
   )
 
   return yield* read(services.rateLimit, response, started)
@@ -164,11 +207,11 @@ export const makePost = Effect.fn("makePost")(function* (): Effect.fn.Return<
     token: yield* Token,
   }
 
-  return (query: string, variables: Variables): Effect.Effect<Envelope, GitHubFailure> =>
+  return (query: string, variables: Variables): Effect.Effect<Envelope, RequestFailed> =>
     attempt(services, query, variables).pipe(
       Effect.catchTag("Unauthorized", () =>
         Effect.andThen(services.token.invalidate, attempt(services, query, variables)),
       ),
-      Effect.catchTag("Unauthorized", () => Effect.fail(failure("AuthenticationRequired"))),
+      Effect.catchTag("Unauthorized", () => Effect.fail(failure("AuthenticationRequired", "Free"))),
     )
 })

@@ -5,16 +5,29 @@ import type { PullRequestRef } from "../domain/PullRequest.ts"
 import { nextRefresh } from "../domain/RefreshPolicy.ts"
 import { failed, pending, succeeded, type Status } from "../domain/Snapshot.ts"
 import type { Membership } from "../domain/StackLayout.ts"
-import type { ItemResult } from "../ports/GitHub.ts"
+import type { GitHubFailure, ItemResult } from "../ports/GitHub.ts"
 
 export interface Known {
   readonly status: Status
   readonly membership: Option.Option<Membership>
   /** When to refresh next; none once refreshing can no longer change anything. */
   readonly dueAt: Option.Option<number>
+  /** Consecutive failed refreshes that cost GitHub work; each lengthens the wait for the next. */
+  readonly failures: number
 }
 
-export const unknown: Known = { dueAt: Option.some(0), membership: Option.none(), status: pending }
+export const unknown: Known = {
+  dueAt: Option.some(0),
+  failures: 0,
+  membership: Option.none(),
+  status: pending,
+}
+
+function failuresAfter(previous: Known, result: ItemResult): number {
+  if (result._tag === "Reported") return 0
+
+  return result.charged ? previous.failures + 1 : previous.failures
+}
 
 export function afterRefresh(previous: Known, result: ItemResult, now: number): Known {
   const status =
@@ -23,9 +36,13 @@ export function afterRefresh(previous: Known, result: ItemResult, now: number): 
       : failed(previous.status, result.diagnostic, now)
 
   const membership = result._tag === "Reported" ? result.report.membership : previous.membership
+  const failures = failuresAfter(previous, result)
+  // An uncharged failure retries soon; the count it keeps applies once a charged failure follows.
+  const backoff = result._tag === "Failed" && !result.charged ? 0 : failures
 
   return {
-    dueAt: Option.map(nextRefresh(status), (delay) => now + Duration.toMillis(delay)),
+    dueAt: Option.map(nextRefresh(status, backoff), (delay) => now + Duration.toMillis(delay)),
+    failures,
     membership,
     status,
   }
@@ -89,6 +106,13 @@ function contradicted(
   return urls
 }
 
+/** Results for a fetch that failed as a whole, which it does only when that cost GitHub nothing. */
+export const failedEach = (
+  refs: readonly PullRequestRef[],
+  { diagnostic }: GitHubFailure,
+): ReadonlyMap<string, ItemResult> =>
+  new Map(refs.map((ref) => [ref.url, { _tag: "Failed", charged: false, diagnostic }] as const))
+
 /** `current` with GitHub's `results` recorded as of `now`. */
 export function recorded(
   current: ReadonlyMap<string, Known>,
@@ -102,9 +126,9 @@ export function recorded(
 
   // Contradicted pull requests are known and were not in `results`, so they are as in `current`.
   for (const url of contradicted(current, results)) {
-    const { membership, status } = current.get(url) ?? unknown
+    const { failures, membership, status } = current.get(url) ?? unknown
 
-    next.set(url, { dueAt: Option.some(now), membership, status })
+    next.set(url, { dueAt: Option.some(now), failures, membership, status })
   }
 
   return next
@@ -119,6 +143,22 @@ export const isDue = (
     onNone: () => false,
     onSome: (at: number) => at <= now,
   })
+
+/**
+ * The due pull requests of `refs`, those with the most consecutive charged failures first, so
+ * pull requests left unsent when a refresh stopped early go first the next time.
+ */
+export function dueOf(
+  known: ReadonlyMap<string, Known>,
+  now: number,
+  refs: readonly PullRequestRef[],
+): PullRequestRef[] {
+  const failuresOf = (ref: PullRequestRef): number => (known.get(ref.url) ?? unknown).failures
+
+  return refs
+    .filter((ref) => isDue(known, now, ref))
+    .toSorted((left, right) => failuresOf(right) - failuresOf(left))
+}
 
 /**
  * `entries` without pull requests that no session in use has attached, as of the `before`

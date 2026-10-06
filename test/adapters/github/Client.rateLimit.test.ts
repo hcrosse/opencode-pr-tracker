@@ -127,10 +127,12 @@ describe("GitHub client waits without a time from GitHub", () => {
     const http = httpClient(() => new Response("bad gateway", { status: 502 }))
 
     const result = await runClient({ http }, (github: GitHubApi) =>
-      Effect.andThen(Effect.flip(fetchOne(github)), Effect.flip(fetchOne(github))),
+      Effect.andThen(fetchOne(github), fetchOne(github)),
     )
 
-    expect(result).toMatchObject({ value: { diagnostic: "GitHubUnavailable" } })
+    expect(Exit.map(result, (results) => results.get(acmeRef(1).url))).toMatchObject({
+      value: { diagnostic: "GitHubUnavailable" },
+    })
     expect(http.requests).toHaveLength(2)
   })
 })

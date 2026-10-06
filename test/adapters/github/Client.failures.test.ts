@@ -48,13 +48,13 @@ describe("GitHub client authentication", () => {
 describe("GitHub client failures of a whole request", () => {
   test.each([
     [
-      "a server error",
-      (): Response => new Response("bad gateway", { status: 502 }),
+      "a refusal that is not a rate limit",
+      (): Response => new Response("forbidden", { status: 403 }),
       "GitHubUnavailable",
     ],
     [
-      "a body that is not JSON",
-      (): Response => new Response("<html>", { status: 200 }),
+      "JSON that is not a GraphQL answer",
+      (): Response => Response.json(["not", "an", "answer"]),
       "InvalidResponse",
     ],
     [
@@ -103,14 +103,14 @@ describe("GitHub client batch failures", () => {
       Exit.map(result, (results) => [results.get(acmeRef(1).url), results.get(acmeRef(21).url)]),
     ).toEqual(
       Exit.succeed([
-        { _tag: "Failed", diagnostic: "NotFound" },
-        { _tag: "Failed", diagnostic: "GitHubUnavailable" },
+        { _tag: "Failed", charged: false, diagnostic: "NotFound" },
+        { _tag: "Failed", charged: true, diagnostic: "GitHubUnavailable" },
       ]),
     )
   })
 
-  test("fails the whole request when every batch fails", async () => {
-    const http = httpClient(() => new Response("", { status: 502 }))
+  test("fails the whole request when every batch fails at no cost to GitHub", async () => {
+    const http = httpClient(() => new Response("", { status: 403 }))
     const refs = Array.from({ length: 21 }, (_, index: number) => acmeRef(index + 1))
 
     const result = await runClient({ http }, (github: GitHubApi) => github.fetch(refs))

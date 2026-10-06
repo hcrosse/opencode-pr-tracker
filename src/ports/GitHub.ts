@@ -24,10 +24,22 @@ export class RepositoryUnavailable extends Schema.TaggedError<RepositoryUnavaila
 
 export type ItemResult =
   | { readonly _tag: "Reported"; readonly report: Report }
-  | { readonly _tag: "Failed"; readonly diagnostic: Diagnostic }
+  | {
+      readonly _tag: "Failed"
+      readonly diagnostic: Diagnostic
+      /**
+       * Whether the failure cost GitHub work: a query it could not finish in time, another server
+       * error, or a pull request left unsent because an earlier query timed out. Repeating such a
+       * query soon is likely to fail the same way.
+       */
+      readonly charged: boolean
+    }
 
 export interface GitHubApi {
-  /** Reports for pull requests, keyed by canonical URL. Large requests are split into batches. */
+  /**
+   * Reports for pull requests, keyed by canonical URL. Large requests are split into batches. Fails
+   * as a whole only when every batch failed without costing GitHub work.
+   */
   readonly fetch: (
     refs: readonly PullRequestRef[],
   ) => Effect.Effect<ReadonlyMap<string, ItemResult>, GitHubFailure>
