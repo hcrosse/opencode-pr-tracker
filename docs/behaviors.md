@@ -41,7 +41,7 @@ Each item names the V2 module that owns it.
 - A missing or inaccessible pull request is reported per item. Other items in the batch still succeed.
 - GraphQL partial errors affect only their own item.
 - Failures are classified as: GitHub CLI missing, authentication required, GitHub unavailable, pull request not found, and invalid response. Diagnostics never include credentials.
-- One request covers up to 20 pull requests. Incomplete check pages are fetched until complete. When GitHub reports only part of a Stack (more than 100 members, or an unreadable member), attaching fails and changes nothing; V1 fetched further Stack pages.
+- One request covers up to 5 pull requests, sent one request at a time. Incomplete check pages are fetched until complete. When GitHub reports only part of a Stack (more than 100 members, or an unreadable member), attaching fails and changes nothing; V1 fetched further Stack pages.
 
 ## Refresh (`domain/RefreshPolicy`, `application/Monitor`)
 
