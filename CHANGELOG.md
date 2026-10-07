@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.6.1...v0.6.2) (2026-10-07)
+
+
+### Bug Fixes
+
+* let a newer workflow run replace every job of older runs ([#171](https://github.com/hcrosse/opencode-pr-tracker/issues/171)) ([ddc378b](https://github.com/hcrosse/opencode-pr-tracker/commit/ddc378b6de20586ee094be98f3c788436b6dc440))
+
 ## [0.6.1](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.6.0...v0.6.1) (2026-10-06)
 
 
