@@ -35,12 +35,15 @@ interface RunFields {
   readonly suiteCreatedAt: string
   readonly suite: string
   readonly workflow: boolean
+  readonly workflowId: string
+  readonly event: string
   /** Whether GitHub reports the app that created the check suite. */
   readonly app: boolean
 }
 
 const recordedFields: RunFields = {
   conclusion: recordedRun.conclusion,
+  event: recordedRun.checkSuite.workflowRun.event,
   name: recordedRun.name,
   runAttempt: recordedRun.checkSuite.workflowRun.runAttempt,
   runNumber: recordedRun.checkSuite.workflowRun.runNumber,
@@ -48,13 +51,20 @@ const recordedFields: RunFields = {
   suiteCreatedAt: recordedRun.checkSuite.createdAt,
   suite: recordedRun.checkSuite.id,
   workflow: true,
+  workflowId: recordedRun.checkSuite.workflowRun.workflow.id,
   app: true,
 }
 
 /** The recorded check run with some fields changed. */
 function run(changes: Partial<RunFields>): ContextNode {
   const fields: RunFields = Object.assign({}, recordedFields, changes)
-  const { event, workflow } = recordedRun.checkSuite.workflowRun
+
+  const workflowRun = {
+    event: fields.event,
+    runAttempt: fields.runAttempt,
+    runNumber: fields.runNumber,
+    workflow: { id: fields.workflowId },
+  }
 
   return {
     __typename: "CheckRun",
@@ -62,9 +72,7 @@ function run(changes: Partial<RunFields>): ContextNode {
       app: fields.app ? recordedRun.checkSuite.app : null,
       createdAt: fields.suiteCreatedAt,
       id: fields.suite,
-      workflowRun: fields.workflow
-        ? { event, runAttempt: fields.runAttempt, runNumber: fields.runNumber, workflow }
-        : null,
+      workflowRun: fields.workflow ? workflowRun : null,
     },
     conclusion: fields.conclusion,
     name: fields.name,
@@ -123,17 +131,42 @@ describe("which runs count", () => {
   })
 })
 
-describe("which runs count across jobs and suites", () => {
-  // A later run of other jobs must not replace a job's last result.
-  test("a later run of other jobs does not replace a job's failure", () => {
+describe("which runs count across workflow runs", () => {
+  test("a later workflow run replaces jobs it no longer has", () => {
     const nodes = [
       run({ conclusion: "FAILURE", name: "Test", runNumber: 216 }),
       run({ name: "Lint", runNumber: 217 }),
     ]
 
-    expect(ci(nodes)).toBe("failed")
+    expect(ci(nodes)).toBe("passed")
   })
 
+  // A matrix job cancelled before its matrix is computed keeps the unexpanded name.
+  test("a rerun replaces a cancelled run's unexpanded matrix job", () => {
+    const nodes = [
+      run({ name: "Build", runNumber: 216 }),
+      run({ conclusion: "CANCELLED", name: "Test (${{ matrix.shard }})", runNumber: 216 }),
+      run({ conclusion: "CANCELLED", name: "Deploy", runNumber: 216 }),
+      run({ conclusion: "FAILURE", name: "Required checks", runNumber: 216 }),
+      run({ name: "Build", runNumber: 217 }),
+      run({ name: "Test (unit)", runNumber: 217 }),
+      run({ name: "Test (integration)", runNumber: 217 }),
+      run({ conclusion: "SKIPPED", name: "Deploy", runNumber: 217 }),
+      run({ name: "Required checks", runNumber: 217 }),
+    ]
+
+    expect(ci(nodes)).toBe("passed")
+  })
+
+  test("a later run of another workflow or event does not replace a failure", () => {
+    const failing = run({ conclusion: "FAILURE", runNumber: 216 })
+
+    expect(ci([failing, run({ runNumber: 217, workflowId: "W_other" })])).toBe("failed")
+    expect(ci([failing, run({ event: "push", runNumber: 217 })])).toBe("failed")
+  })
+})
+
+describe("which runs count across suites", () => {
   test("a check outside workflows is replaced by the same check in a newer suite", () => {
     const older = run({
       conclusion: "FAILURE",

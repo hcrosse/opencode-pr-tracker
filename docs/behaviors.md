@@ -31,8 +31,9 @@ Each item names the V2 module that owns it.
 ## Status (`domain/Snapshot`, `adapters/github`)
 
 - States: open, merged, closed. An open pull request has CI (passed, pending, failed, none), draft, mergeability (mergeable, conflicting, unknown) and behind.
-- CI uses only the newest check run per check identity and the newest status context per context name.
-  - Check identity: app, workflow, event and name. Checks without an app fall back to the check suite.
+- CI uses only the newest check runs per check identity and the newest status context per context name.
+  - A workflow's jobs share one identity: app, workflow and event. The newest run and attempt replaces every job of older runs, including jobs it no longer has.
+  - Other check runs are identified by app and name. Checks without an app fall back to the check suite.
   - Status context names are compared case-insensitively.
   - Checks tied for newest are all kept.
   - Every non-completed check run status counts as pending.
