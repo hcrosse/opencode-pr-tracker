@@ -126,9 +126,10 @@ const statusOutcomes: Record<StatusState, CheckOutcome> = {
 }
 
 /**
- * Status contexts are one check per context name. A workflow check is identified by its app,
- * workflow, event and name, and ordered by run and attempt. Any other check run is identified by
- * its app (or suite) and name, and ordered by when its suite was created.
+ * Status contexts are one check per context name. The jobs of a workflow run are one check,
+ * identified by app, workflow and event and ordered by run and attempt, so a newer run replaces
+ * every job of an older one, including jobs it no longer has. Any other check run is identified
+ * by its app (or suite) and name, and ordered by when its suite was created.
  */
 export function toCheck(node: ContextNode): Check {
   if (node.__typename === "StatusContext") {
@@ -155,7 +156,7 @@ export function toCheck(node: ContextNode): Check {
     }),
     onSome: (run) => ({
       generation: [run.runNumber, run.runAttempt],
-      identity: `workflow ${source} ${run.workflow.id} ${run.event} ${node.name}`,
+      identity: `workflow ${source} ${run.workflow.id} ${run.event}`,
       outcome,
     }),
   })
