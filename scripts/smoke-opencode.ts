@@ -184,6 +184,20 @@ const pluginState = Effect.fn("pluginState")(function* (
   })
 })
 
+// A plugin whose install fails or stalls is absent from /api/plugin; only OpenCode's log says why.
+const printOpenCodeLogs = Effect.fn("printOpenCodeLogs")(function* (runDirectory: string) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const logDirectory = path.join(runDirectory, "home", ".local", "share", "opencode", "log")
+  const names = yield* fs.readDirectory(logDirectory)
+
+  for (const name of names) {
+    const contents = yield* fs.readFileString(path.join(logDirectory, name))
+
+    process.stderr.write(`--- OpenCode log ${name} ---\n${contents}\n`)
+  }
+})
+
 const smoke = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
@@ -205,6 +219,11 @@ const smoke = Effect.gen(function* () {
       times: 180,
       until: (state) => state.startsWith("failed"),
     }),
+    Effect.tapError(() =>
+      printOpenCodeLogs(runDirectory).pipe(
+        Effect.ignore({ log: "Warn", message: "Could not read OpenCode logs" }),
+      ),
+    ),
     Effect.mapError((state) => new Error(`Plugin ${pluginID} did not become active: ${state}`)),
   )
   yield* Effect.logInfo(`${pluginID} is active`)
