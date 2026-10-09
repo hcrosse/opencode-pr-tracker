@@ -77,18 +77,25 @@ export function group(tracking: Tracking, stacks: readonly (readonly PullRequest
   return { changed: differs(tracking, next), tracking: next }
 }
 
+/** A stack, bottom to top, and the members of it to attach. A single pull request is a stack of one. */
+export interface Attaching {
+  readonly stack: Arr.NonEmptyReadonlyArray<PullRequestRef>
+  readonly adding: readonly PullRequestRef[]
+}
+
 /**
- * Attaches every member of a stack, bottom to top. A single pull request is a stack of one.
- * Members are placed together where the earliest of them was already attached, or at the end.
+ * Attaches the `adding` members of a stack. All its attached members, including ones not in
+ * `adding`, are placed together bottom to top where the earliest of them was already attached, or
+ * at the end.
  */
-export function attach(
+export function attachSome(
   tracking: Tracking,
-  stack: Arr.NonEmptyReadonlyArray<PullRequestRef>,
+  { adding, stack }: Attaching,
   now: number,
 ): Result.Result<Change, AttachmentLimitReached> {
   const members = Arr.dedupeWith(stack, samePullRequest)
 
-  const missing = members.filter(
+  const missing = Arr.dedupeWith(adding, samePullRequest).filter(
     (ref) => !tracking.some((attachment) => samePullRequest(attachment.ref, ref)),
   )
 
@@ -102,6 +109,15 @@ export function attach(
   const next = group(appended, [members]).tracking
 
   return Result.succeed({ changed: differs(tracking, next), tracking: next })
+}
+
+/** Attaches every member of a stack, bottom to top. */
+export function attach(
+  tracking: Tracking,
+  stack: Arr.NonEmptyReadonlyArray<PullRequestRef>,
+  now: number,
+): Result.Result<Change, AttachmentLimitReached> {
+  return attachSome(tracking, { adding: stack, stack }, now)
 }
 
 export function detach(tracking: Tracking, ref: PullRequestRef): Removal {

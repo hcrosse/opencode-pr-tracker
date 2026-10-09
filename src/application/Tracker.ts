@@ -3,7 +3,7 @@ import { Array as Arr, Context, Effect, Layer, Option, Schema } from "effect"
 import type { PullRequestInput, PullRequestRef } from "../domain/PullRequest.ts"
 import { Diagnostic } from "../domain/Snapshot.ts"
 import {
-  attach,
+  attachSome,
   detach,
   detachNumber,
   group,
@@ -34,7 +34,7 @@ export class PullRequestUnavailable extends Schema.TaggedError<PullRequestUnavai
   { diagnostic: Diagnostic, url: Schema.String },
 ) {}
 
-/** GitHub reported only part of the pull request's Stack, so attaching all of it is impossible. */
+/** GitHub reported only part of the pull request's Stack, so which members to attach is unknown. */
 export class StackIncomplete extends Schema.TaggedError<StackIncomplete>()("StackIncomplete", {
   url: Schema.String,
 }) {}
@@ -55,12 +55,20 @@ export interface Attached {
   readonly changed: boolean
   /** How many pull requests the named one's Stack has, itself included. */
   readonly stackSize: number
+  /**
+   * How many of the Stack's pull requests this request attached or found already attached, the
+   * named one included. Merged and closed members other than the named one are left out.
+   */
+  readonly included: number
   readonly tracking: Tracking
 }
 
 export interface TrackerApi {
   readonly list: (sessionID: string) => Effect.Effect<Tracking, StoredStateInvalid>
-  /** Attaches a pull request, with its whole Stack. A bare number is resolved in `directory`. */
+  /**
+   * Attaches a pull request with its Stack's open members. Merged or closed members are left out
+   * unless named. A bare number is resolved in `directory`.
+   */
   readonly attach: (
     sessionID: string,
     input: PullRequestInput,
@@ -88,8 +96,20 @@ export class Tracker extends Context.Service<Tracker, TrackerApi>()(
 
 interface Discovered {
   readonly report: Report
-  /** The pull request's Stack, bottom first; just the pull request when it has none. */
+  /** The pull request's Stack, bottom first, or just the pull request when it has none. */
   readonly stack: Arr.NonEmptyReadonlyArray<PullRequestRef>
+  /** The members to attach: the pull request itself and the Stack's open members. */
+  readonly adding: readonly PullRequestRef[]
+}
+
+function toAdd(
+  ref: PullRequestRef,
+  members: readonly PullRequestRef[],
+  nonOpen: readonly string[],
+): readonly PullRequestRef[] {
+  const kept = members.filter((member) => member.url === ref.url || !nonOpen.includes(member.url))
+
+  return kept.some((member) => member.url === ref.url) ? kept : [ref]
 }
 
 function discovered(
@@ -104,10 +124,15 @@ function discovered(
   return Option.match(report.membership, {
     onNone: () => Effect.fail(new StackIncomplete({ url: ref.url })),
     onSome: (membership) =>
-      Effect.succeed({
-        report,
-        stack: membership._tag === "Stack" ? membership.members : Arr.of(ref),
-      }),
+      Effect.succeed(
+        membership._tag === "Stack"
+          ? {
+              adding: toAdd(ref, membership.members, report.nonOpenMembers),
+              report,
+              stack: membership.members,
+            }
+          : { adding: [ref], report, stack: Arr.of(ref) },
+      ),
   })
 }
 
@@ -134,14 +159,16 @@ const attachTo = Effect.fn("Tracker.attach")(function* (
   const ref = yield* resolve(services, target.input, target.directory)
   const reports = yield* services.github.fetch([ref])
   const missing: ItemResult = { _tag: "Failed", charged: false, diagnostic: "NotFound" }
-  const { report, stack } = yield* discovered(ref, reports.get(ref.url) ?? missing)
+  const { adding, report, stack } = yield* discovered(ref, reports.get(ref.url) ?? missing)
   const current = yield* services.repository.load(sessionID)
-  const change = yield* Effect.fromResult(attach(current, stack, yield* currentMillis))
+  const now = yield* currentMillis
+  const change = yield* Effect.fromResult(attachSome(current, { adding, stack }, now))
 
   if (change.changed) yield* services.repository.save(sessionID, change.tracking)
 
   return {
     changed: change.changed,
+    included: adding.length,
     ref,
     report,
     stackSize: stack.length,

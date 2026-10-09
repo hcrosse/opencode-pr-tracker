@@ -75,7 +75,7 @@ export const worlds = gs.composite((tc): World => {
   return { membership, primary, stackOf }
 })
 
-/** Attaches a pull request the way a user does: with the rest of its Stack. */
+/** Attaches a pull request the way a user does when its Stack is open: with the rest of its Stack. */
 function attachWhole(tracking: Tracking, members: readonly PullRequestRef[], at: number): Tracking {
   return Arr.matchLeft(members, {
     onEmpty: () => tracking,

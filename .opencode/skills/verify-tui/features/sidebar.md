@@ -21,7 +21,7 @@ The sidebar lists a session's attached pull requests, with each one's repository
 Preconditions: the baseline in `README.md`.
 
 - **Empty.** With the sidebar open, run `$V capture "$RUN_DIR" sidebar-empty`. `sidebar-empty.txt` contains `Pull requests` and `No pull requests attached`.
-- **Stack.** Attach #78 with `/pr-attach github.com/hcrosse/opencode-pr-tracker/pull/78`, and wait for `feat: add guided feedback command`. After the toast clears, run `$V capture "$RUN_DIR" sidebar-stack`. The capture shows `┌─ hcrosse/opencode-pr-tracker#78`, a line starting `│  merged`, then `└─ hcrosse/opencode-pr-tracker#79`, and under each its `merged` label and title.
+- **Stack.** Attach #78 with `/pr-attach github.com/hcrosse/opencode-pr-tracker/pull/78`, and wait for `refactor: split TUI domains`. Both members are merged, so attach #79 too with `/pr-attach github.com/hcrosse/opencode-pr-tracker/pull/79`, and wait for `feat: add guided feedback command`. After the toast clears, run `$V capture "$RUN_DIR" sidebar-stack`. The capture shows `┌─ hcrosse/opencode-pr-tracker#78`, a line starting `│  merged`, then `└─ hcrosse/opencode-pr-tracker#79`, and under each its `merged` label and title.
 - **Status attributes.** Find the escape codes in front of each reference:
   `python3 -c 'import re,sys; [print(m.group(1).replace("\x1b","ESC"), m.group(2)) for m in re.finditer(r"((?:\x1b\[[0-9;]*m)+)(hcrosse/opencode-pr-tracker#\d+)", open(sys.argv[1]).read())]' "$RUN_DIR/artifacts/sidebar-stack.ansi"`
   Each reference has `ESC[1m` (bold), `ESC[9m` (strikethrough) and one shared `38;2;…` purple. In the default opencode theme it is `38;2;177;151;249`.

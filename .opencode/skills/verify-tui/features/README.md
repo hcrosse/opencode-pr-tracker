@@ -23,7 +23,7 @@ This directory holds the recipes for verifying what a user sees and does in the 
 
 ## Order
 
-The steps within a feature file run in order, and each assumes the ones before it. The two files share their first step, attaching #78, so do it once and take both captures. For a narrower request, run the baseline, then only the steps it needs and the steps they depend on.
+The steps within a feature file run in order, and each assumes the ones before it. The two files share their first step, attaching #78 and then #79, so do it once and take both captures. For a narrower request, run the baseline, then only the steps it needs and the steps they depend on.
 
 ## Proof and skip reporting
 

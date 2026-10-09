@@ -9,6 +9,8 @@ export interface Report {
   readonly snapshot: Snapshot
   /** None when GitHub's Stack data was incomplete. */
   readonly membership: Option.Option<Membership>
+  /** Canonical URLs of the Stack members GitHub reports as merged or closed. Empty when standalone. */
+  readonly nonOpenMembers: readonly string[]
 }
 
 /** A failure that affects the whole request rather than one pull request. */

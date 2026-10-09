@@ -59,12 +59,16 @@ export function memoryStorage(): StorageFake {
 
 export const standalone: Membership = { _tag: "Standalone" }
 
-/** What GitHub reports for a pull request, with `membership` unknown unless given. */
+/** What GitHub reports for a pull request, with `membership` unknown unless given and every Stack member open. */
 export const reportOf = (
   ref: PullRequestRef,
   state: PullRequestState,
   membership: Option.Option<Membership> = Option.none(),
-): Report => ({ membership, snapshot: { ref, state, title: `Title of ${ref.label}` } })
+): Report => ({
+  membership,
+  nonOpenMembers: [],
+  snapshot: { ref, state, title: `Title of ${ref.label}` },
+})
 
 export const reported = (
   ref: PullRequestRef,

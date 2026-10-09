@@ -57,10 +57,15 @@ export const Contexts = Schema.Struct({
 
 export type Contexts = typeof Contexts.Type
 
+const LifecycleState = Schema.Literals(["OPEN", "CLOSED", "MERGED"])
+
 const StackNode = Schema.Struct({
   entries: Schema.Struct({
     nodes: Schema.Array(
-      Schema.Struct({ position: Schema.Int, pullRequest: Schema.Struct({ url: Schema.String }) }),
+      Schema.Struct({
+        position: Schema.Int,
+        pullRequest: Schema.Struct({ state: LifecycleState, url: Schema.String }),
+      }),
     ),
     pageInfo: Schema.Struct({ hasNextPage: Schema.Boolean }),
   }),
@@ -74,7 +79,7 @@ export const PullRequestNode = Schema.Struct({
   mergeStateStatus: Schema.String,
   mergeable: MergeableState,
   stack: Schema.NullOr(StackNode),
-  state: Schema.Literals(["OPEN", "CLOSED", "MERGED"]),
+  state: LifecycleState,
   statusCheckRollup: Schema.NullOr(Schema.Struct({ contexts: Contexts })),
   title: Schema.String,
   url: Schema.String,
@@ -194,6 +199,19 @@ export function toMembership(node: PullRequestNode): Option.Option<Membership> {
     : Option.none()
 }
 
+/** Canonical URLs of the Stack members GitHub reports as merged or closed. */
+export function nonOpenMembersOf(node: PullRequestNode): readonly string[] {
+  const entries = node.stack === null ? [] : node.stack.entries.nodes
+
+  return entries.flatMap((entry) =>
+    entry.pullRequest.state === "OPEN"
+      ? []
+      : Option.toArray(Result.getSuccess(parsePullRequestUrl(entry.pullRequest.url))).map(
+          (member) => member.url,
+        ),
+  )
+}
+
 export function toReport(
   ref: PullRequestRef,
   node: PullRequestNode,
@@ -201,6 +219,7 @@ export function toReport(
 ): Report {
   return {
     membership: toMembership(node),
+    nonOpenMembers: nonOpenMembersOf(node),
     snapshot: { ref, state: toState(node, contexts), title: node.title },
   }
 }
