@@ -88,7 +88,7 @@ export interface Attaching {
  * `adding`, are placed together bottom to top where the earliest of them was already attached, or
  * at the end.
  */
-export function attachSome(
+export function attach(
   tracking: Tracking,
   { adding, stack }: Attaching,
   now: number,
@@ -109,15 +109,6 @@ export function attachSome(
   const next = group(appended, [members]).tracking
 
   return Result.succeed({ changed: differs(tracking, next), tracking: next })
-}
-
-/** Attaches every member of a stack, bottom to top. */
-export function attach(
-  tracking: Tracking,
-  stack: Arr.NonEmptyReadonlyArray<PullRequestRef>,
-  now: number,
-): Result.Result<Change, AttachmentLimitReached> {
-  return attachSome(tracking, { adding: stack, stack }, now)
 }
 
 export function detach(tracking: Tracking, ref: PullRequestRef): Removal {

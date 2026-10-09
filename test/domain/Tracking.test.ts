@@ -14,7 +14,7 @@ import {
   maximumAttachments,
   type Tracking,
 } from "../../src/domain/Tracking.ts"
-import type { Stack } from "../support/stacks.ts"
+import { whole, type Stack } from "../support/stacks.ts"
 
 /** Few repositories and numbers, so operations collide: duplicates, overlaps, shared numbers. */
 const pooledRefs = gs.composite((tc) => {
@@ -84,7 +84,7 @@ function checkTimes(before: Tracking, after: Tracking, now: number): void {
 
 function checkAttach(before: Tracking, stack: Stack, now: number): Tracking {
   const members = uniqueUrls(stack)
-  const result = attach(before, stack, now)
+  const result = attach(before, whole(stack), now)
 
   if (new Set([...urls(before), ...members]).size > maximumAttachments) {
     expect(Result.isFailure(result)).toBe(true)
@@ -159,8 +159,8 @@ describe("attaching stacks", () => {
   test("attaching the same stack twice changes nothing the second time", () => {
     hegel.test((tc) => {
       const stack = tc.draw(stacks(maximumAttachments - 1))
-      const first = Result.getOrThrow(attach([], stack, 1))
-      const second = Result.getOrThrow(attach(first.tracking, stack, 2))
+      const first = Result.getOrThrow(attach([], whole(stack), 1))
+      const second = Result.getOrThrow(attach(first.tracking, whole(stack), 2))
 
       expect(second).toEqual({ changed: false, tracking: first.tracking })
     })
@@ -173,7 +173,7 @@ describe("attaching stacks", () => {
       let before: Tracking = []
 
       for (const attached of tc.draw(gs.arrays(pooledRefs, { maxSize: maximumAttachments }))) {
-        const next = attach(before, [attached], 0)
+        const next = attach(before, whole([attached]), 0)
 
         if (Result.isSuccess(next)) before = next.success.tracking
       }
@@ -184,7 +184,9 @@ describe("attaching stacks", () => {
 
       const unique: Stack = [head ?? stack[0], ...tail]
 
-      expect(attach(before, [...stack, ...repeats], 1)).toEqual(attach(before, unique, 1))
+      expect(attach(before, whole([...stack, ...repeats]), 1)).toEqual(
+        attach(before, whole(unique), 1),
+      )
     })
   })
 })
@@ -194,7 +196,7 @@ function attachedOneByOne(refs: readonly PullRequestRef[]): Tracking {
   let tracking: Tracking = []
 
   for (const [step, ref] of refs.entries()) {
-    const next = attach(tracking, [ref], step)
+    const next = attach(tracking, whole([ref]), step)
 
     if (Result.isSuccess(next)) tracking = next.success.tracking
   }
@@ -269,10 +271,10 @@ describe("Tracking examples", () => {
     let tracking: Tracking = []
 
     for (let number = 1; number < maximumAttachments; number += 1) {
-      tracking = Result.getOrThrow(attach(tracking, [acmeRef(number)], 0)).tracking
+      tracking = Result.getOrThrow(attach(tracking, whole([acmeRef(number)]), 0)).tracking
     }
 
-    const result = attach(tracking, [acmeRef(99), acmeRef(99)], 1)
+    const result = attach(tracking, whole([acmeRef(99), acmeRef(99)]), 1)
 
     expect(Result.map(result, (change) => change.tracking.length)).toEqual(
       Result.succeed(maximumAttachments),
@@ -280,12 +282,12 @@ describe("Tracking examples", () => {
   })
 
   test("attaching a stack member moves the whole stack to that member's place", () => {
-    const standalone = Result.getOrThrow(attach([], [acmeRef(1)], 1)).tracking
-    const middle = Result.getOrThrow(attach(standalone, [acmeRef(3)], 2)).tracking
-    const withTail = Result.getOrThrow(attach(middle, [acmeRef(9)], 3)).tracking
+    const standalone = Result.getOrThrow(attach([], whole([acmeRef(1)]), 1)).tracking
+    const middle = Result.getOrThrow(attach(standalone, whole([acmeRef(3)]), 2)).tracking
+    const withTail = Result.getOrThrow(attach(middle, whole([acmeRef(9)]), 3)).tracking
 
     const stacked = Result.getOrThrow(
-      attach(withTail, [acmeRef(2), acmeRef(3), acmeRef(4)], 4),
+      attach(withTail, whole([acmeRef(2), acmeRef(3), acmeRef(4)]), 4),
     ).tracking
 
     expect(stacked.map((attachment) => attachment.ref.number)).toEqual([1, 2, 3, 4, 9])

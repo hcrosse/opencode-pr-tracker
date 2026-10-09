@@ -1,13 +1,19 @@
 import { Array as Arr, Context, Effect, Layer, Option, Schema } from "effect"
 
-import type { PullRequestInput, PullRequestRef } from "../domain/PullRequest.ts"
-import { Diagnostic } from "../domain/Snapshot.ts"
 import {
-  attachSome,
+  samePullRequest,
+  type PullRequestInput,
+  type PullRequestRef,
+} from "../domain/PullRequest.ts"
+import { Diagnostic } from "../domain/Snapshot.ts"
+import type { Membership } from "../domain/StackLayout.ts"
+import {
+  attach,
   detach,
   detachNumber,
   group,
   type AmbiguousPullRequestNumber,
+  type Attaching,
   type AttachmentLimitReached,
   type Removal,
   type Tracking,
@@ -55,11 +61,8 @@ export interface Attached {
   readonly changed: boolean
   /** How many pull requests the named one's Stack has, itself included. */
   readonly stackSize: number
-  /**
-   * How many of the Stack's pull requests this request attached or found already attached, the
-   * named one included. Merged and closed members other than the named one are left out.
-   */
-  readonly included: number
+  /** How many of the Stack's pull requests are attached afterwards, the named one included. */
+  readonly attachedMembers: number
   readonly tracking: Tracking
 }
 
@@ -94,22 +97,32 @@ export class Tracker extends Context.Service<Tracker, TrackerApi>()(
   "opencode-pr-tracker/Tracker",
 ) {}
 
-interface Discovered {
+interface Discovered extends Attaching {
   readonly report: Report
-  /** The pull request's Stack, bottom first, or just the pull request when it has none. */
-  readonly stack: Arr.NonEmptyReadonlyArray<PullRequestRef>
-  /** The members to attach: the pull request itself and the Stack's open members. */
-  readonly adding: readonly PullRequestRef[]
 }
 
-function toAdd(
+/**
+ * The pull request's Stack, bottom first, with the members to attach: the pull request itself and
+ * the Stack's open members. A pull request GitHub does not list among its Stack's members is
+ * treated as standalone.
+ */
+function attaching(
   ref: PullRequestRef,
-  members: readonly PullRequestRef[],
+  membership: Membership,
   nonOpen: readonly string[],
-): readonly PullRequestRef[] {
-  const kept = members.filter((member) => member.url === ref.url || !nonOpen.includes(member.url))
+): Attaching {
+  const standalone = { adding: [ref], stack: Arr.of(ref) }
 
-  return kept.some((member) => member.url === ref.url) ? kept : [ref]
+  if (membership._tag === "Standalone") return standalone
+
+  const { members } = membership
+
+  if (!members.some((member) => member.url === ref.url)) return standalone
+
+  return {
+    adding: members.filter((member) => member.url === ref.url || !nonOpen.includes(member.url)),
+    stack: members,
+  }
 }
 
 function discovered(
@@ -123,16 +136,11 @@ function discovered(
 
   return Option.match(report.membership, {
     onNone: () => Effect.fail(new StackIncomplete({ url: ref.url })),
-    onSome: (membership) =>
-      Effect.succeed(
-        membership._tag === "Stack"
-          ? {
-              adding: toAdd(ref, membership.members, report.nonOpenMembers),
-              report,
-              stack: membership.members,
-            }
-          : { adding: [ref], report, stack: Arr.of(ref) },
-      ),
+    onSome: (membership) => {
+      const { adding, stack } = attaching(ref, membership, report.nonOpenMembers)
+
+      return Effect.succeed({ adding, report, stack })
+    },
   })
 }
 
@@ -162,13 +170,17 @@ const attachTo = Effect.fn("Tracker.attach")(function* (
   const { adding, report, stack } = yield* discovered(ref, reports.get(ref.url) ?? missing)
   const current = yield* services.repository.load(sessionID)
   const now = yield* currentMillis
-  const change = yield* Effect.fromResult(attachSome(current, { adding, stack }, now))
+  const change = yield* Effect.fromResult(attach(current, { adding, stack }, now))
 
   if (change.changed) yield* services.repository.save(sessionID, change.tracking)
 
+  const attached = stack.filter((member) =>
+    change.tracking.some((attachment) => samePullRequest(attachment.ref, member)),
+  )
+
   return {
+    attachedMembers: attached.length,
     changed: change.changed,
-    included: adding.length,
     ref,
     report,
     stackSize: stack.length,

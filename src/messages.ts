@@ -54,16 +54,19 @@ export function attachedMessage(attached: Attached): string {
 
   if (!attached.changed) return `${label} is already attached.`
 
-  const { included, stackSize } = attached
+  const { attachedMembers, stackSize } = attached
 
   if (stackSize <= 1) return `Attached ${label}.`
 
-  if (included === stackSize)
+  if (attachedMembers === stackSize)
     return `Attached ${label} with the rest of its Stack (${String(stackSize)} pull requests).`
 
-  return included > 1
-    ? `Attached ${label} with the open members of its Stack (${String(included)} of ${String(stackSize)} pull requests).`
-    : `Attached ${label}. The rest of its Stack is merged or closed.`
+  if (attachedMembers === 1) return `Attached ${label}. The rest of its Stack is merged or closed.`
+
+  const left = stackSize - attachedMembers
+  const others = left === 1 ? "The other one is" : `The other ${String(left)} are`
+
+  return `Attached ${label}. ${String(attachedMembers)} of its Stack's ${String(stackSize)} pull requests are attached. ${others} merged or closed.`
 }
 
 export function detachedMessage(removal: Removal, target: string): string {

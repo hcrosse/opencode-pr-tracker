@@ -200,7 +200,7 @@ export function toMembership(node: PullRequestNode): Option.Option<Membership> {
 }
 
 /** Canonical URLs of the Stack members GitHub reports as merged or closed. */
-export function nonOpenMembersOf(node: PullRequestNode): readonly string[] {
+function nonOpenMembersOf(node: PullRequestNode): readonly string[] {
   const entries = node.stack === null ? [] : node.stack.entries.nodes
 
   return entries.flatMap((entry) =>
