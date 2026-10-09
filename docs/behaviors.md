@@ -78,7 +78,7 @@ Each item names the V2 module that owns it.
   - Stack members appear together in Stack order with `┌─`, `├─` and `└─` markers.
   - Internal gaps show `├┄ N PR(s) not attached`. Missing members outside the attached range use open boundary markers, not extra rows.
   - A single attached member of a larger Stack uses an incomplete marker.
-  - Separate Stacks, including Stacks in one repository, stay separate.
+  - Separate Stacks, including Stacks in one repository, stay separate. Where two Stacks touch, an edge that would otherwise look like it continues into the other Stack closes with `╭─` or `╰─`, or `╶─` for a Stack's only attached member.
   - Standalone pull requests, and members whose membership is unknown, use `•`.
 - Compact layout shows one row per pull request, plus internal gaps, without titles.
 - With more than two pull requests, the heading collapses and expands the list. Refreshes continue while it's collapsed.

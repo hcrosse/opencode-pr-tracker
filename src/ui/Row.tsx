@@ -21,10 +21,13 @@ interface Glyph {
 }
 
 const markers: Record<Marker, Glyph> = {
+  alone: { line: "╶", tick: "─" },
   bullet: { line: "", tick: "•" },
   first: { line: "┌", tick: "─" },
   last: { line: "└", tick: "─" },
   middle: { line: "├", tick: "─" },
+  openFirst: { line: "╭", tick: "─" },
+  openLast: { line: "╰", tick: "─" },
 }
 
 /** What continues the marker column under a row: the Stack line, a gap to unattached members, or space. */
