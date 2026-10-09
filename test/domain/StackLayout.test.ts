@@ -69,6 +69,12 @@ function checkRow({ entries, rows, world }: Drawn, row: Row<Entry>, index: numbe
 
   if (row.marker === "last") expect(position).toBe(members.length - 1)
 
+  if (row.marker === "openFirst") expect(position).toBeGreaterThan(0)
+
+  if (row.marker === "openLast") expect(position).toBeLessThan(members.length - 1)
+
+  if (row.marker === "alone") expect(attached).toHaveLength(1)
+
   if (members.length > 1) expect(row.connector === "continues").toBe(step < attached.length - 1)
 }
 
@@ -200,7 +206,12 @@ describe("layout of contradictory Stacks", () => {
         candidate === target ? entry(candidate.ref, contradiction) : candidate,
       )
 
-      const before = layout(entries).filter(
+      // Other Stacks draw as if the primary members were standalone pull requests.
+      const unstacked = entries.map((candidate) =>
+        inPrimary(candidate) ? entry(candidate.ref, { _tag: "Standalone" }) : candidate,
+      )
+
+      const before = layout(unstacked).filter(
         (row) => row._tag === "PullRequest" && !inPrimary(row.entry),
       )
 
