@@ -6,7 +6,7 @@ import { Rpc } from "@opencode/plugin/rpc"
 import { Schema, type StandardSchema } from "effect"
 
 import { PullRequestRef } from "./domain/PullRequest.ts"
-import { Status } from "./domain/Snapshot.ts"
+import { Diagnostic, Status } from "./domain/Snapshot.ts"
 import { Membership } from "./domain/StackLayout.ts"
 
 export const Layout = Schema.Literals(["full", "compact"])
@@ -49,8 +49,21 @@ export type Changed = typeof Changed.Type
 
 export const sentChanged: (changed: Changed) => typeof Changed.Encoded = Schema.encodeSync(Changed)
 
-/** A request that could not be carried out, with a message for the person who made it. */
-const Rejected = Schema.Struct({ message: Schema.String })
+/** Why the server rejected a request, where a client can say so briefly. */
+export const RejectionReason = Schema.Literals([...Diagnostic.literals, "StoredStateInvalid"])
+
+export type RejectionReason = typeof RejectionReason.Type
+
+/**
+ * A request that could not be carried out, with a message for the person who made it, and its
+ * reason when it has one a client can name. Clients read an unknown reason as none.
+ */
+export const Rejected = Schema.Struct({
+  message: Schema.String,
+  reason: Schema.optionalKey(Schema.String),
+})
+
+export type Rejected = typeof Rejected.Type
 
 /** The answer to a request that has nothing to report. */
 export const Done = Schema.Struct({})

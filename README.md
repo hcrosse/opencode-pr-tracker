@@ -72,12 +72,18 @@ The first matching row wins. A pull request shows as behind only when its base b
 
 Open and closed pull requests refresh every 15 seconds in each session you have viewed or changed since OpenCode started, until the session is deleted. Merged pull requests stop refreshing. When a refresh fails, the sidebar keeps the last status and marks it `stale`. After five minutes of failures, it shows why instead, for example `authenticate` or `GitHub unavailable`.
 
-The heading says when the whole list may be behind, and keeps the rows shown:
+The heading shows the sidebar's status in a word or two:
 
-- **Pull requests · not refreshing**: the sidebar has not renewed its watch on the session, by watching or listing it, for 45 seconds, so the tracker may have stopped refreshing the session. Once a renewal succeeds, the sidebar lists the session again, showing `out of date` until the new list arrives.
-- **Pull requests · out of date**: the sidebar received an update it could not read, so it may have missed a change. It lists the session again straight away.
+| Heading                     | Meaning                                                                                                                                                                                                                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Pull requests**           | The list is current.                                                                                                                                                                                                                                                            |
+| **Pull requests · loading** | The session's pull requests are being listed for the first time.                                                                                                                                                                                                                |
+| **Pull requests · stale**   | The list may be behind, and stays shown. The sidebar has not renewed its watch on the session, by watching or listing it, for 45 seconds, or it received an update it could not read. It lists the session again as soon as it can, and the note clears once that list arrives. |
+| **Pull requests · _cause_** | Listing the session failed the first time. A muted line under the heading gives the full reason.                                                                                                                                                                                |
 
-A listing that does not answer within 5 seconds counts as failed. If listing the session again fails, the heading stays `out of date`, and the sidebar tries again after its next successful renewal. Only a session's first listing shows its failure in place of the rows.
+The causes are `not running` (the tracker is not running for this session's directory), `timed out`, `unreadable state`, `sign in needed`, `gh missing`, `rate limited`, `GitHub unavailable`, `not found`, `bad response` (from GitHub), `unreadable response` (from the tracker), and `failed` for anything else.
+
+A watch or listing that does not answer within 5 seconds counts as failed. When listing the session again fails, the rows stay shown, stale, and the sidebar tries again after its next successful watch.
 
 ### Full layout
 

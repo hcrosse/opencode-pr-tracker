@@ -6,7 +6,7 @@ import { Update } from "../../src/tui/Client.ts"
 import { scripted, showing } from "../support/sessionView.ts"
 
 describe("sidebar view when renewals fail", () => {
-  test("shows not refreshing once no renewal has succeeded for 45 seconds, keeping the rows", () => {
+  test("shows stale once no renewal has succeeded for 45 seconds, keeping the rows", () => {
     const script = scripted("listed")
     const seen: string[] = []
 
@@ -18,7 +18,7 @@ describe("sidebar view when renewals fail", () => {
       seen.push(shown())
     })
 
-    expect(seen).toEqual(["live: listed", "not refreshing: listed"])
+    expect(seen).toEqual(["live: listed", "stale: listed"])
   })
 
   test("lists the session again when a renewal next succeeds, then shows it live", () => {
@@ -36,7 +36,7 @@ describe("sidebar view when renewals fail", () => {
       seen.push(shown())
     })
 
-    expect(seen).toEqual(["out of date: listed", "live: relisted"])
+    expect(seen).toEqual(["stale: listed", "live: relisted"])
     expect(script.calls.filter((call) => call.startsWith("list"))).toEqual(["list a", "list a"])
   })
 })
@@ -55,12 +55,12 @@ describe("sidebar view lease timing", () => {
       seen.push(shown())
     })
 
-    expect(seen).toEqual(["live: listed", "not refreshing: listed"])
+    expect(seen).toEqual(["live: listed", "stale: listed"])
   })
 })
 
 describe("sidebar view when renewal stops", () => {
-  test("shows not refreshing when a defect ends the renewals", () => {
+  test("shows stale when a defect ends the renewals", () => {
     const script = scripted("listed")
     const seen: string[] = []
 
@@ -73,7 +73,7 @@ describe("sidebar view when renewal stops", () => {
       jest.advanceTimersByTime(60_000)
     })
 
-    expect(seen).toEqual(["live: listed", "not refreshing: listed"])
+    expect(seen).toEqual(["live: listed", "stale: listed"])
     expect(script.calls).toEqual(["list a", "watch a"])
   })
 })
@@ -95,6 +95,6 @@ describe("sidebar view lease renewed by a listing", () => {
       seen.push(shown())
     })
 
-    expect(seen).toEqual(["live: listed", "live: listed", "not refreshing: listed"])
+    expect(seen).toEqual(["live: listed", "live: listed", "stale: listed"])
   })
 })

@@ -106,7 +106,7 @@ export function fakeTracker(): TrackerScript {
 
       return Option.match(failure, {
         onNone: () => Effect.succeed(value()),
-        onSome: (message) => Effect.fail(new RequestFailed({ message })),
+        onSome: (message) => Effect.fail(new RequestFailed({ message, reason: "Failed" })),
       })
     })
 

@@ -1,10 +1,26 @@
 /** The terminal's view of the tracker: RPC calls routed to each session's location, decoded on arrival. */
 import { Data, Effect, Option, Schema } from "effect"
 
-import { Changed, Done, View, type ViewData } from "../rpc.ts"
+import { Changed, Done, RejectionReason, View, type ViewData } from "../rpc.ts"
+
+/**
+ * Why a tracker request failed, as briefly as the terminal can say: the server's reason for
+ * rejecting it, a tracker not running for the session's directory, no answer in time, an answer
+ * the terminal could not read, or anything else.
+ */
+export const FailureReason = Schema.Literals([
+  ...RejectionReason.literals,
+  "NotRunning",
+  "TimedOut",
+  "UnreadableResponse",
+  "Failed",
+])
+
+export type FailureReason = typeof FailureReason.Type
 
 export class RequestFailed extends Schema.TaggedError<RequestFailed>()("RequestFailed", {
   message: Schema.String,
+  reason: FailureReason,
 }) {}
 
 export interface TrackerClientApi {
@@ -89,7 +105,7 @@ export interface Host {
 /** What the RPC client throws: a failure the server declared, or one from OpenCode itself. */
 const Thrown = Schema.Union([
   Schema.Struct({
-    data: Schema.Struct({ message: Schema.String }),
+    data: Schema.Struct({ message: Schema.String, reason: Schema.optionalKey(Schema.String) }),
     type: Schema.Literal("rejected"),
   }),
   Schema.Struct({ message: Schema.String, type: Schema.String }),
@@ -97,23 +113,39 @@ const Thrown = Schema.Union([
 
 type Thrown = typeof Thrown.Type
 
-function failureOf(thrown: Option.Option<Thrown>): RequestFailed {
-  const message = Option.match(thrown, {
-    onNone: () => "The pull request tracker failed.",
-    onSome: (failure) => {
-      if ("data" in failure) return failure.data.message
-
-      return failure.type === "rpc.unavailable"
-        ? "The pull request tracker is not running for this session's directory."
-        : `The pull request tracker failed: ${failure.message}`
-    },
+/** A failure the server declared, with its reason if this version knows it. */
+const rejected = (data: { readonly message: string; readonly reason?: string }): RequestFailed =>
+  new RequestFailed({
+    message: data.message,
+    reason: Option.getOrElse(
+      Schema.decodeUnknownOption(RejectionReason)(data.reason),
+      (): FailureReason => "Failed",
+    ),
   })
 
-  return new RequestFailed({ message })
+function failureOf(thrown: Option.Option<Thrown>): RequestFailed {
+  return Option.match(thrown, {
+    onNone: () =>
+      new RequestFailed({ message: "The pull request tracker failed.", reason: "Failed" }),
+    onSome: (failure) => {
+      if ("data" in failure) return rejected(failure.data)
+
+      return failure.type === "rpc.unavailable"
+        ? new RequestFailed({
+            message: "The pull request tracker is not running for this session's directory.",
+            reason: "NotRunning",
+          })
+        : new RequestFailed({
+            message: `The pull request tracker failed: ${failure.message}`,
+            reason: "Failed",
+          })
+    },
+  })
 }
 
 const unreadable = new RequestFailed({
   message: "The pull request tracker sent a response the terminal could not read.",
+  reason: "UnreadableResponse",
 })
 
 function decoded<S extends Schema.Decoder<unknown>>(

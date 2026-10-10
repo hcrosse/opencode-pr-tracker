@@ -110,7 +110,10 @@ describe("sidebar view of a session", () => {
 
     held.publish(viewFor("a", "published"))
     await Effect.runPromise(
-      Deferred.fail(held.answer(0), new RequestFailed({ message: "late failure" })),
+      Deferred.fail(
+        held.answer(0),
+        new RequestFailed({ message: "late failure", reason: "Failed" }),
+      ),
     )
 
     expect(titleOf(state())).toBe("published")

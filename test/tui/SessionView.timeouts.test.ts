@@ -25,10 +25,16 @@ describe("sidebar view of a listing that does not answer", () => {
       seen.push(shown())
     })
 
-    expect(seen).toEqual(["loading", `failed: ${unanswered}`, `failed: ${unanswered}`])
+    expect(seen).toEqual([
+      "loading",
+      `failed (TimedOut): ${unanswered}`,
+      `failed (TimedOut): ${unanswered}`,
+    ])
   })
+})
 
-  test("keeps the rows out of date, then not refreshing, when listing again does not answer", () => {
+describe("sidebar view of a later listing that does not answer", () => {
+  test("keeps the rows stale when listing again does not answer", () => {
     const script = scripted("listed")
     const seen: string[] = []
 
@@ -44,12 +50,12 @@ describe("sidebar view of a listing that does not answer", () => {
       seen.push(shown())
     })
 
-    expect(seen).toEqual(["out of date: listed", "not refreshing: listed"])
+    expect(seen).toEqual(["stale: listed", "stale: listed"])
   })
 })
 
 describe("sidebar view of a listing answered after its lease would have lapsed", () => {
-  test("shows the rows but not refreshing, as after the computer sleeps mid-listing", () => {
+  test("shows the rows stale, as after the computer sleeps mid-listing", () => {
     const script = scripted("listed")
     const seen: string[] = []
 
@@ -62,7 +68,7 @@ describe("sidebar view of a listing answered after its lease would have lapsed",
       seen.push(shown())
     })
 
-    expect(seen).toEqual(["not refreshing: relisted"])
+    expect(seen).toEqual(["stale: relisted"])
   })
 })
 
@@ -82,7 +88,7 @@ describe("sidebar view of a slow listing", () => {
       seen.push(shown())
     })
 
-    expect(seen).toEqual(["out of date: listed after 2", "live: relisted"])
+    expect(seen).toEqual(["stale: listed after 2", "live: relisted"])
   })
 })
 
@@ -101,7 +107,7 @@ describe("sidebar view of a listing that dies", () => {
       seen.push(shown())
     })
 
-    expect(seen).toEqual(["out of date: listed", "live: relisted"])
+    expect(seen).toEqual(["stale: listed", "live: relisted"])
     expect(script.calls.filter((call) => call === "list a")).toHaveLength(3)
   })
 })

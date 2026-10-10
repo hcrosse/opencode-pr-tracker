@@ -13,7 +13,7 @@ import { bottom, entryOf, fresh } from "./ui.tsx"
 
 const { run } = background()
 
-const viewOf = (title: string): View => ({
+export const viewTitled = (title: string): View => ({
   entries: [entryOf(bottom, fresh(bottom, title))],
   layout: "full",
   sessionID: "a",
@@ -30,10 +30,10 @@ const settled = (
   deferred: Deferred.Deferred<View, RequestFailed>,
   answer: Answer,
 ): Effect.Effect<boolean> => {
-  if ("title" in answer) return Deferred.succeed(deferred, viewOf(answer.title))
+  if ("title" in answer) return Deferred.succeed(deferred, viewTitled(answer.title))
 
   if ("failure" in answer)
-    return Deferred.fail(deferred, new RequestFailed({ message: answer.failure }))
+    return Deferred.fail(deferred, new RequestFailed({ message: answer.failure, reason: "Failed" }))
 
   return Deferred.die(deferred, answer.defect)
 }
@@ -57,7 +57,7 @@ function heldListings(first: string, base: TrackerClientApi): HeldListings {
     },
     list: (sessionID) =>
       Effect.andThen(base.list(sessionID), () => {
-        if (!holding) return Effect.succeed(viewOf(first))
+        if (!holding) return Effect.succeed(viewTitled(first))
 
         const answer = Deferred.makeUnsafe<View, RequestFailed>()
 
@@ -105,7 +105,8 @@ export function scripted(first: string): Script {
       refresh: client.refresh,
       watch: (sessionID) =>
         Effect.andThen(client.watch(sessionID), () => {
-          if (renewal === "fail") return Effect.fail(new RequestFailed({ message: "unreachable" }))
+          if (renewal === "fail")
+            return Effect.fail(new RequestFailed({ message: "unreachable", reason: "Failed" }))
 
           return renewal === "die" ? Effect.die("renewal defect") : Effect.void
         }),
@@ -124,14 +125,13 @@ export function scripted(first: string): Script {
 const livenessOf = (liveness: Liveness): string =>
   Liveness.$match(liveness, {
     Live: () => "live",
-    NotRefreshing: () => "not refreshing",
-    OutOfDate: () => "out of date",
+    Stale: () => "stale",
   })
 
 /** What the sidebar shows: its liveness and titles, or the state it is in instead. */
 const shownOf = (state: SidebarState): string =>
   SidebarState.$match(state, {
-    Failed: ({ message }) => `failed: ${message}`,
+    Failed: ({ message, reason }) => `failed (${reason}): ${message}`,
     Loading: () => "loading",
     Ready: ({ liveness, view }) => {
       const titles = view.entries.map((entry) =>

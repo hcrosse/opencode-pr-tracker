@@ -7,6 +7,7 @@ import { View, type ViewData } from "../../src/rpc.ts"
 import {
   makeClient,
   Update,
+  type FailureReason,
   type Location,
   type TrackerClientApi,
   type TrackerRpc,
@@ -38,6 +39,9 @@ const rpcFailure = (type: string, message: string): Error =>
 
 const rpcRefusal = (message: string): Error =>
   Object.assign(new Error("RPC method failed"), { data: { message }, type: "rejected" })
+
+const rpcRefusalFor = (message: string, reason: string): Error =>
+  Object.assign(new Error("RPC method failed"), { data: { message, reason }, type: "rejected" })
 
 type Outcome = Result.Result<ViewData, Error>
 
@@ -116,6 +120,14 @@ async function failureOf(outcome: Outcome): Promise<string> {
   return failure.message
 }
 
+async function reasonOf(outcome: Outcome): Promise<FailureReason> {
+  const failure = await Effect.runPromise(
+    Effect.flip(clientOver(fakeRpc(outcome)).list("ses_known")),
+  )
+
+  return failure.reason
+}
+
 describe("tracker client routing", () => {
   test("sends each call to its session's location, and a session without one to the default", async () => {
     const fake = fakeRpc(Result.succeed(listed))
@@ -175,6 +187,38 @@ describe("tracker client failures", () => {
     expect(await failureOf(Result.succeed(malformed))).toBe(
       "The pull request tracker sent a response the terminal could not read.",
     )
+  })
+})
+
+describe("tracker client failure reasons", () => {
+  test("names why each request failed, reading a server reason it does not know as a failure", async () => {
+    const outcomes: readonly Outcome[] = [
+      Result.fail(rpcRefusalFor("Saved state unreadable.", "StoredStateInvalid")),
+      Result.fail(rpcRefusalFor("Sign in.", "AuthenticationRequired")),
+      Result.fail(rpcRefusalFor("From a newer tracker.", "SomethingNew")),
+      Result.fail(rpcRefusal("No reason given.")),
+      Result.fail(rpcFailure("rpc.unavailable", "RPC is unavailable: opencode-pr-tracker")),
+      Result.fail(rpcFailure("rpc.internal", "RPC call failed")),
+      Result.succeed(malformed),
+    ]
+
+    expect(
+      await Promise.all(
+        outcomes.map(async (outcome) => {
+          const reason = await reasonOf(outcome)
+
+          return reason
+        }),
+      ),
+    ).toEqual([
+      "StoredStateInvalid",
+      "AuthenticationRequired",
+      "Failed",
+      "Failed",
+      "NotRunning",
+      "Failed",
+      "UnreadableResponse",
+    ])
   })
 })
 

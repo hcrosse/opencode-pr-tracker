@@ -18,6 +18,7 @@ const requestTimeout = 5000
 
 const unanswered = new RequestFailed({
   message: "The pull request tracker did not answer in time.",
+  reason: "TimedOut",
 })
 
 const inTime = <A>(request: Effect.Effect<A, RequestFailed>): Effect.Effect<A, RequestFailed> =>

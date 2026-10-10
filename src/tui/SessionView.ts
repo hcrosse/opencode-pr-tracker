@@ -6,7 +6,7 @@ import { createEffect, createMemo, createSignal, on, onCleanup, type Accessor } 
 import type { View } from "../rpc.ts"
 import { Liveness, SidebarState } from "../ui/Sidebar.tsx"
 import type { Run } from "./Background.ts"
-import { Update, type RequestFailed, type TrackerClientApi } from "./Client.ts"
+import { Update, type FailureReason, type RequestFailed, type TrackerClientApi } from "./Client.ts"
 import { listings, newestFirst } from "./Listings.ts"
 import { leaseUntilLapse, renewWhileShown, type Renewed } from "./Renewal.ts"
 
@@ -14,22 +14,10 @@ import { leaseUntilLapse, renewWhileShown, type Renewed } from "./Renewal.ts"
 type Listing = Data.TaggedEnum<{
   Loading: Record<never, never>
   Listed: { readonly view: View }
-  Failed: { readonly message: string }
+  Failed: { readonly reason: FailureReason; readonly message: string }
 }>
 
 const Listing = Data.taggedEnum<Listing>()
-
-/** After a successful renewal, a view that was not live is out of date until it is listed again. */
-const renewed = (liveness: Liveness): Liveness =>
-  Liveness.$is("Live")(liveness) ? liveness : Liveness.OutOfDate()
-
-/** After an update may have been missed. A view that is not refreshing stays so. */
-const missed = (liveness: Liveness): Liveness =>
-  Liveness.$is("Live")(liveness) ? Liveness.OutOfDate() : liveness
-
-/** After the session's whole view arrived in an update. A view that is not refreshing stays so. */
-const caughtUp = (liveness: Liveness): Liveness =>
-  Liveness.$is("OutOfDate")(liveness) ? Liveness.Live() : liveness
 
 /** How a listing answered. */
 type Listed = Result.Result<Renewed<View>, RequestFailed>
@@ -38,31 +26,29 @@ type Listed = Result.Result<Renewed<View>, RequestFailed>
  * Liveness once a listing answers. A successful listing renewed the lease and carries the whole
  * view, so it is live unless the lease had lapsed even so. A failed one may have missed updates.
  */
-function livenessAfter(result: Listed, previous: Liveness): Liveness {
-  if (Result.isFailure(result)) return missed(previous)
-
-  return result.success.holds ? Liveness.Live() : Liveness.NotRefreshing()
-}
+const livenessAfter = (result: Listed): Liveness =>
+  Result.isSuccess(result) && result.success.holds ? Liveness.Live() : Liveness.Stale()
 
 /**
- * The listing once a listing answers. A failed listing keeps the rows shown, out of date, so only
- * a session's first listing fails.
+ * The listing once a listing answers. A failed listing keeps the rows shown, stale, so only a
+ * session's first listing fails.
  */
 function listingAfter(result: Listed, previous: Listing): Listing {
   if (Result.isSuccess(result)) return Listing.Listed({ view: result.success.answer })
 
   if (Listing.$is("Listed")(previous)) return previous
 
-  return Listing.Failed({ message: result.failure.message })
+  return Listing.Failed({ message: result.failure.message, reason: result.failure.reason })
 }
 
 /**
  * What the sidebar shows for the session, and whether it may be stale. Each listing and each
- * published update supersedes the listings before it. Events that call for a new listing return
- * true: the view is out of date, and nothing stops a listing from reaching the server. A renewal
- * does not call for one while a listing is still awaited, so a slow listing is not superseded by
- * the next renewal's. It does call for one while still loading with no listing awaited, since the
- * first listing then ended without an answer.
+ * published update supersedes the rows of the listings before it. A published update leaves a
+ * stale view stale, since it does not renew the lease, but a listing it superseded still clears
+ * stale when it succeeds, unless a newer listing started meanwhile; a failed one leaves the
+ * newer rows' liveness alone. A successful renewal calls for a new listing while
+ * the view is stale, or still loading after the first listing ended without an answer, but not
+ * while a listing is still awaited, so a slow listing is not superseded by the next renewal's.
  */
 interface SessionState {
   readonly listing: Accessor<Listing>
@@ -71,8 +57,8 @@ interface SessionState {
   /** Lists the session with `request`, which renews its lease too. */
   readonly list: (request: Effect.Effect<Renewed<View>, RequestFailed>) => void
   readonly show: (view: View) => void
-  readonly lapse: () => void
-  readonly miss: () => boolean
+  /** Marks the view stale, as after the lease lapsed or an update may have been missed. */
+  readonly stale: () => void
   readonly renew: () => boolean
 }
 
@@ -81,33 +67,30 @@ function sessionState(run: Run): SessionState {
   const [liveness, setLiveness] = createSignal<Liveness>(Liveness.Live())
   const requests = listings()
 
-  const step = (next: (liveness: Liveness) => Liveness): boolean =>
-    Liveness.$is("OutOfDate")(setLiveness(next))
-
   return {
-    lapse: () => {
-      setLiveness(Liveness.NotRefreshing())
-    },
     list: (request) => {
       run(
-        requests.start((isLatest) =>
+        requests.start((latest) =>
           Effect.map(Effect.result(request), (result) => {
-            if (!isLatest()) return
+            if (latest.rows()) setListing((previous) => listingAfter(result, previous))
 
-            setListing((previous) => listingAfter(result, previous))
-            setLiveness((previous) => livenessAfter(result, previous))
+            if (latest.listing() && (Result.isSuccess(result) || latest.rows()))
+              setLiveness(livenessAfter(result))
           }),
         ),
       )
     },
     listing,
     liveness,
-    miss: () => step(missed),
-    renew: () => (step(renewed) || Listing.$is("Loading")(listing())) && !requests.awaited(),
+    renew: () =>
+      (Liveness.$is("Stale")(liveness()) || Listing.$is("Loading")(listing())) &&
+      !requests.awaited(),
     show: (view) => {
-      requests.supersede()
+      requests.publish()
       setListing(Listing.Listed({ view }))
-      step(caughtUp)
+    },
+    stale: () => {
+      setLiveness(Liveness.Stale())
     },
     start: () => {
       setListing(Listing.Loading())
@@ -118,9 +101,9 @@ function sessionState(run: Run): SessionState {
 
 /**
  * Lists the session and renews its lease until the owning reactive scope is cleaned up, returning
- * how to list it again. A successful renewal lists the session again when it is out of date or was
- * not refreshing, since updates may have been missed. Renewals from a visit that `isCurrent` no
- * longer accepts are ignored.
+ * how to list it again. A successful renewal lists the session again when it is stale, since
+ * updates may have been missed. Renewals from a visit that `isCurrent` no longer accepts are
+ * ignored.
  */
 function visit(
   sessionID: string,
@@ -128,7 +111,7 @@ function visit(
   isCurrent: () => boolean,
 ): () => void {
   const { run, state, tracker } = context
-  const lease = leaseUntilLapse(run, state.lapse)
+  const lease = leaseUntilLapse(run, state.stale)
 
   const list = (): void => {
     state.list(lease.renewing(tracker.list(sessionID)))
@@ -144,9 +127,9 @@ function visit(
 }
 
 /**
- * Shows each update for the shown session. An unreadable update marks the session out of date
- * when it names the session or names none, since it may have been this session's, and lists the
- * session again unless it is not refreshing, in which case the next successful renewal will.
+ * Shows each update for the shown session. An unreadable update marks the session stale when it
+ * names the session or names none, since it may have been this session's, and lists the session
+ * again straight away.
  */
 function follow(
   sessionID: Accessor<string>,
@@ -163,7 +146,8 @@ function follow(
       Unreadable: ({ sessionID: addressed }) => {
         if (Option.exists(addressed, (id) => id !== current)) return
 
-        if (state.miss()) listAgain()
+        state.stale()
+        listAgain()
       },
     })
   }
@@ -200,7 +184,7 @@ export function sessionView(
 
   return createMemo(() =>
     Listing.$match(state.listing(), {
-      Failed: ({ message }) => SidebarState.Failed({ message }),
+      Failed: ({ message, reason }) => SidebarState.Failed({ message, reason }),
       Listed: ({ view }) => SidebarState.Ready({ liveness: state.liveness(), view }),
       Loading: () => SidebarState.Loading(),
     }),
