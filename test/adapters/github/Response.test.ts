@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test"
 
 import * as hegel from "@hegeldev/hegel"
 import * as gs from "@hegeldev/hegel/generators"
-import { Array as Arr, Order, Schema } from "effect"
+import { Array as Arr, Option, Order, Schema } from "effect"
 
-import { ContextNode, generationOf, toCheck } from "../../../src/adapters/github/Contexts.ts"
+import { ContextNode, toCheck } from "../../../src/adapters/github/Contexts.ts"
+import { generationOf } from "../../../src/adapters/github/Timestamp.ts"
 import { classifyCi, type CheckOutcome } from "../../../src/domain/Checks.ts"
 
 /** A check run as recorded from hcrosse/opencode-pr-tracker#127. */
@@ -221,6 +222,9 @@ const iso = ([milliseconds, nanoseconds]: readonly [number, number]): string =>
 
 const generationOrder = Arr.makeOrder(Order.Number)
 
+const generation = (createdAt: string): readonly number[] =>
+  Option.getOrThrow(generationOf(createdAt))
+
 describe("run timestamps", () => {
   test("order the same way as the instants they record, down to the nanosecond", () => {
     hegel.test((tc) => {
@@ -231,15 +235,13 @@ describe("run timestamps", () => {
         Math.floor(left[0] / 1000) - Math.floor(right[0] / 1000) || left[1] - right[1],
       )
 
-      expect<number>(generationOrder(generationOf(iso(left)), generationOf(iso(right)))).toBe(
-        expected,
-      )
+      expect<number>(generationOrder(generation(iso(left)), generation(iso(right)))).toBe(expected)
     })
   })
 
   test("orders a whole-second timestamp before a later fraction of the same second", () => {
     expect(
-      generationOrder(generationOf("2026-09-23T08:00:00Z"), generationOf("2026-09-23T08:00:00.5Z")),
+      generationOrder(generation("2026-09-23T08:00:00Z"), generation("2026-09-23T08:00:00.5Z")),
     ).toBe(-1)
   })
 })

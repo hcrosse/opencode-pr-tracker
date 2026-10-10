@@ -32,15 +32,19 @@ function aliasFailure(answer: Answer, key: string): Option.Option<Diagnostic> {
 const Repository = Schema.Struct({ pullRequest: Schema.NullOr(Schema.Unknown) })
 
 /**
- * The pull request GitHub answered under `key`, still to be validated. A missing repository or
- * pull request is `NotFound`.
+ * The pull request GitHub answered under `key`, still to be validated. A repository or pull request
+ * GitHub answers as null is `NotFound`; an answer without `key` is incomplete, so `InvalidResponse`.
  */
 export function pullRequestAnswer(answer: Answer, key: string): Result.Result<unknown, Diagnostic> {
   const reported = aliasFailure(answer, key)
 
   if (Option.isSome(reported)) return Result.fail(reported.value)
 
-  const repository = (answer.envelope.data ?? {})[key] ?? null
+  const data = answer.envelope.data ?? {}
+
+  if (!Object.hasOwn(data, key)) return Result.fail("InvalidResponse")
+
+  const repository = data[key] ?? null
 
   if (repository === null) return Result.fail("NotFound")
 

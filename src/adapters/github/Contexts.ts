@@ -6,6 +6,7 @@ import type { PullRequestRef } from "../../domain/PullRequest.ts"
 import { enumeration, Unrecognized } from "./Enumeration.ts"
 import { failure, type Post } from "./Post.ts"
 import { continuation, continuationVariables } from "./Query.ts"
+import { CreatedAt } from "./Timestamp.ts"
 
 const PageInfo = Schema.Struct({
   endCursor: Schema.NullOr(Schema.String),
@@ -45,22 +46,10 @@ type KnownStatusState = (typeof StatusState.members)[0]["Type"]
 
 type KnownConclusion = (typeof CheckConclusion.members)[0]["Type"]
 
-const timestamp = /^(?<seconds>[^.]+?)(?:\.(?<fraction>\d+))?Z$/u
-
-/** `[epochSeconds, nanoseconds]`, so runs created in the same second still order correctly. */
-export function generationOf(createdAt: string): readonly number[] {
-  const match = timestamp.exec(createdAt)
-  const groups = match === null ? {} : (match.groups ?? {})
-  const seconds = Date.parse(`${groups["seconds"] ?? ""}Z`) / 1000
-  const nanoseconds = Number((groups["fraction"] ?? "").padEnd(9, "0").slice(0, 9))
-
-  return [Number.isFinite(seconds) ? seconds : 0, nanoseconds]
-}
-
 const StatusContextNode = Schema.Struct({
   __typename: Schema.Literal("StatusContext"),
   context: Schema.String,
-  createdAt: Schema.String,
+  createdAt: CreatedAt,
   state: StatusState,
 })
 
@@ -68,7 +57,7 @@ const CheckRunNode = Schema.Struct({
   __typename: Schema.Literal("CheckRun"),
   checkSuite: Schema.Struct({
     app: Schema.NullOr(Schema.Struct({ id: Schema.String })),
-    createdAt: Schema.String,
+    createdAt: CreatedAt,
     id: Schema.String,
     workflowRun: Schema.NullOr(
       Schema.Struct({
@@ -194,7 +183,7 @@ export function toCheck(node: ContextNode): Check {
     const { state } = node
 
     return {
-      generation: generationOf(node.createdAt),
+      generation: node.createdAt,
       identity,
       outcome: state instanceof Unrecognized ? "unknown" : statusOutcomes[state],
     }
@@ -208,7 +197,7 @@ export function toCheck(node: ContextNode): Check {
 
   return Option.match(Option.fromNullishOr(node.checkSuite.workflowRun), {
     onNone: (): Check => ({
-      generation: generationOf(node.checkSuite.createdAt),
+      generation: node.checkSuite.createdAt,
       identity: `check ${source} ${node.name}`,
       outcome,
     }),

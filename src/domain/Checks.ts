@@ -5,21 +5,23 @@ import type { Ci } from "./Snapshot.ts"
 /** `unknown` is a check whose state GitHub reported in a form this version does not know. */
 export type CheckOutcome = "passed" | "pending" | "failed" | "ignored" | "unknown"
 
+/** `[runNumber, runAttempt]` or `[createdAtSeconds, createdAtNanoseconds]`. */
+export type Generation = readonly [number, number]
+
 /**
  * One check run or status context. Checks with the same `identity` are runs of one check;
- * only those with the greatest `generation` count. A generation is compared element by element,
- * for example `[runNumber, runAttempt]` or `[createdAtSeconds, createdAtNanoseconds]`.
+ * only those with the greatest `generation` count. A generation is compared element by element.
  */
 export interface Check {
   readonly identity: string
-  readonly generation: readonly number[]
+  readonly generation: Generation
   readonly outcome: CheckOutcome
 }
 
 const generationOrder = Arr.makeOrder(Order.Number)
 
 interface Latest {
-  readonly generation: readonly number[]
+  readonly generation: Generation
   readonly outcomes: readonly CheckOutcome[]
 }
 

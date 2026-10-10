@@ -103,13 +103,37 @@ function unavailable(evidence: Evidence, cutOff: boolean): PostFailure {
     : failure("GitHubUnavailable")
 }
 
-/** What a 2xx body holds, if it is not a usable answer. */
-type Unusable = "CutOff" | "NotEnvelope" | "Other"
+/**
+ * What a 2xx body holds, if it is not a usable answer: one cut off before its end; a complete one
+ * that is not a GraphQL answer, such as an HTML page or JSON with neither data nor errors; or other.
+ */
+type Unusable = "CutOff" | "Invalid" | "Other"
 
-function unusableBody(json: Option.Option<unknown>, envelope: Option.Option<Envelope>): Unusable {
-  if (Option.isNone(json)) return "CutOff"
+/** Whether the response labels its body as JSON, as GitHub's answers are. */
+function labelledJson(headers: Readonly<Record<string, string | undefined>>): boolean {
+  const [mediaType = ""] = (headers["content-type"] ?? "").split(";")
+  const type = mediaType.trim().toLowerCase()
 
-  return Option.isNone(envelope) ? "NotEnvelope" : "Other"
+  return type === "application/json" || type.endsWith("+json")
+}
+
+/**
+ * Whether a body that is not a usable answer was cut off, as when GitHub stops sending it: it
+ * could not be read, is empty, or is labelled JSON but does not parse. The label decides only how
+ * a body that does not parse is read; a complete, non-empty body not labelled JSON is invalid.
+ */
+function cutOffBody(
+  response: HttpClientResponse.HttpClientResponse,
+  body: string,
+  json: Option.Option<unknown>,
+): boolean {
+  return body.trim() === "" || (Option.isNone(json) && labelledJson(response.headers))
+}
+
+function unusableBody(cutOff: boolean, envelope: Option.Option<Envelope>): Unusable {
+  if (cutOff) return "CutOff"
+
+  return Option.exists(envelope, (found) => (found.errors ?? []).length > 0) ? "Other" : "Invalid"
 }
 
 /** The failure for a response that was not a usable answer, recording any rate limit it reports. */
@@ -120,7 +144,7 @@ const unanswered = Effect.fn("unanswered")(function* (
 ) {
   if (evidence.status === 401) return yield* new Unauthorized()
 
-  if (unusable === "NotEnvelope") return yield* failure("InvalidResponse")
+  if (unusable === "Invalid") return yield* failure("InvalidResponse")
 
   const verdict = verdictOf(evidence, yield* millis)
 
@@ -138,8 +162,9 @@ interface Services {
 }
 
 /**
- * The envelope of a usable answer: a 2xx envelope with data and no `RATE_LIMITED` error. Anything
- * else, such as a rate-limited or timed-out query, is logged and fails.
+ * The envelope of a usable answer: a 2xx envelope with data and no `RATE_LIMITED` error, whatever
+ * the body's Content-Type. Anything else, such as a rate-limited or timed-out query, is logged and
+ * fails.
  */
 const read = Effect.fn("read")(function* (
   rateLimit: RateLimitApi,
@@ -170,7 +195,7 @@ const read = Effect.fn("read")(function* (
     started,
   )
 
-  const unusable = ok ? unusableBody(json, envelope) : "Other"
+  const unusable = ok ? unusableBody(cutOffBody(response, body, json), envelope) : "Other"
 
   return yield* unanswered(rateLimit, evidence, unusable)
 })

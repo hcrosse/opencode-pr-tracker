@@ -34,3 +34,30 @@ describe("check states GitHub added later", () => {
     expect(toCheck(node()).outcome).toBe("unknown")
   })
 })
+
+describe("check timestamps GitHub sent malformed", () => {
+  test.each([
+    "",
+    "yesterday",
+    "2026-09-23",
+    "2026-09-23T08:00:00",
+    "2026-09-23T08:00:00+02:00",
+    "2026-02-30T08:00:00Z",
+    "2025-02-29T08:00:00Z",
+    "2026-09-23T24:00:00Z",
+    "2026-13-45T99:00:00Z",
+  ])("reject %p rather than order the check as another time", (createdAt) => {
+    expect(status("SUCCESS", createdAt)).toThrow()
+    expect(run("COMPLETED", "SUCCESS", createdAt)).toThrow()
+  })
+})
+
+describe("check timestamps GitHub sent well formed", () => {
+  test.each<readonly [string, readonly [number, number]]>([
+    ["2024-02-29T00:00:00Z", [1_709_164_800, 0]],
+    ["2026-09-23T08:00:00.5Z", [1_790_150_400, 500_000_000]],
+    ["2026-09-23T08:00:00.123456789Z", [1_790_150_400, 123_456_789]],
+  ])("read %p as its instant", (createdAt, generation) => {
+    expect(toCheck(status("SUCCESS", createdAt)()).generation).toEqual(generation)
+  })
+})
