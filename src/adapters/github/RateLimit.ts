@@ -133,17 +133,16 @@ export function layer(storage: StorageDomain): Layer.Layer<RateLimit> {
             ? Effect.fail(new GitHubFailure({ diagnostic: "RateLimited" }))
             : Effect.void
         }),
-        limited: (hinted) =>
-          Effect.gen(function* () {
-            const at = yield* now
+        limited: Effect.fn("RateLimit.limited")(function* (hinted: Option.Option<number>) {
+          const at = yield* now
 
-            const next = yield* Option.match(hinted, {
-              onNone: () => unhintedUntil(strikes, at),
-              onSome: Effect.succeed,
-            })
+          const next = yield* Option.match(hinted, {
+            onNone: () => unhintedUntil(strikes, at),
+            onSome: Effect.succeed,
+          })
 
-            yield* waits.record(next)
-          }),
+          yield* waits.record(next)
+        }),
       })
     }),
   )

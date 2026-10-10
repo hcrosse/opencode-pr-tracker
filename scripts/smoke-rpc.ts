@@ -68,7 +68,10 @@ const authorized = (password: string): Layer.Layer<HttpClient.HttpClient> =>
 
 const RpcFailure = Schema.Struct({ type: Schema.String })
 
-const withoutGitHub = Effect.fn("withoutGitHub")(function* (tracker: Tracker, location: Routing) {
+const withoutGitHub = Effect.fn("SmokeRpc.withoutGitHub")(function* (
+  tracker: Tracker,
+  location: Routing,
+) {
   const empty = yield* tracker.list({ sessionID: unusedSession }, location)
 
   yield* expectEqual(
@@ -101,44 +104,42 @@ interface Watched {
  * Runs `act` once the event stream is connected, so no event is missed, then requires an `updated`
  * event for the session that lists exactly `expected`.
  */
-function expectUpdate<A, E>(
+const expectUpdate = Effect.fn("SmokeRpc.expectUpdate")(function* <A, E>(
   { client, sessionID }: Watched,
   expected: readonly string[],
   act: Effect.Effect<A, E>,
-): Effect.Effect<A, E, Scope.Scope> {
-  return Effect.gen(function* () {
-    const connected = yield* Latch.make()
+): Effect.fn.Return<A, E, Scope.Scope> {
+  const connected = yield* Latch.make()
 
-    const update = yield* client.event.subscribe().pipe(
-      Stream.tap((event) => (event.type === "server.connected" ? connected.open : Effect.void)),
-      Stream.filterMap((event) =>
-        Result.fromOption(Schema.decodeUnknownOption(RpcEvent)(event), () => event),
-      ),
-      Stream.filter(
-        ({ data }) => data.sessionID === sessionID && urlsOf(data).join(" ") === expected.join(" "),
-      ),
-      Stream.runHead,
-      Effect.timeoutOption("30 seconds"),
-      Effect.map(Option.flatten),
-      Effect.orElseSucceed(Option.none),
-      Effect.forkScoped,
-    )
+  const update = yield* client.event.subscribe().pipe(
+    Stream.tap((event) => (event.type === "server.connected" ? connected.open : Effect.void)),
+    Stream.filterMap((event) =>
+      Result.fromOption(Schema.decodeUnknownOption(RpcEvent)(event), () => event),
+    ),
+    Stream.filter(
+      ({ data }) => data.sessionID === sessionID && urlsOf(data).join(" ") === expected.join(" "),
+    ),
+    Stream.runHead,
+    Effect.timeoutOption("30 seconds"),
+    Effect.map(Option.flatten),
+    Effect.orElseSucceed(Option.none),
+    Effect.forkScoped,
+  )
 
-    yield* connected.await.pipe(
-      Effect.timeoutOrElse({
-        duration: "30 seconds",
-        orElse: () => Effect.die("the event stream never reported server.connected"),
-      }),
-    )
+  yield* connected.await.pipe(
+    Effect.timeoutOrElse({
+      duration: "30 seconds",
+      orElse: () => Effect.die("the event stream never reported server.connected"),
+    }),
+  )
 
-    const result = yield* act
-    const updated = yield* Fiber.join(update)
+  const result = yield* act
+  const updated = yield* Fiber.join(update)
 
-    yield* expectEqual(`publishes ${expected.join(", ")}`, Option.isSome(updated), true)
+  yield* expectEqual(`publishes ${expected.join(", ")}`, Option.isSome(updated), true)
 
-    return result
-  })
-}
+  return result
+})
 
 /** The smoke-test server's client, the plugin's RPC client, and where the plugin runs. */
 interface Harness {
@@ -147,7 +148,7 @@ interface Harness {
   readonly location: Routing
 }
 
-const removeSession = Effect.fn("removeSession")(function* (
+const removeSession = Effect.fn("SmokeRpc.removeSession")(function* (
   { client, location, tracker }: Harness,
   sessionID: Session.ID,
 ) {
@@ -169,7 +170,7 @@ const removeSession = Effect.fn("removeSession")(function* (
 })
 
 /** Attaches the merged Stack one member at a time, since attaching a merged member leaves out the rest. */
-const attachStack = Effect.fn("attachStack")(function* (
+const attachStack = Effect.fn("SmokeRpc.attachStack")(function* (
   { location, tracker }: Harness,
   watched: Watched,
 ) {
@@ -194,7 +195,7 @@ const attachStack = Effect.fn("attachStack")(function* (
   yield* expectEqual("a merged Stack member is attached when named", urlsOf(both.view), stack)
 })
 
-const withGitHub = Effect.fn("withGitHub")(function* (harness: Harness) {
+const withGitHub = Effect.fn("SmokeRpc.withGitHub")(function* (harness: Harness) {
   const { client, location, tracker } = harness
   const session = yield* client.session.create(location)
   const sessionID = session.id
@@ -217,7 +218,10 @@ const withGitHub = Effect.fn("withGitHub")(function* (harness: Harness) {
   yield* removeSession(harness, sessionID)
 })
 
-export const exerciseRpc = Effect.fn("exerciseRpc")(function* (server: Server, github: boolean) {
+export const exerciseRpc = Effect.fn("SmokeRpc.exerciseRpc")(function* (
+  server: Server,
+  github: boolean,
+) {
   const client = yield* OpenCode.make({ baseUrl: server.url }).pipe(
     Effect.provide(authorized(server.password)),
   )

@@ -13,23 +13,22 @@ const numbers = (view: SessionView): number[] => view.entries.map((entry) => ent
 const over = (app: App): Requests => requests(app, { directory: "/work", layout: "full" })
 
 /** The next view the monitor publishes for `sessionID` after `act`, which must publish one. */
-const publishedAfter = <A, E>(
+const publishedAfter = Effect.fnUntraced(function* <A, E>(
   app: App,
   sessionID: string,
   act: Effect.Effect<A, E>,
-): Effect.Effect<Option.Option<SessionView>, E> =>
-  Effect.gen(function* () {
-    const next = yield* app.monitor.changes.pipe(
-      Stream.filter((view) => view.sessionID === sessionID),
-      Stream.runHead,
-      Effect.forkChild,
-    )
+): Effect.fn.Return<Option.Option<SessionView>, E> {
+  const next = yield* app.monitor.changes.pipe(
+    Stream.filter((view) => view.sessionID === sessionID),
+    Stream.runHead,
+    Effect.forkChild,
+  )
 
-    yield* Effect.yieldNow
-    yield* act
+  yield* Effect.yieldNow
+  yield* act
 
-    return yield* Fiber.join(next)
-  })
+  return yield* Fiber.join(next)
+})
 
 describe("attachment requests", () => {
   test("attaching publishes the session's view, so every client sees the change", async () => {

@@ -55,25 +55,29 @@ export interface Requests {
 
 export function requests({ monitor, tracker }: Services, settings: Settings): Requests {
   return {
-    attach: (sessionID, target) =>
-      Effect.gen(function* () {
-        const attached = yield* tracker.attach(
-          sessionID,
-          yield* parseTarget(target),
-          settings.directory,
-        )
+    attach: Effect.fn("Requests.attach")(function* (
+      sessionID: string,
+      target: string,
+    ): Effect.fn.Return<Changed, RequestFailure> {
+      const attached = yield* tracker.attach(
+        sessionID,
+        yield* parseTarget(target),
+        settings.directory,
+      )
 
-        const view = yield* monitor.attached(sessionID, attached.ref, attached.report)
+      const view = yield* monitor.attached(sessionID, attached.ref, attached.report)
 
-        return { message: attachedMessage(attached), view: toView(view, settings.layout) }
-      }),
-    detach: (sessionID, target) =>
-      Effect.gen(function* () {
-        const removal = yield* tracker.detach(sessionID, yield* parseTarget(target))
-        const view = yield* monitor.show(sessionID)
+      return { message: attachedMessage(attached), view: toView(view, settings.layout) }
+    }),
+    detach: Effect.fn("Requests.detach")(function* (
+      sessionID: string,
+      target: string,
+    ): Effect.fn.Return<Changed, RequestFailure> {
+      const removal = yield* tracker.detach(sessionID, yield* parseTarget(target))
+      const view = yield* monitor.show(sessionID)
 
-        return { message: detachedMessage(removal, target), view: toView(view, settings.layout) }
-      }),
+      return { message: detachedMessage(removal, target), view: toView(view, settings.layout) }
+    }),
     list: (sessionID) => monitor.current(sessionID),
   }
 }

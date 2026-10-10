@@ -25,6 +25,10 @@
       "name": "anti-slop-effect",
       "specifier": "./tools/oxlint/anti-slop/effect/index.ts",
     },
+    {
+      "name": "local-effect",
+      "specifier": "./tools/oxlint/local-effect/index.ts",
+    },
   ],
   "options": {
     "denyWarnings": true,
@@ -38,6 +42,10 @@
     "anti-slop-effect/no-manual-tag-comparison": "error",
     "anti-slop-effect/no-manual-tagged-construction": "error",
     "anti-slop-effect/prefer-effect-match": "error",
+    "local-effect/no-effect-gen-wrapper": "error",
+    "local-effect/no-sleep-in-tests": "error",
+    "local-effect/require-effect-fn-name": "error",
+    "local-effect/require-return-on-fail": "error",
     "anti-slop/no-array-filter-map": "error",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
@@ -150,6 +158,11 @@
       // These command-line scripts report through the console.
       "files": ["scripts/build.ts", "scripts/check-pr-title.ts"],
       "rules": { "eslint/no-console": "off" },
+    },
+    {
+      // Oxlint passes mutable ESTree, SourceCode, and Context values to rule callbacks.
+      "files": ["tools/oxlint/local-effect/**"],
+      "rules": { "typescript/prefer-readonly-parameter-types": "off" },
     },
     {
       // A module declares its Schema or service class together with the tagged errors it returns.

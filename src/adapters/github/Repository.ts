@@ -7,7 +7,7 @@ import { CommandRunner } from "../Command.ts"
 const RepositoryView = Schema.fromJsonString(Schema.Struct({ url: Schema.String }))
 
 /** Pull request `number` in the GitHub repository `gh` finds at `directory`. */
-export const resolveInRepository = Effect.fn("resolveInRepository")(function* (
+export const resolveInRepository = Effect.fn("GitHub.pullRequestInRepository")(function* (
   directory: string,
   number: number,
 ) {

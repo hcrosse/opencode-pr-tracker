@@ -22,5 +22,12 @@
     "types": ["bun"],
     "verbatimModuleSyntax": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "test/**/*.tsx", "scripts/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "test/**/*.ts",
+    "test/**/*.tsx",
+    "scripts/**/*.ts",
+    "tools/oxlint/local-effect/**/*.ts"
+  ]
 }

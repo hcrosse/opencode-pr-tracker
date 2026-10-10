@@ -90,22 +90,17 @@ export function scripted(): GitHubScript {
 }
 
 /** Attaches pull requests to a session and renews its lease. */
-export const watching = (
+export const watching = Effect.fnUntraced(function* (
   app: App,
   sessionID: string,
   refs: readonly PullRequestRef[],
-): Effect.Effect<void, unknown> =>
-  Effect.gen(function* () {
-    for (const pullRequest of refs) {
-      yield* app.tracker.attach(
-        sessionID,
-        PullRequestInput.Reference({ ref: pullRequest }),
-        "/work",
-      )
-    }
+): Effect.fn.Return<void, unknown> {
+  for (const pullRequest of refs) {
+    yield* app.tracker.attach(sessionID, PullRequestInput.Reference({ ref: pullRequest }), "/work")
+  }
 
-    yield* app.monitor.view(sessionID)
-  })
+  yield* app.monitor.view(sessionID)
+})
 
 /** The pull request numbers of each fetch made after `from`. */
 export const fetchedSince = (github: GitHubScript, from: number): number[][] =>
