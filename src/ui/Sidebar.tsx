@@ -17,15 +17,15 @@ import { SidebarRow, type SidebarEntry } from "./Row.tsx"
  * been missed. Stale rows stay shown, since they may still be right.
  */
 export type Liveness = Data.TaggedEnum<{
-  Live: Record<never, never>
-  Stale: Record<never, never>
+  Live: object
+  Stale: object
 }>
 
 export const Liveness = Data.taggedEnum<Liveness>()
 
 /** What the sidebar knows about its session. */
 export type SidebarState = Data.TaggedEnum<{
-  Loading: Record<never, never>
+  Loading: object
   Ready: { readonly view: View; readonly liveness: Liveness }
   Failed: { readonly reason: FailureReason; readonly message: string }
 }>

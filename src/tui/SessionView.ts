@@ -12,7 +12,7 @@ import { leaseUntilLapse, renewWhileShown, type Renewed } from "./Renewal.ts"
 
 /** What the session view last heard about the session's pull requests. */
 type Listing = Data.TaggedEnum<{
-  Loading: Record<never, never>
+  Loading: object
   Listed: { readonly view: View }
   Failed: { readonly reason: FailureReason; readonly message: string }
 }>

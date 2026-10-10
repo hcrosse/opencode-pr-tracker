@@ -7,9 +7,10 @@ exact = true
 ignoreScripts = true
 peer = true
 minimumReleaseAge = 604800
-# OpenCode V2 ships almost daily. The OpenCode plugin API and the Effect release it pins are
-# exempt so the plugin can track the current OpenCode release. Remove an entry once its pinned
-# version is older than seven days.
+# OpenCode V2 ships almost daily. To track the current release, exempt packages whose versions an
+# OpenCode release pins (@opencode/*, and when needed effect, @effect/*, or @opentui/*) only while
+# that pin is under seven days old. Remove each entry once it ages out, and re-add it when OpenCode
+# moves the pin.
 minimumReleaseAgeExcludes = [
   "@opencode/plugin",
   "@opencode/cli",
@@ -31,9 +32,6 @@ minimumReleaseAgeExcludes = [
   "@opencode/schema",
   "@opencode/util",
   "@opencode/theme",
-  "effect",
-  "@effect/platform-node",
-  "@effect/platform-node-shared",
 ]
 linker = "isolated"
 hoist = false
