@@ -8,77 +8,15 @@ import type { Diagnostic } from "../../domain/Snapshot.ts"
 import { charged, failed, GitHub, GitHubFailure, type ItemResult } from "../../ports/GitHub.ts"
 import { CommandRunner, layer as commandLayer } from "../Command.ts"
 import { pullRequestAnswer, type Answer } from "./Answer.ts"
-import { failure, makePost, type Charge, type Post } from "./Post.ts"
-import {
-  alias,
-  batch,
-  batchVariables,
-  continuation,
-  continuationVariables,
-  defaultPageSize,
-} from "./Query.ts"
+import { allContexts, type Asking, type ContextNode } from "./Contexts.ts"
+import { makePost, type Charge } from "./Post.ts"
+import { alias, batch, batchVariables, defaultPageSize } from "./Query.ts"
 import { RateLimit, layer as rateLimitLayer } from "./RateLimit.ts"
 import { resolveInRepository } from "./Repository.ts"
-import {
-  combined,
-  Contexts,
-  PullRequestNode,
-  toReport,
-  type BatchOutcome,
-  type ContextNode,
-  type Entry,
-} from "./Response.ts"
+import { combined, PullRequestNode, toReport, type BatchOutcome, type Entry } from "./Response.ts"
 import { reviewStates } from "./Reviews.ts"
 import { Suspects } from "./Suspects.ts"
 import { layer as tokenLayer, type Token } from "./Token.ts"
-
-const ContinuationData = Schema.Struct({
-  repository: Schema.Struct({
-    pullRequest: Schema.Struct({ statusCheckRollup: Schema.Struct({ contexts: Contexts }) }),
-  }),
-})
-
-/** How the client asks GitHub: by posting queries, for `pageSize` check contexts a page. */
-interface Asking {
-  readonly post: Post
-  readonly pageSize: number
-}
-
-/** Every check context for a pull request, following continuation pages. */
-const allContexts = Effect.fn("allContexts")(function* (
-  { pageSize, post }: Asking,
-  ref: PullRequestRef,
-  node: PullRequestNode,
-) {
-  const collected: ContextNode[] = []
-  const followed = new Set<string>()
-  let page = Option.map(Option.fromNullishOr(node.statusCheckRollup), (rollup) => rollup.contexts)
-
-  while (Option.isSome(page)) {
-    collected.push(...page.value.nodes)
-
-    if (!page.value.pageInfo.hasNextPage) break
-
-    // A claimed next page needs a new cursor, or CI would be judged on part or paging never end.
-    const after = page.value.pageInfo.endCursor ?? ""
-
-    if (after === "" || followed.has(after)) return yield* failure("InvalidResponse")
-
-    followed.add(after)
-
-    const envelope = yield* post(continuation(pageSize), continuationVariables(ref, after))
-
-    if ((envelope.errors ?? []).length > 0) return yield* failure("InvalidResponse")
-
-    const data = yield* Schema.decodeUnknownEffect(ContinuationData)(envelope.data).pipe(
-      Effect.mapError(() => failure("InvalidResponse")),
-    )
-
-    page = Option.some(data.repository.pullRequest.statusCheckRollup.contexts)
-  }
-
-  return collected
-})
 
 interface Batch extends Answer, Asking {
   readonly reviews: ReviewMode
@@ -102,7 +40,7 @@ const itemResult = Effect.fn("itemResult")(function* (
 
   if (Option.isNone(review)) return failed("InvalidResponse")
 
-  return yield* allContexts(request, ref, node.value).pipe(
+  return yield* allContexts(request, ref, node.value.statusCheckRollup).pipe(
     Effect.map((contexts: readonly ContextNode[]): ItemResult => ({
       _tag: "Reported",
       report: toReport(ref, node.value, { contexts, review: review.value }),

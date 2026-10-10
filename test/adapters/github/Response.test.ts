@@ -4,7 +4,7 @@ import * as hegel from "@hegeldev/hegel"
 import * as gs from "@hegeldev/hegel/generators"
 import { Array as Arr, Order } from "effect"
 
-import { generationOf, toCheck, type ContextNode } from "../../../src/adapters/github/Response.ts"
+import { generationOf, toCheck, type ContextNode } from "../../../src/adapters/github/Contexts.ts"
 import { classifyCi, type CheckOutcome } from "../../../src/domain/Checks.ts"
 
 /** A check run as recorded from hcrosse/opencode-pr-tracker#127. */
