@@ -30,7 +30,9 @@ const forgetDeletedSessions = (ctx: Plugin.Context, services: Services): Effect.
 export default Plugin.define({
   effect: (ctx) =>
     Effect.gen(function* () {
-      const { layout, reviews } = settingsOf(ctx.options)
+      // OpenCode's plugin effect has no error channel. OpenCode lists a plugin that dies here as
+      // failed, with the defect's message as its error.
+      const { layout, reviews } = yield* settingsOf(ctx.options).pipe(Effect.orDie)
 
       const application = monitorLayer.pipe(
         Layer.provideMerge(trackerLayer),
