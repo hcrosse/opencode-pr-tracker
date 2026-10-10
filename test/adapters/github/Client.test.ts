@@ -73,7 +73,10 @@ const reviewOf = (
   )
 
 const threads = (unreplied: number, replied: number, fetched: number): Option.Option<Review> =>
-  Option.some({ decision: "none", threads: { complete: true, fetched, replied, unreplied } })
+  Option.some({
+    decision: "none",
+    threads: { complete: true, fetched, replied, unknown: 0, unreplied },
+  })
 
 describe("GitHub client on a recorded Stack", () => {
   test("reads a merged Stack and its members in order", async () => {

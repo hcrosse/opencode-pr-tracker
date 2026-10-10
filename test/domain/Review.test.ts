@@ -10,7 +10,7 @@ import { author, comments, evidence, threads, withThreads } from "../support/rev
 const counts = (found: ReviewEvidence): readonly number[] => {
   const counted = threadsOf(found)
 
-  return [counted.unreplied, counted.replied]
+  return [counted.unreplied, counted.replied, counted.unknown]
 }
 
 const unresolvedCount = (found: ReviewEvidence): number =>
@@ -24,7 +24,7 @@ describe("review thread counts", () => {
 
       tc.note(JSON.stringify(found))
 
-      expect(counted.unreplied + counted.replied).toBe(unresolvedCount(found))
+      expect(counted.unreplied + counted.replied + counted.unknown).toBe(unresolvedCount(found))
       expect(counted.fetched).toBe(found.threads.length)
       expect(counted.complete).toBe(!found.moreThreads)
     })
@@ -71,6 +71,24 @@ describe("review thread replies", () => {
 
       expect(after.replied).toBe(threadsOf(found).replied + 1)
       expect(after.unreplied).toBe(threadsOf(found).unreplied)
+    })
+  })
+})
+
+describe("review thread replies in an unknown state", () => {
+  test("a comment in an unknown state after every submitted one makes the thread unknown", () => {
+    hegel.test((tc) => {
+      const found = tc.draw(evidence())
+      const thread = tc.draw(threads(gs.just(false)))
+      const unclear = { author: tc.draw(comments).author, submitted: "unknown" as const }
+      const latest = { comments: [...thread.comments, unclear], resolved: false }
+      const after = threadsOf(withThreads(found, [...found.threads, latest]))
+
+      expect([after.unreplied, after.replied, after.unknown]).toEqual([
+        threadsOf(found).unreplied,
+        threadsOf(found).replied,
+        threadsOf(found).unknown + 1,
+      ])
     })
   })
 

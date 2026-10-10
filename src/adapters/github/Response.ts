@@ -6,7 +6,19 @@ import type { Review } from "../../domain/Review.ts"
 import type { Diagnostic, Mergeability, PullRequestState } from "../../domain/Snapshot.ts"
 import type { ItemResult, Report } from "../../ports/GitHub.ts"
 import { Contexts, toCheck, type ContextNode } from "./Contexts.ts"
+import { enumeration, Unrecognized, unrecognizedAmong } from "./Enumeration.ts"
 import { LifecycleState, nonOpenMembersOf, StackNode, toMembership } from "./Stacks.ts"
+
+const MergeStateStatus = enumeration("PullRequest.mergeStateStatus", [
+  "BEHIND",
+  "BLOCKED",
+  "CLEAN",
+  "DIRTY",
+  "DRAFT",
+  "HAS_HOOKS",
+  "UNKNOWN",
+  "UNSTABLE",
+])
 
 const MergeableState = Schema.Literals(["MERGEABLE", "CONFLICTING", "UNKNOWN"])
 
@@ -14,7 +26,7 @@ type MergeableState = typeof MergeableState.Type
 
 export const PullRequestNode = Schema.Struct({
   isDraft: Schema.Boolean,
-  mergeStateStatus: Schema.String,
+  mergeStateStatus: MergeStateStatus,
   mergeable: MergeableState,
   stack: Schema.NullOr(StackNode),
   state: LifecycleState,
@@ -24,10 +36,22 @@ export const PullRequestNode = Schema.Struct({
 
 export type PullRequestNode = typeof PullRequestNode.Type
 
-const mergeabilities: Record<MergeableState, Mergeability> = {
+const mergeabilities: Readonly<Record<MergeableState, Mergeability>> = {
   CONFLICTING: "conflicting",
   MERGEABLE: "mergeable",
   UNKNOWN: "unknown",
+}
+
+/** The enumeration values in a pull request node and its check contexts this version does not know. */
+export function unrecognizedIn(
+  node: PullRequestNode,
+  contexts: readonly ContextNode[],
+): Unrecognized[] {
+  const values = contexts.flatMap((context) =>
+    context.__typename === "StatusContext" ? [context.state] : [context.status, context.conclusion],
+  )
+
+  return unrecognizedAmong([node.mergeStateStatus, ...values])
 }
 
 /** What the client gathered beside the pull request node: every check context, and the review state. */
@@ -43,7 +67,10 @@ function toState(node: PullRequestNode, { contexts, review }: Details): PullRequ
 
   return {
     _tag: "Open",
-    behind: node.mergeStateStatus === "BEHIND",
+    behind:
+      node.mergeStateStatus instanceof Unrecognized
+        ? "unknown"
+        : node.mergeStateStatus === "BEHIND",
     ci: classifyCi(contexts.map((context) => toCheck(context))),
     draft: node.isDraft,
     mergeability: mergeabilities[node.mergeable],

@@ -28,12 +28,17 @@ const commits: gs.Generator<Option.Option<string>> = gs.oneOf(
 
 const opinionatedReviews: gs.Generator<OpinionatedReview> = gs.record({
   commit: commits,
-  verdict: gs.sampledFrom<OpinionatedReview["verdict"]>(["approved", "changesRequested", "other"]),
+  verdict: gs.sampledFrom<OpinionatedReview["verdict"]>([
+    "approved",
+    "changesRequested",
+    "other",
+    "unknown",
+  ]),
 })
 
 export const comments: gs.Generator<ThreadComment> = gs.record({
   author: logins,
-  submitted: gs.booleans(),
+  submitted: gs.oneOf<boolean | "unknown">(gs.booleans(), gs.just("unknown" as const)),
 })
 
 export const threads = (resolved: Readonly<gs.Generator<boolean>>): gs.Generator<ReviewThread> =>
@@ -44,7 +49,7 @@ export const reported = gs.sampledFrom<ReportedDecision>([
   "changesRequested",
   "reviewRequired",
   "unreported",
-  "unrecognized",
+  "unknown",
 ])
 
 export interface EvidenceOptions {

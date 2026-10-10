@@ -9,11 +9,19 @@ import { charged, failed, GitHub, GitHubFailure, type ItemResult } from "../../p
 import { CommandRunner, layer as commandLayer } from "../Command.ts"
 import { pullRequestAnswer, type Answer } from "./Answer.ts"
 import { allContexts, type Asking, type ContextNode } from "./Contexts.ts"
+import { UnrecognizedLog } from "./Enumeration.ts"
 import { makePost, type Charge } from "./Post.ts"
 import { alias, batch, batchVariables, defaultPageSize } from "./Query.ts"
 import { RateLimit, layer as rateLimitLayer } from "./RateLimit.ts"
 import { resolveInRepository } from "./Repository.ts"
-import { combined, PullRequestNode, toReport, type BatchOutcome, type Entry } from "./Response.ts"
+import {
+  combined,
+  PullRequestNode,
+  toReport,
+  unrecognizedIn,
+  type BatchOutcome,
+  type Entry,
+} from "./Response.ts"
 import { reviewStates } from "./Reviews.ts"
 import { Suspects } from "./Suspects.ts"
 import { layer as tokenLayer, type Token } from "./Token.ts"
@@ -21,6 +29,7 @@ import { layer as tokenLayer, type Token } from "./Token.ts"
 interface Batch extends Answer, Asking {
   readonly reviews: ReviewMode
   readonly suspects: Suspects
+  readonly unrecognized: UnrecognizedLog
 }
 
 const itemResult = Effect.fn("itemResult")(function* (
@@ -41,9 +50,15 @@ const itemResult = Effect.fn("itemResult")(function* (
   if (Option.isNone(review)) return failed("InvalidResponse")
 
   return yield* allContexts(request, ref, node.value.statusCheckRollup).pipe(
+    Effect.tap((contexts: readonly ContextNode[]) =>
+      request.unrecognized.report(ref.url, [
+        ...unrecognizedIn(node.value, contexts),
+        ...review.value.unrecognized,
+      ]),
+    ),
     Effect.map((contexts: readonly ContextNode[]): ItemResult => ({
       _tag: "Reported",
-      report: toReport(ref, node.value, { contexts, review: review.value }),
+      report: toReport(ref, node.value, { contexts, review: review.value.review }),
     })),
     Effect.catchTags({
       RequestCharged: ({ charge }: { readonly charge: Charge }) =>
@@ -62,14 +77,18 @@ const fetchBatch = Effect.fn("fetchBatch")(function* (
   sending: Sending,
   refs: readonly PullRequestRef[],
 ) {
-  const { pageSize, post, reviews, suspects } = sending
+  const { pageSize, post, reviews, suspects, unrecognized } = sending
   const envelope = yield* post(batch(refs.length, reviews, pageSize), batchVariables(refs))
   const aliases = new Set(refs.map((_, index) => alias(index)))
 
   const results = yield* Effect.forEach(
     refs,
     (ref, index) =>
-      itemResult({ aliases, envelope, pageSize, post, reviews, suspects }, ref, alias(index)),
+      itemResult(
+        { aliases, envelope, pageSize, post, reviews, suspects, unrecognized },
+        ref,
+        alias(index),
+      ),
     {
       concurrency: 4,
     },
@@ -84,6 +103,7 @@ const fetchBatch = Effect.fn("fetchBatch")(function* (
 interface Sending extends Asking {
   readonly reviews: ReviewMode
   readonly suspects: Suspects
+  readonly unrecognized: UnrecognizedLog
   /** Set once a batch times out: the fetch's remaining batches are not sent. */
   readonly stopped: Ref.Ref<boolean>
 }
@@ -146,12 +166,13 @@ export const layer = (
       const runner = yield* CommandRunner
       const rateLimit = yield* RateLimit
       const suspects = new Suspects()
+      const unrecognized = new UnrecognizedLog()
 
       return GitHub.of({
         fetch: (refs) =>
           Effect.gen(function* () {
             const stopped = yield* Ref.make(false)
-            const sending: Sending = { pageSize, post, reviews, stopped, suspects }
+            const sending: Sending = { pageSize, post, reviews, stopped, suspects, unrecognized }
             const unique = Arr.dedupeWith(refs, (left, right) => left.url === right.url)
 
             const outcomes = yield* Effect.forEach(

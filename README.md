@@ -54,19 +54,21 @@ Each attached pull request shows its repository, number, status, and title. Open
 
 Stack members appear together in Stack order, including pull requests linked into a Stack after they were attached, joined by `┌─`, `├─` and `└─`. `├┄ 2 PRs not attached` marks Stack members between attached ones. Where two Stacks touch, `╭─`, `╰─` and `╶─` close an edge that has unattached members beyond it. Other pull requests use `•`.
 
-| Status          | Appearance             |
-| --------------- | ---------------------- |
-| Merged          | Purple, struck through |
-| Closed          | Red, struck through    |
-| Merge conflict  | Red                    |
-| Checks failed   | Red                    |
-| Draft           | Gray                   |
-| Checks pending  | Yellow                 |
-| Behind its base | Yellow                 |
-| Checks passed   | Green                  |
-| No checks       | Gray                   |
+| Status              | Appearance             |
+| ------------------- | ---------------------- |
+| Merged              | Purple, struck through |
+| Closed              | Red, struck through    |
+| Merge conflict      | Red                    |
+| Checks failed       | Red                    |
+| Draft               | Gray                   |
+| Checks unknown      | Gray                   |
+| Checks pending      | Yellow                 |
+| Merge state unknown | Gray                   |
+| Behind its base     | Yellow                 |
+| Checks passed       | Green                  |
+| No checks           | Gray                   |
 
-The first matching row wins. A pull request shows as behind only when its base branch requires it to be up to date. Checks count only their most recent run.
+The first matching row wins. A pull request shows as behind only when its base branch requires it to be up to date. Checks count only their most recent run. A check state or merge state that GitHub added after this version of the plugin shows as unknown rather than as a state it might not be, and the plugin logs the value GitHub sent the first time it sees it.
 
 Open and closed pull requests refresh every 15 seconds in each session you have viewed or changed since OpenCode started, until the session is deleted. Merged pull requests stop refreshing. When a refresh fails, the sidebar keeps the last status and marks it `stale`. After five minutes of failures, it shows why instead, for example `authenticate` or `GitHub unavailable`.
 
@@ -94,16 +96,18 @@ Review state is off by default. To show it after the status of each open pull re
 
 A row then reads, for example, `acme/api#13 pending · changes · 2 unreplied · 1 replied`, and `pr.list` reports the same. Review state never changes the status color, and a stale row keeps its last review state. Without the option, or with `"off"`, review state is off and the plugin asks GitHub for no review data.
 
-| Review state     | Appearance | Meaning                                                  |
-| ---------------- | ---------- | -------------------------------------------------------- |
-| `approved`       | Green      | Approved, with an approval of the latest commit          |
-| `stale approval` | Yellow     | Approved, but no approval is of the latest commit        |
-| `changes`        | Yellow     | Changes requested                                        |
-| `review`         | Gray       | The base branch requires a review                        |
-| `N unreplied`    | Yellow     | Unresolved review threads the author did not answer last |
-| `N replied`      | Gray       | Unresolved review threads the author answered last       |
+| Review state     | Appearance | Meaning                                                                                                                        |
+| ---------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `approved`       | Green      | Approved, with an approval of the latest commit                                                                                |
+| `stale approval` | Yellow     | Approved, but no approval is of the latest commit                                                                              |
+| `changes`        | Yellow     | Changes requested                                                                                                              |
+| `review`         | Gray       | The base branch requires a review                                                                                              |
+| `review unknown` | Gray       | A decision or review in a state this version doesn't know                                                                      |
+| `N unreplied`    | Yellow     | Unresolved review threads the author did not answer last                                                                       |
+| `N replied`      | Gray       | Unresolved review threads the author answered last                                                                             |
+| `N unknown`      | Gray       | Unresolved review threads whose latest comment, which may be the latest submitted one, is in a state this version doesn't know |
 
-When GitHub reports no decision, as when the base branch requires no review, the decision comes from the latest reviews of people with write access: any change request wins, then any approval. If a pull request has more than 100 such reviews, only GitHub's own decision is shown, and an approval is not checked for staleness. Resolved threads aren't counted, and comments not yet submitted are ignored. Only the first 20 review threads are read, so a pull request with more shows lower bounds such as `12+ unreplied`, or `20+ threads` when none of the first 20 is unresolved.
+When GitHub reports no decision, as when the base branch requires no review, the decision comes from the latest reviews of people with write access: any change request wins, then any review in a state this version doesn't know (`review unknown`), then any approval. If a pull request has more than 100 such reviews, only GitHub's own decision is shown, and an approval is not checked for staleness. Resolved threads aren't counted, and comments not yet submitted are ignored. Only the first 20 review threads are read, so a pull request with more shows lower bounds such as `12+ unreplied`, or `20+ threads` when none of the first 20 is unresolved.
 
 ### Invalid options
 

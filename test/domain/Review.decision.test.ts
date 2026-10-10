@@ -74,35 +74,35 @@ const complete: Readonly<Record<Category, Readonly<Record<ReportedDecision, Deci
     approved: "staleApproval",
     changesRequested: "changesRequested",
     reviewRequired: "reviewRequired",
-    unrecognized: "none",
+    unknown: "unknown",
     unreported: "changesRequested",
   },
   changeRequestAndHeadApproval: {
     approved: "approved",
     changesRequested: "changesRequested",
     reviewRequired: "reviewRequired",
-    unrecognized: "none",
+    unknown: "unknown",
     unreported: "changesRequested",
   },
   headApproval: {
     approved: "approved",
     changesRequested: "changesRequested",
     reviewRequired: "reviewRequired",
-    unrecognized: "none",
+    unknown: "unknown",
     unreported: "approved",
   },
   noApproval: {
     approved: "staleApproval",
     changesRequested: "changesRequested",
     reviewRequired: "reviewRequired",
-    unrecognized: "none",
+    unknown: "unknown",
     unreported: "none",
   },
   olderApprovalsOnly: {
     approved: "staleApproval",
     changesRequested: "changesRequested",
     reviewRequired: "reviewRequired",
-    unrecognized: "none",
+    unknown: "unknown",
     unreported: "staleApproval",
   },
 }
@@ -112,7 +112,7 @@ const partial: Readonly<Record<ReportedDecision, Decision>> = {
   approved: "approved",
   changesRequested: "changesRequested",
   reviewRequired: "reviewRequired",
-  unrecognized: "none",
+  unknown: "unknown",
   unreported: "none",
 }
 
@@ -201,6 +201,30 @@ describe("review decision with and without every writer's review", () => {
       "none",
     ],
   ])("reads %s", (_name, found, decision) => {
+    expect(decisionOf(found)).toBe(decision)
+  })
+})
+
+const unknownOfHead: OpinionatedReview = { commit: Option.some(head), verdict: "unknown" }
+
+const headApprovalReview: OpinionatedReview = { commit: Option.some(head), verdict: "approved" }
+
+describe("review decision derived beside a review in an unknown state", () => {
+  test.each<readonly [string, readonly OpinionatedReview[], Decision]>([
+    ["alone", [unknownOfHead], "unknown"],
+    ["beside an approval of the head", [headApprovalReview, unknownOfHead], "unknown"],
+    ["beside a change request", [unknownOfHead, requestOfHead], "changesRequested"],
+  ])("reads one %s", (_name, reviews, decision) => {
+    const found: ReviewEvidence = {
+      author: Option.some("author"),
+      head,
+      moreReviews: false,
+      moreThreads: false,
+      reported: "unreported",
+      reviews,
+      threads: [],
+    }
+
     expect(decisionOf(found)).toBe(decision)
   })
 })
