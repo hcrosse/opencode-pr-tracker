@@ -5,7 +5,9 @@
  * wait, and removing a key whose end has passed can never remove a wait that still lasts.
  */
 import type { StorageDomain } from "@opencode/plugin/effect/storage"
-import { Clock, Duration, Effect, Option, Ref, Schema } from "effect"
+import { Clock, Duration, Effect, Option, Ref } from "effect"
+
+import { makeStoredNumber, readStored, type StoredNumber } from "./StoredNumber.ts"
 
 /** Epoch milliseconds before which no request is sent, as earlier versions record it. */
 const legacyKey = "github/rate-limit/until"
@@ -18,7 +20,8 @@ export const longestHint = Duration.toMillis(Duration.hours(1))
 /** Allowance past `longestHint` for a wait recorded a moment before this instance read the clock. */
 const margin = Duration.toMillis(Duration.minutes(1))
 
-const decodeLegacy = Schema.decodeUnknownOption(Schema.Finite)
+/** How long a malformed single key holds requests back: the first wait without a time from GitHub. */
+const malformedLegacyWait = Duration.toMillis(Duration.minutes(1))
 
 /** The end a key names: a whole number of epoch milliseconds. */
 const endOf = (key: string): Option.Option<number> =>
@@ -67,6 +70,7 @@ export interface WaitsApi {
 interface Instance {
   readonly storage: StorageDomain
   readonly noticed: Ref.Ref<ReadonlySet<string>>
+  readonly legacy: StoredNumber
 }
 
 interface Named {
@@ -118,12 +122,13 @@ const survey = Effect.fn("RateLimit.survey")(function* (instance: Instance) {
 })
 
 const latest = Effect.fn("RateLimit.latest")(function* (instance: Instance) {
-  const { ends, now } = yield* survey(instance)
-  let until = Option.getOrElse(decodeLegacy(yield* instance.storage.get(legacyKey)), () => 0)
+  const { ends } = yield* survey(instance)
+  const legacy = yield* readStored(instance.legacy)
+  let until = legacy.value
 
   for (const end of ends) until = Math.max(until, end)
 
-  return { now, until }
+  return { now: legacy.now, until }
 })
 
 /**
@@ -145,10 +150,22 @@ const record = Effect.fn("RateLimit.record")(function* (instance: Instance, unti
  * The waits one plugin instance reads and records. A key that names no end, or one too far ahead
  * to have been recorded, is ignored and logged once per instance. One naming no end is removed by
  * the next recorded wait; one too far ahead is honored once within reach, like any wait. The earlier single key is read, never written or removed: older instances still
- * update it by reading and writing it back.
+ * update it by reading and writing it back. A malformed single key holds this instance back a
+ * minute and is logged once, and that value stays malformed until it changes; see `StoredNumber`.
  */
 export const makeWaits = Effect.fn("RateLimit.makeWaits")(function* (storage: StorageDomain) {
-  const instance: Instance = { noticed: yield* Ref.make<ReadonlySet<string>>(new Set()), storage }
+  const legacy = yield* makeStoredNumber({
+    key: legacyKey,
+    replacement: (now: number) => now + malformedLegacyWait,
+    storage,
+    valid: (until: number, now: number) => until <= now + longestHint,
+  })
+
+  const instance: Instance = {
+    legacy,
+    noticed: yield* Ref.make<ReadonlySet<string>>(new Set()),
+    storage,
+  }
 
   const waits: WaitsApi = {
     latest: latest(instance),

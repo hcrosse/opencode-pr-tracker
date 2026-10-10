@@ -7,6 +7,7 @@ import { group, type Attachment, type Tracking } from "../domain/Tracking.ts"
 import { GitHub, type GitHubApi, type ItemResult, type Report } from "../ports/GitHub.ts"
 import type { StoredStateInvalid } from "../ports/TrackingRepository.ts"
 import { FetchQueue } from "./FetchQueue.ts"
+import { InvalidSessions, orWarned } from "./InvalidState.ts"
 import {
   dueOf,
   failedEach,
@@ -91,6 +92,7 @@ interface Cache {
 interface State extends Cache {
   readonly tracker: TrackerApi
   readonly leases: Leases
+  readonly invalid: InvalidSessions
   readonly published: PubSub.PubSub<SessionView>
   /** Fetches pull requests and records the results; see `FetchQueue`. */
   readonly fetch: (refs: readonly PullRequestRef[]) => Effect.Effect<void>
@@ -125,8 +127,8 @@ function viewOf(state: State, sessionID: string): Effect.Effect<SessionView, Sto
 
     if (!group(stored, stacks).changed) return { entries, sessionID }
     // A failed regroup leaves the stored order as it was.
-    const regrouped = Effect.orElseSucceed(state.tracker.regroup(sessionID, stacks), () => stored)
-    const tracking = yield* regrouped
+    const regrouped = state.tracker.regroup(sessionID, stacks)
+    const tracking = yield* orWarned(regrouped, "Kept the order after a failed regroup", stored)
 
     return { entries: tracking.map((attachment) => entryOf(current, attachment)), sessionID }
   })
@@ -144,13 +146,10 @@ function poll(state: State): Effect.Effect<void> {
     const sessions = yield* state.leases.live()
     // Taken before listing attachments: statuses recorded after this belong to newer attachments.
     const known = yield* Ref.get(state.known)
-
-    const trackings = yield* Effect.forEach(sessions, (sessionID: string) =>
-      state.tracker.list(sessionID).pipe(Effect.orElseSucceed((): Tracking => [])),
-    )
+    const trackings = yield* state.invalid.validTrackings(state.tracker, sessions)
 
     const attached = new Map(
-      trackings.flat().map((attachment) => [attachment.ref.url, attachment.ref]),
+      [...trackings.values()].flat().map((attachment) => [attachment.ref.url, attachment.ref]),
     )
 
     const now = yield* currentMillis
@@ -170,8 +169,8 @@ function poll(state: State): Effect.Effect<void> {
 
     const dueUrls = new Set(due.map((ref) => ref.url))
 
-    const affected = sessions.filter((_, index) =>
-      urlsOf(trackings[index] ?? []).some((url) => dueUrls.has(url)),
+    const affected = [...trackings].flatMap(([sessionID, tracking]: readonly [string, Tracking]) =>
+      urlsOf(tracking).some((url) => dueUrls.has(url)) ? [sessionID] : [],
     )
 
     yield* Effect.forEach(affected, (sessionID: string) => publish(state, sessionID), {
@@ -224,6 +223,7 @@ export const layer = Layer.effect(
       github: cache.github,
       known: cache.known,
       published: yield* PubSub.unbounded<SessionView>(),
+      invalid: new InvalidSessions(),
       leases: new Leases(),
       tracker: yield* Tracker,
     }

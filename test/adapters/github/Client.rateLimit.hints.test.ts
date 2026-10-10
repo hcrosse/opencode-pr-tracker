@@ -1,15 +1,12 @@
 import { describe, expect, test } from "bun:test"
 
-import { Effect, Exit } from "effect"
+import { Exit } from "effect"
 
-import { memoryStorage } from "../../support/application.ts"
 import { httpClient, requestsAt, runClient, type RequestBody } from "../../support/github.ts"
 
 const minute = 60_000
 
 const hour = 3_600_000
-
-const secondaryLimit = (): Response => new Response("secondary rate limit", { status: 403 })
 
 /** A first response from GitHub, then answers to everything after it. */
 const firstThenAnswered =
@@ -41,31 +38,6 @@ describe("GitHub client rate-limit hints", () => {
     const http = httpClient(firstThenAnswered(() => new Response("", { headers, status: 403 })))
 
     const result = await runClient({ http }, requestsAt(http, [0, wait - 1, wait]))
-
-    expect(result).toEqual(Exit.succeed([1, 1, 2]))
-  })
-})
-
-describe("GitHub client stored waits", () => {
-  test("ignores a stored wait that is not a number", async () => {
-    const storage = memoryStorage()
-
-    await Effect.runPromise(storage.storage.set("github/rate-limit/until", "99999999999999"))
-
-    const http = httpClient(() => Response.json({ data: { pr0: null } }))
-    const result = await runClient({ http, storage }, requestsAt(http, [0]))
-
-    expect(result).toEqual(Exit.succeed([1]))
-  })
-
-  test("starts at a minute when the stored count of limits is negative", async () => {
-    const storage = memoryStorage()
-
-    await Effect.runPromise(storage.storage.set("github/rate-limit/strikes", -1))
-
-    const http = httpClient(firstThenAnswered(secondaryLimit))
-
-    const result = await runClient({ http, storage }, requestsAt(http, [0, minute - 1, minute]))
 
     expect(result).toEqual(Exit.succeed([1, 1, 2]))
   })

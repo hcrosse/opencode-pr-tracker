@@ -1,9 +1,10 @@
 /** GitHub rate limits: recognizing a limited response, and a wait every plugin instance honors. */
 import type { StorageDomain } from "@opencode/plugin/effect/storage"
-import { Clock, Context, Duration, Effect, Layer, Option, Schema } from "effect"
+import { Clock, Context, Duration, Effect, Layer, Option } from "effect"
 
 import { GitHubFailure } from "../../ports/GitHub.ts"
-import { longestHint, makeWaits, type WaitsApi } from "./Waits.ts"
+import { makeStoredNumber, readStored, type StoredNumber } from "./StoredNumber.ts"
+import { longestHint, makeWaits } from "./Waits.ts"
 
 /** What a response says about rate limiting. Header names are lowercase. */
 export interface Evidence {
@@ -68,11 +69,12 @@ export function verdictOf(evidence: Evidence, now: number): Verdict {
 /** Consecutive limits without a wait from GitHub. Each doubles the next wait. */
 const strikesKey = "github/rate-limit/strikes"
 
-const decodeStrikes = Schema.decodeUnknownOption(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)))
-
 const firstWait = Duration.toMillis(Duration.minutes(1))
 
 const longestWait = Duration.toMillis(Duration.minutes(15))
+
+/** The fewest strikes whose doubled wait reaches `longestWait`. */
+const mostStrikes = Math.ceil(Math.log2(longestWait / firstWait))
 
 export interface RateLimitApi {
   /** Fails with `RateLimited` while a wait recorded by any plugin instance lasts. */
@@ -87,18 +89,21 @@ export class RateLimit extends Context.Service<RateLimit, RateLimitApi>()(
   "opencode-pr-tracker/RateLimit",
 ) {}
 
-const storedStrikes = (storage: StorageDomain): Effect.Effect<number> =>
-  Effect.map(storage.get(strikesKey), (value) => Option.getOrElse(decodeStrikes(value), () => 0))
+/** The stored strike count. A malformed one hides how many came before, so it counts as most. */
+const strikesIn = (storage: StorageDomain): Effect.Effect<StoredNumber> =>
+  makeStoredNumber({ key: strikesKey, replacement: () => mostStrikes, storage, valid: () => true })
 
 /** The end of a wait without a time from GitHub, counted as one more consecutive strike. */
-const unhintedUntil = (storage: StorageDomain, now: number): Effect.Effect<number> =>
-  Effect.gen(function* () {
-    const strikes = yield* storedStrikes(storage)
+const unhintedUntil = Effect.fn("RateLimit.unhintedUntil")(function* (
+  strikes: StoredNumber,
+  now: number,
+) {
+  const { value: count } = yield* readStored(strikes)
 
-    yield* storage.set(strikesKey, strikes + 1)
+  yield* strikes.storage.set(strikes.key, count + 1)
 
-    return now + Math.min(firstWait * 2 ** strikes, longestWait)
-  })
+  return now + Math.min(firstWait * 2 ** count, longestWait)
+})
 
 /**
  * The wait in plugin storage, which every plugin instance in the OpenCode service shares. The wait
@@ -110,10 +115,13 @@ export function layer(storage: StorageDomain): Layer.Layer<RateLimit> {
 
   return Layer.effect(
     RateLimit,
-    Effect.map(makeWaits(storage), (waits: WaitsApi) =>
-      RateLimit.of({
+    Effect.gen(function* () {
+      const waits = yield* makeWaits(storage)
+      const strikes = yield* strikesIn(storage)
+
+      return RateLimit.of({
         answered: Effect.gen(function* () {
-          if ((yield* storedStrikes(storage)) > 0) yield* storage.set(strikesKey, 0)
+          if ((yield* readStored(strikes)).value > 0) yield* storage.set(strikesKey, 0)
         }),
         check: Effect.gen(function* () {
           const latest = yield* waits.latest
@@ -127,13 +135,13 @@ export function layer(storage: StorageDomain): Layer.Layer<RateLimit> {
             const at = yield* now
 
             const next = yield* Option.match(hinted, {
-              onNone: () => unhintedUntil(storage, at),
+              onNone: () => unhintedUntil(strikes, at),
               onSome: Effect.succeed,
             })
 
             yield* waits.record(next)
           }),
-      }),
-    ),
+      })
+    }),
   )
 }
