@@ -31,6 +31,12 @@ describe("review state off", () => {
 
     expect(reviewOfResult(result)).toEqual(Option.some(noReview))
   })
+
+  test("ignores malformed review fields", async () => {
+    const { result } = await fetch127({ reviewThreads: null }, "off")
+
+    expect(reviewOfResult(result)).toEqual(Option.some(noReview))
+  })
 })
 
 describe("review state on", () => {

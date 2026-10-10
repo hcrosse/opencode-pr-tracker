@@ -14,7 +14,7 @@ export const author = "author"
 export const head = "head"
 
 /** A login, or none for a deleted (ghost) account. Includes the pull request's author. */
-export const logins: gs.Generator<Option.Option<string>> = gs.oneOf(
+const logins: gs.Generator<Option.Option<string>> = gs.oneOf(
   gs.just(Option.none<string>()),
   gs
     .sampledFrom([author, "reviewer", "copilot-pull-request-reviewer"])
@@ -26,7 +26,7 @@ const commits: gs.Generator<Option.Option<string>> = gs.oneOf(
   gs.sampledFrom([head, "older"]).map((oid: string) => Option.some(oid)),
 )
 
-export const opinionatedReviews: gs.Generator<OpinionatedReview> = gs.record({
+const opinionatedReviews: gs.Generator<OpinionatedReview> = gs.record({
   commit: commits,
   verdict: gs.sampledFrom<OpinionatedReview["verdict"]>(["approved", "changesRequested", "other"]),
 })

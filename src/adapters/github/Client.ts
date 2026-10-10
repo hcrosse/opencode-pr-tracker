@@ -20,7 +20,7 @@ import {
   type ContextNode,
   type Entry,
 } from "./Response.ts"
-import { reviewReaders } from "./Reviews.ts"
+import { reviewStates } from "./Reviews.ts"
 import { Suspects } from "./Suspects.ts"
 import { layer as tokenLayer, type Token } from "./Token.ts"
 
@@ -113,7 +113,7 @@ const itemResult = Effect.fn("itemResult")(function* (
 
   if (Option.isNone(node)) return failed("InvalidResponse", false)
 
-  const review = reviewReaders[request.reviews](node.value)
+  const review = Schema.decodeUnknownOption(reviewStates[request.reviews])(raw.value)
 
   if (Option.isNone(review)) return failed("InvalidResponse", false)
 

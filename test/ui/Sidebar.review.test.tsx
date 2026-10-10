@@ -5,7 +5,7 @@ import { Option } from "effect"
 
 import { failed, type Status } from "../../src/domain/Snapshot.ts"
 import type { Layout } from "../../src/rpc.ts"
-import { reviewExamples, reviewWith } from "../support/reviews.ts"
+import { reviewWith } from "../support/reviews.ts"
 import { ref } from "../support/stacks.ts"
 import {
   destroyMounted,
@@ -81,9 +81,16 @@ describe("Sidebar review state colors", () => {
   })
 
   test("shows an approval in green on a failing pull request, which stays red", async () => {
-    const example = reviewExamples.find((candidate) => candidate.number === 40)
-    const state = Option.getOrThrow(Option.fromNullishOr(example)).state
-    const { lines, style } = await show(fresh(pullRequest, "Client wiring", state), "compact")
+    const failing = fresh(pullRequest, "Client wiring", {
+      _tag: "Open",
+      behind: false,
+      ci: "failed",
+      draft: false,
+      mergeability: "mergeable",
+      review: reviewWith("approved", [3, 0]),
+    })
+
+    const { lines, style } = await show(failing, "compact")
 
     expect(lines()).toEqual(["Pull requests", "", "•  acme/api#13 failed · approved · 3 unreplied"])
     expect(style(" failed")).toEqual(Option.some(styled(palette.tones.red)))

@@ -1,11 +1,11 @@
-import { Option, Schema, Struct } from "effect"
+import { Option, Schema, SchemaGetter } from "effect"
 
 import {
   noReview,
+  Review,
   reviewOf,
   type OpinionatedReview,
   type ReportedDecision,
-  type Review,
   type ReviewEvidence,
   type ReviewMode,
   type ReviewThread,
@@ -29,7 +29,7 @@ const ThreadNode = Schema.Struct({
  * The review fields of a pull request node. Enumerations are read as text, so a value GitHub adds
  * later cannot fail the whole pull request.
  */
-export const reviewFields = {
+const ReviewFields = Schema.Struct({
   author: Author,
   headRefOid: Schema.String,
   latestOpinionatedReviews: Schema.Struct({
@@ -41,20 +41,9 @@ export const reviewFields = {
     nodes: Schema.Array(ThreadNode),
     pageInfo: Schema.Struct({ hasNextPage: Schema.Boolean }),
   }),
-}
-
-const ReviewFields = Schema.Struct(reviewFields)
+})
 
 type ReviewFields = typeof ReviewFields.Type
-
-/** The review fields, each optional: a query asks only for those its review mode reads. */
-export const fetchedReviewFields = Struct.map(reviewFields, Schema.optionalKey)
-
-const FetchedReviewFields = Schema.Struct(fetchedReviewFields)
-
-type FetchedReviewFields = typeof FetchedReviewFields.Type
-
-const decodeReviewFields = Schema.decodeUnknownOption(ReviewFields)
 
 type ReviewNode = typeof ReviewNode.Type
 
@@ -105,11 +94,27 @@ export function toReviewEvidence(node: ReviewFields): ReviewEvidence {
   }
 }
 
-/** The review state each mode reads from a pull request node; none when a field it needs is missing. */
-export const reviewReaders: Readonly<
-  Record<ReviewMode, (node: FetchedReviewFields) => Option.Option<Review>>
-> = {
-  all: (node) =>
-    Option.map(decodeReviewFields(node), (fields) => reviewOf(toReviewEvidence(fields))),
-  off: () => Option.some(noReview),
+const notSent = SchemaGetter.forbidden<never, Review>(() => "Review state is never sent to GitHub")
+
+const ReviewState = ReviewFields.pipe(
+  Schema.decodeTo(Review, {
+    decode: SchemaGetter.transform((fields: ReviewFields) => reviewOf(toReviewEvidence(fields))),
+    encode: notSent,
+  }),
+)
+
+const NoReviewState = Schema.Unknown.pipe(
+  Schema.decodeTo(Review, {
+    decode: SchemaGetter.transform((): Review => noReview),
+    encode: notSent,
+  }),
+)
+
+/**
+ * How each mode reads the review state from a pull request's response node. "off" reads none of
+ * its review fields; "all" needs every one of them.
+ */
+export const reviewStates: Readonly<Record<ReviewMode, Schema.Decoder<Review>>> = {
+  all: ReviewState,
+  off: NoReviewState,
 }
