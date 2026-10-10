@@ -232,7 +232,7 @@ export const layer = Layer.effect(
       changes: Stream.fromPubSub(state.published),
       current: (sessionID) =>
         Effect.andThen(state.leases.renew(sessionID), fetchAndShow(state, sessionID, isDue)),
-      forget: (sessionID) => state.leases.end(sessionID),
+      forget: (id) => Effect.andThen(state.leases.end(id), state.invalid.end(id)),
       poll: poll(state),
       attached: (sessionID, ref, report) =>
         Effect.andThen(

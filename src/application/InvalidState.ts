@@ -53,6 +53,13 @@ export class InvalidSessions {
     )
   }
 
+  /** Forgets a session that is no longer watched, as a poll that no longer lists it would. */
+  public end(sessionID: string): Effect.Effect<void> {
+    return Effect.sync(() => {
+      this.invalid.delete(sessionID)
+    })
+  }
+
   private skipped(sessionID: string): Effect.Effect<Listed> {
     return Effect.suspend(() => {
       const known = this.invalid.has(sessionID)

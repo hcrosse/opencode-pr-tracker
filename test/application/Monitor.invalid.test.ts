@@ -88,6 +88,30 @@ describe("Monitor forgets invalid sessions that are no longer watched", () => {
   })
 })
 
+describe("Monitor forgets invalid sessions it is told to forget", () => {
+  test("warns again about a session watched again right after it was forgotten", async () => {
+    const storage = memoryStorage()
+    const logs = captureLogs()
+
+    const result = await run(
+      scripted(),
+      (app: App) =>
+        Effect.gen(function* () {
+          yield* watching(app, "b", [open])
+          yield* storage.storage.set("session/b", { version: 99 })
+          yield* app.monitor.poll
+          yield* app.monitor.forget("b")
+          yield* app.monitor.watch("b")
+          yield* app.monitor.poll
+        }).pipe(Effect.provide(logs.layer)),
+      storage,
+    )
+
+    expect(Exit.isSuccess(result)).toBe(true)
+    expect(warningsIn(logs.lines())).toEqual([skipped, skipped])
+  })
+})
+
 /** Monitor and Tracker over `github`, except that regrouping always finds invalid stored state. */
 const regroupFails = (github: Readonly<ScriptedGitHub>): Layer.Layer<Monitor | Tracker> => {
   const failing = Layer.effect(
