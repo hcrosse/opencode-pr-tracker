@@ -19,6 +19,7 @@ Lint uses a strict oxlint profile (`.oxlintrc.jsonc`) with every correctness, pe
 - Parameters must be readonly types, and statements need blank lines between logical groups.
 - Test functions count toward the 40-line function limit.
 - Use `Schema.TaggedUnion` for wire unions and namespaced `Data.taggedEnum` for owned unions. Branch with `match`, `$match`, or `$is`; do not use `Predicate.isTagged` with string literals or `.guards` on typed values.
+- Model records as `Schema.Struct` plus same-name interfaces and keep literal/union schemas as aliases. Interfaces don't get implicit index signatures, so use a schema's `Encoded` type or an encode call when JSON or `Record<string, T>` is required.
 - Name spans after the service or port operation they implement; use the module name only where no service exists.
 
 Run `bun run lint` on a new module as soon as it compiles, not only at the end.

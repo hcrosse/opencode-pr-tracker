@@ -122,7 +122,7 @@ export const Snapshot = Schema.Struct({
   title: Schema.String,
 })
 
-export type Snapshot = typeof Snapshot.Type
+export interface Snapshot extends Schema.Schema.Type<typeof Snapshot> {}
 
 /** Why a refresh failed, as far as a user can act on it. */
 export const Diagnostic = Schema.Literals([

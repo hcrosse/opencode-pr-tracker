@@ -5,6 +5,7 @@ import * as gs from "@hegeldev/hegel/generators"
 import { Effect, Exit, Option, Result, type Schema } from "effect"
 
 import { layer } from "../../src/adapters/Storage.ts"
+import { parsePullRequestUrl } from "../../src/domain/PullRequest.ts"
 import { attach, maximumAttachments, type Tracking } from "../../src/domain/Tracking.ts"
 import {
   StoredStateInvalid,
@@ -51,6 +52,19 @@ describe("Stored attachments", () => {
       )
 
       expect(loaded).toEqual(Exit.succeed(tracking))
+    })
+  })
+
+  test("save with the versioned JSON shape", async () => {
+    const ref = Result.getOrThrow(parsePullRequestUrl("https://github.com/acme/api/pull/1"))
+    const tracking = Result.getOrThrow(attach([], whole([ref]), 123)).tracking
+    const fake = memoryStorage()
+
+    await run(fake, (repository: TrackingRepositoryApi) => repository.save("session", tracking))
+
+    expect(fake.values.get("session/session")).toEqual({
+      pullRequests: [{ attachedAt: 123, url: "https://github.com/acme/api/pull/1" }],
+      version: 1,
     })
   })
 

@@ -20,7 +20,7 @@ export const EntryView = Schema.Struct({
   status: Status,
 })
 
-export type EntryView = typeof EntryView.Type
+export interface EntryView extends Schema.Schema.Type<typeof EntryView> {}
 
 /** A session's attached pull requests, in display order, with the configured sidebar layout. */
 export const View = Schema.Struct({
@@ -29,7 +29,7 @@ export const View = Schema.Struct({
   sessionID: Schema.String,
 })
 
-export type View = typeof View.Type
+export interface View extends Schema.Schema.Type<typeof View> {}
 
 /** A view as clients receive it: plain JSON data. */
 export type ViewData = typeof View.Encoded
@@ -45,7 +45,7 @@ const Target = Schema.Struct({ sessionID: Schema.String, target: Schema.String }
 /** The outcome of a change, with a message for the person who asked, and the session's new view. */
 export const Changed = Schema.Struct({ message: Schema.String, view: View })
 
-export type Changed = typeof Changed.Type
+export interface Changed extends Schema.Schema.Type<typeof Changed> {}
 
 export const sentChanged: (changed: Changed) => typeof Changed.Encoded = Schema.encodeSync(Changed)
 
@@ -63,7 +63,7 @@ export const Rejected = Schema.Struct({
   reason: Schema.optionalKey(Schema.String),
 })
 
-export type Rejected = typeof Rejected.Type
+export interface Rejected extends Schema.Schema.Type<typeof Rejected> {}
 
 /** The answer to a request that has nothing to report. */
 export const Done = Schema.Struct({})

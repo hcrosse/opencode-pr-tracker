@@ -11,7 +11,7 @@ export const Exchange = Schema.Struct({
   variables: Variables,
 })
 
-export type Exchange = typeof Exchange.Type
+export interface Exchange extends Schema.Schema.Type<typeof Exchange> {}
 
 /**
  * A digest of a GraphQL document. Each recorded exchange keeps the digest of the query it was
