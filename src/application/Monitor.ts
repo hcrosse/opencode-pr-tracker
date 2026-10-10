@@ -100,15 +100,16 @@ interface State extends Cache {
 }
 
 /** Records GitHub's results for pull requests as of now. */
-function remember(cache: Cache, results: ReadonlyMap<string, ItemResult>): Effect.Effect<void> {
-  return Effect.gen(function* () {
-    const now = yield* currentMillis
+const remember = Effect.fn("Monitor.remember")(function* (
+  cache: Cache,
+  results: ReadonlyMap<string, ItemResult>,
+): Effect.fn.Return<void> {
+  const now = yield* currentMillis
 
-    yield* Ref.update(cache.known, (current: ReadonlyMap<string, Known>) =>
-      recorded(current, results, now),
-    )
-  })
-}
+  yield* Ref.update(cache.known, (current: ReadonlyMap<string, Known>) =>
+    recorded(current, results, now),
+  )
+})
 
 /** Fetches `refs` and records what GitHub said; a failed request counts against each of them. */
 function update(cache: Cache, refs: readonly PullRequestRef[]): Effect.Effect<void> {
@@ -119,21 +120,22 @@ function update(cache: Cache, refs: readonly PullRequestRef[]): Effect.Effect<vo
 }
 
 /** The session's view. Agreed Stacks whose attached members sit apart are regrouped first. */
-function viewOf(state: State, sessionID: string): Effect.Effect<SessionView, StoredStateInvalid> {
-  return Effect.gen(function* () {
-    const stored = yield* state.tracker.list(sessionID)
-    const current = yield* Ref.get(state.known)
-    const entries = stored.map((attachment) => entryOf(current, attachment))
-    const stacks = agreedStacks(entries).map((stack) => stack.members)
+const viewOf = Effect.fn("Monitor.viewOf")(function* (
+  state: State,
+  sessionID: string,
+): Effect.fn.Return<SessionView, StoredStateInvalid> {
+  const stored = yield* state.tracker.list(sessionID)
+  const current = yield* Ref.get(state.known)
+  const entries = stored.map((attachment) => entryOf(current, attachment))
+  const stacks = agreedStacks(entries).map((stack) => stack.members)
 
-    if (!group(stored, stacks).changed) return { entries, sessionID }
-    // A failed regroup leaves the stored order as it was.
-    const regrouped = state.tracker.regroup(sessionID, stacks)
-    const tracking = yield* orWarned(regrouped, "Kept the order after a failed regroup", stored)
+  if (!group(stored, stacks).changed) return { entries, sessionID }
+  // A failed regroup leaves the stored order as it was.
+  const regrouped = state.tracker.regroup(sessionID, stacks)
+  const tracking = yield* orWarned(regrouped, "Kept the order after a failed regroup", stored)
 
-    return { entries: tracking.map((attachment) => entryOf(current, attachment)), sessionID }
-  })
-}
+  return { entries: tracking.map((attachment) => entryOf(current, attachment)), sessionID }
+})
 
 const publish = (state: State, sessionID: string): Effect.Effect<void> =>
   viewOf(state, sessionID).pipe(
@@ -142,67 +144,63 @@ const publish = (state: State, sessionID: string): Effect.Effect<void> =>
     Effect.annotateLogs({ sessionID }),
   )
 
-function poll(state: State): Effect.Effect<void> {
-  return Effect.gen(function* () {
-    const sessions = yield* state.leases.live()
-    // Taken before listing attachments: statuses recorded after this belong to newer attachments.
-    const known = yield* Ref.get(state.known)
-    const trackings = yield* state.invalid.validTrackings(state.tracker, sessions)
+const poll = Effect.fn("Monitor.poll")(function* (state: State): Effect.fn.Return<void> {
+  const sessions = yield* state.leases.live()
+  // Taken before listing attachments: statuses recorded after this belong to newer attachments.
+  const known = yield* Ref.get(state.known)
+  const trackings = yield* state.invalid.validTrackings(state.tracker, sessions)
 
-    const attached = new Map(
-      [...trackings.values()].flat().map((attachment) => [attachment.ref.url, attachment.ref]),
+  const attached = new Map(
+    [...trackings.values()].flat().map((attachment) => [attachment.ref.url, attachment.ref]),
+  )
+
+  const now = yield* currentMillis
+  // Choose from the cache as it is now: an attach may have recorded a report while listing.
+  const current = yield* Ref.get(state.known)
+  const due = dueOf(current, now, [...attached.values()])
+
+  // A session renewed while listing has statuses a reader may need, so pruning waits a poll.
+  if ((yield* state.leases.live()).every((id) => sessions.includes(id)))
+    yield* Ref.update(state.known, (entries: ReadonlyMap<string, Known>) =>
+      withoutUnattached(entries, known, attached),
     )
 
-    const now = yield* currentMillis
-    // Choose from the cache as it is now: an attach may have recorded a report while listing.
-    const current = yield* Ref.get(state.known)
-    const due = dueOf(current, now, [...attached.values()])
+  if (due.length === 0) return
 
-    // A session renewed while listing has statuses a reader may need, so pruning waits a poll.
-    if ((yield* state.leases.live()).every((id) => sessions.includes(id)))
-      yield* Ref.update(state.known, (entries: ReadonlyMap<string, Known>) =>
-        withoutUnattached(entries, known, attached),
-      )
+  yield* state.fetch(due)
 
-    if (due.length === 0) return
+  const dueUrls = new Set(due.map((ref) => ref.url))
 
-    yield* state.fetch(due)
+  const affected = [...trackings].flatMap(([sessionID, tracking]: readonly [string, Tracking]) =>
+    urlsOf(tracking).some((url) => dueUrls.has(url)) ? [sessionID] : [],
+  )
 
-    const dueUrls = new Set(due.map((ref) => ref.url))
-
-    const affected = [...trackings].flatMap(([sessionID, tracking]: readonly [string, Tracking]) =>
-      urlsOf(tracking).some((url) => dueUrls.has(url)) ? [sessionID] : [],
-    )
-
-    yield* Effect.forEach(affected, (sessionID: string) => publish(state, sessionID), {
-      discard: true,
-    })
+  yield* Effect.forEach(affected, (sessionID: string) => publish(state, sessionID), {
+    discard: true,
   })
-}
+})
 
 type Selection = (known: ReadonlyMap<string, Known>, now: number, ref: PullRequestRef) => boolean
 
 /** Fetches the session's pull requests that `select` picks, then publishes and returns its view. */
-function fetchAndShow(
+const fetchAndShow = Effect.fn("Monitor.fetchAndShow")(function* (
   state: State,
   sessionID: string,
   select: Selection,
-): Effect.Effect<SessionView, StoredStateInvalid> {
-  return Effect.gen(function* () {
-    const tracking = yield* state.tracker.list(sessionID)
-    const known = yield* Ref.get(state.known)
-    const now = yield* currentMillis
+): Effect.fn.Return<SessionView, StoredStateInvalid> {
+  const tracking = yield* state.tracker.list(sessionID)
+  const known = yield* Ref.get(state.known)
+  const now = yield* currentMillis
 
-    yield* state.fetch(
-      tracking.map((attachment) => attachment.ref).filter((ref) => select(known, now, ref)),
-    )
-    const view = yield* viewOf(state, sessionID)
+  yield* state.fetch(
+    tracking.map((attachment) => attachment.ref).filter((ref) => select(known, now, ref)),
+  )
+  const view = yield* viewOf(state, sessionID)
 
-    yield* PubSub.publish(state.published, view)
+  yield* PubSub.publish(state.published, view)
 
-    return view
-  })
-}
+  return view
+})
 
 const refreshable: Selection = (known, _now, ref) =>
   Option.isSome((known.get(ref.url) ?? unknown).dueAt)

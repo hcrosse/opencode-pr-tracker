@@ -78,15 +78,16 @@ function start(
   )
 }
 
-function output(command: string, child: Child): Effect.Effect<string, CommandFailed> {
-  return Effect.gen(function* () {
-    const [stdout, stderr, exitCode] = yield* Effect.promise(child.completed)
+const output = Effect.fn("CommandRunner.output")(function* (
+  command: string,
+  child: Child,
+): Effect.fn.Return<string, CommandFailed> {
+  const [stdout, stderr, exitCode] = yield* Effect.promise(child.completed)
 
-    if (exitCode === 0) return stdout
+  if (exitCode === 0) return stdout
 
-    return yield* new CommandFailed({ command, exitCode, stderr })
-  })
-}
+  return yield* new CommandFailed({ command, exitCode, stderr })
+})
 
 export const layer = Layer.succeed(
   CommandRunner,

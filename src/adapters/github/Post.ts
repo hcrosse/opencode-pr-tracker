@@ -66,30 +66,28 @@ const loggedHeader = (name: string): boolean =>
   name === "retry-after" || name.startsWith("x-ratelimit-")
 
 /** Logs a failed request with what GitHub said, so rate limits and timeouts can be told apart. */
-function logFailure(
+const logFailure = Effect.fn("Post.logFailure")(function* (
   evidence: Evidence,
   messages: readonly string[],
   started: number,
-): Effect.Effect<void> {
-  return Effect.gen(function* () {
-    const headers = Object.fromEntries(
-      Object.entries(evidence.headers).filter(([name]: readonly [string, unknown]) =>
-        loggedHeader(name),
-      ),
-    )
+): Effect.fn.Return<void> {
+  const headers = Object.fromEntries(
+    Object.entries(evidence.headers).filter(([name]: readonly [string, unknown]) =>
+      loggedHeader(name),
+    ),
+  )
 
-    yield* Effect.logWarning("GitHub request failed").pipe(
-      Effect.annotateLogs({
-        body: evidence.body.slice(0, 300),
-        durationMs: (yield* millis) - started,
-        errorTypes: evidence.errorTypes.join(","),
-        headers: JSON.stringify(headers),
-        messages: messages.join(" | "),
-        status: evidence.status,
-      }),
-    )
-  })
-}
+  yield* Effect.logWarning("GitHub request failed").pipe(
+    Effect.annotateLogs({
+      body: evidence.body.slice(0, 300),
+      durationMs: (yield* millis) - started,
+      errorTypes: evidence.errorTypes.join(","),
+      headers: JSON.stringify(headers),
+      messages: messages.join(" | "),
+      status: evidence.status,
+    }),
+  )
+})
 
 const timeoutStatuses = new Set([502, 504])
 
@@ -137,7 +135,7 @@ function unusableBody(cutOff: boolean, envelope: Option.Option<Envelope>): Unusa
 }
 
 /** The failure for a response that was not a usable answer, recording any rate limit it reports. */
-const unanswered = Effect.fn("unanswered")(function* (
+const unanswered = Effect.fn("Post.unanswered")(function* (
   rateLimit: RateLimitApi,
   evidence: Evidence,
   unusable: Unusable,
@@ -166,7 +164,7 @@ interface Services {
  * the body's Content-Type. Anything else, such as a rate-limited or timed-out query, is logged and
  * fails.
  */
-const read = Effect.fn("read")(function* (
+const read = Effect.fn("Post.read")(function* (
   rateLimit: RateLimitApi,
   response: HttpClientResponse.HttpClientResponse,
   started: number,
@@ -200,7 +198,7 @@ const read = Effect.fn("read")(function* (
   return yield* unanswered(rateLimit, evidence, unusable)
 })
 
-const attempt = Effect.fn("attempt")(function* (
+const attempt = Effect.fn("Post.attempt")(function* (
   services: Services,
   query: string,
   variables: Variables,
@@ -229,7 +227,7 @@ const attempt = Effect.fn("attempt")(function* (
  * Posts one GraphQL document. A 401 refreshes the token and retries once. A rate-limited response
  * stops every request until GitHub's wait ends, as `RateLimit` records it.
  */
-export const makePost = Effect.fn("makePost")(function* (): Effect.fn.Return<
+export const makePost = Effect.fn("Post.makePost")(function* (): Effect.fn.Return<
   Post,
   never,
   HttpClient.HttpClient | Token | RateLimit

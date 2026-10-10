@@ -48,7 +48,7 @@ const ContextPages = Schema.Struct({
  * Posts straight to GitHub rather than through `gh api graphql`, which fails without printing the
  * response when it carries GraphQL errors, as it does for a missing pull request.
  */
-const post = Effect.fn("post")(function* (query: string, variables: Variables) {
+const post = Effect.fn("GitHubFixtures.post")(function* (query: string, variables: Variables) {
   const runner = yield* CommandRunner
   const token = (yield* runner.run("gh", ["auth", "token"], process.cwd())).trim()
 
@@ -84,7 +84,10 @@ interface Pending {
   readonly pageSize: number
 }
 
-const pages = Effect.fn("pages")(function* (first: Schema.Json, { key, pageSize, ref }: Pending) {
+const pages = Effect.fn("GitHubFixtures.pages")(function* (
+  first: Schema.Json,
+  { key, pageSize, ref }: Pending,
+) {
   const query = continuation(pageSize)
   const exchanges: { queryDigest: string; variables: Variables; response: Schema.Json }[] = []
   let cursor = nextCursor(first, key)
@@ -100,7 +103,7 @@ const pages = Effect.fn("pages")(function* (first: Schema.Json, { key, pageSize,
   return exchanges
 })
 
-const record = Effect.fn("record")(function* (
+const record = Effect.fn("GitHubFixtures.record")(function* (
   name: string,
   urls: readonly string[],
   pageSize: number,

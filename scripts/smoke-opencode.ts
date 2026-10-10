@@ -38,7 +38,11 @@ type ServerAddress = typeof ServerAddress.Type
 
 const addressPattern = /server listening on (?<url>\S+)\s+server password (?<password>\S+)/u
 
-const run = Effect.fn("run")(function* (command: string, args: readonly string[], cwd: string) {
+const run = Effect.fn("SmokeOpenCode.run")(function* (
+  command: string,
+  args: readonly string[],
+  cwd: string,
+) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
   const options = { cwd, stderr: "inherit", stdout: "inherit" } as const
 
@@ -51,7 +55,7 @@ const run = Effect.fn("run")(function* (command: string, args: readonly string[]
     )
 })
 
-const opencodeBinary = Effect.fn("opencodeBinary")(function* () {
+const opencodeBinary = Effect.fn("SmokeOpenCode.opencodeBinary")(function* () {
   const override = process.env["OPENCODE_BIN"] ?? ""
 
   if (override !== "") return override
@@ -77,7 +81,10 @@ const opencodeBinary = Effect.fn("opencodeBinary")(function* () {
   return yield* Effect.die(`No OpenCode binary for ${base}`)
 })
 
-const preparePackage = Effect.fn("preparePackage")(function* (root: string, runDirectory: string) {
+const preparePackage = Effect.fn("SmokeOpenCode.preparePackage")(function* (
+  root: string,
+  runDirectory: string,
+) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const project = path.join(runDirectory, "project")
@@ -116,12 +123,15 @@ function parseAddress(output: string): Option.Option<ServerAddress> {
 
 const token = process.env["GH_TOKEN"] ?? ""
 
-const startServer = Effect.fn("startServer")(function* (binary: string, runDirectory: string) {
+// Isolate OpenCode from the developer's configuration, credentials, and data. The GitHub steps
+// need a token, which is passed on only when one is set.
+const startServer = Effect.fn("SmokeOpenCode.startServer")(function* (
+  binary: string,
+  runDirectory: string,
+) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
   const home = `${runDirectory}/home`
 
-  // Isolate OpenCode from the developer's configuration, credentials, and data. The GitHub steps
-  // need a token, which is passed on only when one is set.
   const variables: readonly (readonly [string, string])[] = [
     ["HOME", home],
     ["PATH", process.env["PATH"] ?? ""],
@@ -155,7 +165,7 @@ const startServer = Effect.fn("startServer")(function* (binary: string, runDirec
   })
 })
 
-const pluginState = Effect.fn("pluginState")(function* (
+const pluginState = Effect.fn("SmokeOpenCode.pluginState")(function* (
   url: string,
   password: string,
   project: string,
@@ -185,7 +195,9 @@ const pluginState = Effect.fn("pluginState")(function* (
 })
 
 // A plugin whose install fails or stalls is absent from /api/plugin; only OpenCode's log says why.
-const printOpenCodeLogs = Effect.fn("printOpenCodeLogs")(function* (runDirectory: string) {
+const printOpenCodeLogs = Effect.fn("SmokeOpenCode.printOpenCodeLogs")(function* (
+  runDirectory: string,
+) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
   const logDirectory = path.join(runDirectory, "home", ".local", "share", "opencode", "log")

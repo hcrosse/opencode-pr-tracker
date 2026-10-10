@@ -18,19 +18,18 @@ import {
 } from "../support/monitor.ts"
 
 /** Polls once after the clock moves by `elapsed`, and returns the pull requests it fetched. */
-const pollAfter = (
+const pollAfter = Effect.fnUntraced(function* (
   github: GitHubScript,
   app: App,
   elapsed: "0 seconds" | "15 seconds" | "30 seconds",
-): Effect.Effect<number[][]> =>
-  Effect.gen(function* () {
-    const before = github.fetches.length
+): Effect.fn.Return<number[][]> {
+  const before = github.fetches.length
 
-    yield* TestClock.adjust(elapsed)
-    yield* app.monitor.poll
+  yield* TestClock.adjust(elapsed)
+  yield* app.monitor.poll
 
-    return fetchedSince(github, before)
-  })
+  return fetchedSince(github, before)
+})
 
 describe("Monitor leases", () => {
   test("polls a watched session until its lease lapses, and again once it is renewed", async () => {

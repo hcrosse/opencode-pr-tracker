@@ -15,43 +15,42 @@ import { registerTools } from "./server/Tools.ts"
 const pollInterval = "1 second"
 
 export default Plugin.define({
-  effect: (ctx) =>
-    Effect.gen(function* () {
-      // OpenCode's plugin effect has no error channel. OpenCode lists a plugin that dies here as
-      // failed, with the defect's message as its error.
-      const { layout, reviews } = yield* settingsOf(ctx.options).pipe(Effect.orDie)
+  effect: Effect.fnUntraced(function* (ctx: Plugin.Context) {
+    // OpenCode's plugin effect has no error channel. OpenCode lists a plugin that dies here as
+    // failed, with the defect's message as its error.
+    const { layout, reviews } = yield* settingsOf(ctx.options).pipe(Effect.orDie)
 
-      const application = monitorLayer.pipe(
-        Layer.provideMerge(trackerLayer),
-        Layer.provide([githubLive(ctx.storage, reviews), storageLayer(ctx.storage)]),
-      )
+    const application = monitorLayer.pipe(
+      Layer.provideMerge(trackerLayer),
+      Layer.provide([githubLive(ctx.storage, reviews), storageLayer(ctx.storage)]),
+    )
 
-      const context = yield* Layer.build(application)
+    const context = yield* Layer.build(application)
 
-      const services: Services = {
-        monitor: Context.get(context, Monitor),
-        tracker: Context.get(context, Tracker),
-      }
+    const services: Services = {
+      monitor: Context.get(context, Monitor),
+      tracker: Context.get(context, Tracker),
+    }
 
-      const settings: Settings = {
-        directory: ctx.location.directory,
-        layout,
-      }
+    const settings: Settings = {
+      directory: ctx.location.directory,
+      layout,
+    }
 
-      const registration = yield* ctx.rpc
-        .register(PullRequestTracker, handlers(services, settings))
-        .pipe(Effect.orDie)
+    const registration = yield* ctx.rpc
+      .register(PullRequestTracker, handlers(services, settings))
+      .pipe(Effect.orDie)
 
-      yield* registerTools(ctx.tool, services, settings)
-      yield* Effect.forkScoped(forgetDeletedSessions(ctx.event.subscribe(), services))
-      yield* Effect.forkScoped(pollRepeatedly(services.monitor.poll, pollInterval))
-      yield* Effect.forkScoped(
-        sendUpdates(
-          services.monitor.changes,
-          (view) => Schema.encodeEffect(View)(toView(view, settings.layout)),
-          (data) => registration.events.emit("updated", data),
-        ),
-      )
-    }),
+    yield* registerTools(ctx.tool, services, settings)
+    yield* Effect.forkScoped(forgetDeletedSessions(ctx.event.subscribe(), services))
+    yield* Effect.forkScoped(pollRepeatedly(services.monitor.poll, pollInterval))
+    yield* Effect.forkScoped(
+      sendUpdates(
+        services.monitor.changes,
+        (view) => Schema.encodeEffect(View)(toView(view, settings.layout)),
+        (data) => registration.events.emit("updated", data),
+      ),
+    )
+  }),
   id: "opencode-pr-tracker",
 })

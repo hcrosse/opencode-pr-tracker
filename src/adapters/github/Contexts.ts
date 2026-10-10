@@ -102,7 +102,7 @@ export interface Asking {
 export type Rollup = Readonly<{ contexts: Contexts }> | null
 
 /** Every check context for a pull request, following continuation pages. */
-export const allContexts = Effect.fn("allContexts")(function* (
+export const allContexts = Effect.fn("GitHub.allContexts")(function* (
   { pageSize, post }: Asking,
   ref: PullRequestRef,
   rollup: Rollup,
