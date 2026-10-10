@@ -1,362 +1,367 @@
 {
   "exchanges": [
     {
+      "queryDigest": "b0d70ccfb44a36f6c38f70fe16f83a02f3e1331e77e06d9e0f9a337f409aad55",
       "response": {
         "data": {
           "pr0": {
-            "__typename": "PullRequest",
-            "url": "https://github.com/kubernetes/kubernetes/pull/142875",
-            "title": "DRA: use ktesting in staging repo",
-            "state": "OPEN",
-            "isDraft": false,
-            "mergeable": "MERGEABLE",
-            "mergeStateStatus": "BLOCKED",
-            "headRefOid": "28e332c912fdf2bbec05683df8a525f6f8dbef62",
-            "author": {
-              "login": "pohly"
-            },
-            "reviewDecision": null,
-            "latestOpinionatedReviews": {
-              "pageInfo": {
-                "hasNextPage": false
+            "pullRequest": {
+              "title": "DRA: use ktesting in staging repo",
+              "state": "OPEN",
+              "isDraft": false,
+              "mergeable": "MERGEABLE",
+              "mergeStateStatus": "BLOCKED",
+              "headRefOid": "28e332c912fdf2bbec05683df8a525f6f8dbef62",
+              "author": {
+                "login": "pohly"
               },
-              "nodes": []
-            },
-            "reviewThreads": {
-              "pageInfo": {
-                "hasNextPage": false
-              },
-              "nodes": []
-            },
-            "stack": null,
-            "statusCheckRollup": {
-              "contexts": {
+              "reviewDecision": null,
+              "latestOpinionatedReviews": {
                 "pageInfo": {
-                  "hasNextPage": false,
-                  "endCursor": "MjI"
+                  "hasNextPage": false
                 },
-                "nodes": [
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-verify",
-                    "state": "FAILURE",
-                    "createdAt": "2026-10-09T16:01:00Z"
+                "nodes": []
+              },
+              "reviewThreads": {
+                "pageInfo": {
+                  "hasNextPage": false
+                },
+                "nodes": []
+              },
+              "stack": null,
+              "statusCheckRollup": {
+                "contexts": {
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "endCursor": "MjI"
                   },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "tide",
-                    "state": "PENDING",
-                    "createdAt": "2026-10-09T15:33:34Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "EasyCLA",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T15:33:14Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-apidiff-client-go",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T15:36:43Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-cmd",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T15:42:17Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-conformance-kind-ga-only-parallel",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T15:47:59Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-dependencies",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T15:35:32Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-dra-integration",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T16:04:08Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-e2e-gce",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T16:23:11Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-e2e-kind",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T15:59:36Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-integration",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T16:05:47Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-kind-dra",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T16:00:02Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-kind-dra-all",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T16:00:45Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-kind-dra-n-1",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T15:58:01Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-kind-dra-n-2",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T15:57:32Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-kind-dra-n-3",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T15:58:20Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-linter-hints",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T15:43:55Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-node-e2e-containerd",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T16:11:52Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-node-e2e-containerd-2-1-ubuntu-dra",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T16:11:39Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-node-e2e-containerd-2-1-ubuntu-dra-alpha-beta-features",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T16:11:25Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-typecheck",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T15:35:32Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-unit",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-10-09T15:55:57Z"
-                  }
-                ]
+                  "nodes": [
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-verify",
+                      "state": "FAILURE",
+                      "createdAt": "2026-10-09T16:01:00Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "tide",
+                      "state": "PENDING",
+                      "createdAt": "2026-10-09T15:33:34Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "EasyCLA",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T15:33:14Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-apidiff-client-go",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T15:36:43Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-cmd",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T15:42:17Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-conformance-kind-ga-only-parallel",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T15:47:59Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-dependencies",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T15:35:32Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-dra-integration",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T16:04:08Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-e2e-gce",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T16:23:11Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-e2e-kind",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T15:59:36Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-integration",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T16:05:47Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-kind-dra",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T16:00:02Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-kind-dra-all",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T16:00:45Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-kind-dra-n-1",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T15:58:01Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-kind-dra-n-2",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T15:57:32Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-kind-dra-n-3",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T15:58:20Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-linter-hints",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T15:43:55Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-node-e2e-containerd",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T16:11:52Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-node-e2e-containerd-2-1-ubuntu-dra",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T16:11:39Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-node-e2e-containerd-2-1-ubuntu-dra-alpha-beta-features",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T16:11:25Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-typecheck",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T15:35:32Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-unit",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-10-09T15:55:57Z"
+                    }
+                  ]
+                }
               }
             }
           },
           "pr1": {
-            "__typename": "PullRequest",
-            "url": "https://github.com/kubernetes/kubernetes/pull/142334",
-            "title": "volume: cap recycler timeout at math.MaxInt32",
-            "state": "OPEN",
-            "isDraft": false,
-            "mergeable": "MERGEABLE",
-            "mergeStateStatus": "BLOCKED",
-            "headRefOid": "cfb0bc1897b001df3281bbe16e2f0cb82be63744",
-            "author": {
-              "login": "antcybersec"
-            },
-            "reviewDecision": null,
-            "latestOpinionatedReviews": {
-              "pageInfo": {
-                "hasNextPage": false
+            "pullRequest": {
+              "title": "volume: cap recycler timeout at math.MaxInt32",
+              "state": "OPEN",
+              "isDraft": false,
+              "mergeable": "UNKNOWN",
+              "mergeStateStatus": "UNKNOWN",
+              "headRefOid": "cfb0bc1897b001df3281bbe16e2f0cb82be63744",
+              "author": {
+                "login": "antcybersec"
               },
-              "nodes": []
-            },
-            "reviewThreads": {
-              "pageInfo": {
-                "hasNextPage": false
-              },
-              "nodes": [
-                {
-                  "isResolved": false,
-                  "comments": {
-                    "nodes": [
-                      {
-                        "state": "SUBMITTED",
-                        "author": {
-                          "login": "thc1006"
-                        }
-                      },
-                      {
-                        "state": "SUBMITTED",
-                        "author": {
-                          "login": "antcybersec"
-                        }
-                      },
-                      {
-                        "state": "SUBMITTED",
-                        "author": {
-                          "login": "thc1006"
-                        }
-                      },
-                      {
-                        "state": "SUBMITTED",
-                        "author": {
-                          "login": "antcybersec"
-                        }
-                      }
-                    ]
-                  }
-                }
-              ]
-            },
-            "stack": null,
-            "statusCheckRollup": {
-              "contexts": {
+              "reviewDecision": null,
+              "latestOpinionatedReviews": {
                 "pageInfo": {
-                  "hasNextPage": false,
-                  "endCursor": "MTg"
+                  "hasNextPage": false
+                },
+                "nodes": []
+              },
+              "reviewThreads": {
+                "pageInfo": {
+                  "hasNextPage": false
                 },
                 "nodes": [
                   {
-                    "__typename": "StatusContext",
-                    "context": "tide",
-                    "state": "PENDING",
-                    "createdAt": "2026-09-23T19:10:25Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "EasyCLA",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T19:09:58Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-cmd",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T19:19:21Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-conformance-kind-ga-only-parallel",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T19:24:48Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-dependencies",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T19:12:27Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-e2e-gce",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T21:57:37Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-e2e-gce-csi-serial",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T20:49:00Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-e2e-gce-storage-slow",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T19:46:54Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-e2e-gce-storage-snapshot",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T21:07:59Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-e2e-kind",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T19:37:15Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-e2e-storage-kind-disruptive",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T19:28:51Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-e2e-storage-kind-vac",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T19:24:36Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-integration",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T19:42:33Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-linter-hints",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T19:19:52Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-node-e2e-containerd",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T19:56:30Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-typecheck",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T19:12:28Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-unit",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T19:33:22Z"
-                  },
-                  {
-                    "__typename": "StatusContext",
-                    "context": "pull-kubernetes-verify",
-                    "state": "SUCCESS",
-                    "createdAt": "2026-09-23T19:36:56Z"
+                    "isResolved": false,
+                    "comments": {
+                      "nodes": [
+                        {
+                          "state": "SUBMITTED",
+                          "author": {
+                            "login": "thc1006"
+                          }
+                        },
+                        {
+                          "state": "SUBMITTED",
+                          "author": {
+                            "login": "antcybersec"
+                          }
+                        },
+                        {
+                          "state": "SUBMITTED",
+                          "author": {
+                            "login": "thc1006"
+                          }
+                        },
+                        {
+                          "state": "SUBMITTED",
+                          "author": {
+                            "login": "antcybersec"
+                          }
+                        }
+                      ]
+                    }
                   }
                 ]
+              },
+              "stack": null,
+              "statusCheckRollup": {
+                "contexts": {
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "endCursor": "MTg"
+                  },
+                  "nodes": [
+                    {
+                      "__typename": "StatusContext",
+                      "context": "tide",
+                      "state": "PENDING",
+                      "createdAt": "2026-09-23T19:10:25Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "EasyCLA",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T19:09:58Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-cmd",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T19:19:21Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-conformance-kind-ga-only-parallel",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T19:24:48Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-dependencies",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T19:12:27Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-e2e-gce",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T21:57:37Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-e2e-gce-csi-serial",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T20:49:00Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-e2e-gce-storage-slow",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T19:46:54Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-e2e-gce-storage-snapshot",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T21:07:59Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-e2e-kind",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T19:37:15Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-e2e-storage-kind-disruptive",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T19:28:51Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-e2e-storage-kind-vac",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T19:24:36Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-integration",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T19:42:33Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-linter-hints",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T19:19:52Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-node-e2e-containerd",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T19:56:30Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-typecheck",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T19:12:28Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-unit",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T19:33:22Z"
+                    },
+                    {
+                      "__typename": "StatusContext",
+                      "context": "pull-kubernetes-verify",
+                      "state": "SUCCESS",
+                      "createdAt": "2026-09-23T19:36:56Z"
+                    }
+                  ]
+                }
               }
             }
           }
         }
       },
       "variables": {
-        "pr0": "https://github.com/kubernetes/kubernetes/pull/142875",
-        "pr1": "https://github.com/kubernetes/kubernetes/pull/142334"
+        "pr0_owner": "kubernetes",
+        "pr0_name": "kubernetes",
+        "pr0_number": 142875,
+        "pr1_owner": "kubernetes",
+        "pr1_name": "kubernetes",
+        "pr1_number": 142334
       }
     }
   ],
   "pageSize": 100,
-  "recordedAt": "2026-10-10T01:45:08.406Z"
+  "recordedAt": "2026-10-10T02:22:52.762Z"
 }

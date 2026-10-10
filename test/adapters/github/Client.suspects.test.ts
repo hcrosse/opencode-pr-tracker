@@ -14,6 +14,7 @@ import {
   type HttpFake,
   type RequestBody,
 } from "../../support/github.ts"
+import { found, requested } from "../../support/lookup.ts"
 
 const numbers = (count: number): number[] =>
   Array.from({ length: count }, (_, index: number) => index + 1)
@@ -23,11 +24,11 @@ function timingOutOn(stuck: readonly number[]): HttpFake {
   const urls = new Set(stuck.map((number: number) => acmeRef(number).url))
 
   return httpClient((body: RequestBody) =>
-    Object.values(body.variables).some((url: string) => urls.has(url))
+    [...requested(body).values()].some((url: string) => urls.has(url))
       ? new Response("gateway timeout", { status: 504 })
       : Response.json({
           data: Object.fromEntries(
-            Object.keys(body.variables).map((key: string) => [key, recordedPullRequest]),
+            [...requested(body).keys()].map((key: string) => [key, found(recordedPullRequest)]),
           ),
         }),
   )
@@ -38,7 +39,7 @@ const sentSince = (http: HttpFake, from: number): number[][] =>
   http.requests
     .slice(from)
     .map((request: RequestBody) =>
-      Object.values(request.variables).map((url: string) => Number(url.split("/").at(-1))),
+      [...requested(request).values()].map((url: string) => Number(url.split("/").at(-1))),
     )
 
 const failedOf = (results: ReadonlyMap<string, ItemResult>): number[] =>
@@ -101,6 +102,10 @@ describe("GitHub client suspects", () => {
   })
 })
 
+/** The aliases a batch request asks for, or `"page"` for a page of checks. */
+const sent = (request: RequestBody): readonly string[] | "page" =>
+  "cursor" in request.variables ? "page" : [...requested(request).keys()]
+
 describe("GitHub client on a page of checks that times out", () => {
   test("sends the pull request alone after the others next time", async () => {
     const paged = recordedNode("paginated", "pr1")
@@ -110,9 +115,9 @@ describe("GitHub client on a page of checks that times out", () => {
         ? new Response("gateway timeout", { status: 504 })
         : Response.json({
             data: Object.fromEntries(
-              Object.entries(body.variables).map(([key, url]: readonly [string, string]) => [
+              [...requested(body)].map(([key, url]: readonly [string, string]) => [
                 key,
-                url === tracker127.url ? paged : null,
+                url === tracker127.url ? found(paged) : null,
               ]),
             ),
           }),
@@ -129,12 +134,12 @@ describe("GitHub client on a page of checks that times out", () => {
       Exit.succeed({ _tag: "Failed", charged: true, diagnostic: "GitHubUnavailable" }),
     )
     // A first batch with its page of checks, then #2, then #127 alone with its page.
-    expect(http.requests.map((request: RequestBody) => Object.keys(request.variables))).toEqual([
+    expect(http.requests.map((request: RequestBody) => sent(request))).toEqual([
       ["pr0", "pr1"],
-      ["cursor", "url"],
+      "page",
       ["pr0"],
       ["pr0"],
-      ["cursor", "url"],
+      "page",
     ])
   })
 })
@@ -145,7 +150,7 @@ describe("GitHub client suspects GitHub answers for", () => {
       count === 1
         ? new Response("gateway timeout", { status: 504 })
         : Response.json({
-            data: Object.fromEntries(Object.keys(body.variables).map((key) => [key, null])),
+            data: Object.fromEntries([...requested(body).keys()].map((key) => [key, null])),
           }),
     )
 

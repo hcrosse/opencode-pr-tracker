@@ -14,6 +14,7 @@ import {
   type HttpFake,
   type RequestBody,
 } from "../../support/github.ts"
+import { requested } from "../../support/lookup.ts"
 
 const answered = (): Response => Response.json({ data: { pr0: null } })
 
@@ -77,9 +78,9 @@ describe("GitHub client rate limits reported with data", () => {
 
 /** Answers #1, limits #2 for a minute, and gives #3 a limit without a time. */
 const byPullRequest = (body: RequestBody): Response => {
-  if (body.variables["pr0"] === acmeRef(1).url) return answered()
+  if (requested(body).get("pr0") === acmeRef(1).url) return answered()
 
-  return body.variables["pr0"] === acmeRef(2).url
+  return requested(body).get("pr0") === acmeRef(2).url
     ? forbidden("", { "retry-after": "60" })
     : secondaryLimit()
 }

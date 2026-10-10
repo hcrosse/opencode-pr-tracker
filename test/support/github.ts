@@ -18,31 +18,16 @@ import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullR
 import type { ReviewMode } from "../../src/domain/Review.ts"
 import { GitHub, type GitHubApi, type ItemResult } from "../../src/ports/GitHub.ts"
 import { memoryStorage, type StorageFake } from "./application.ts"
-
-const Exchange = Schema.Struct({
-  response: Schema.Json,
-  variables: Schema.Record(Schema.String, Schema.String),
-})
+import { Exchange, exchangeKey, queryDigest, Variables } from "./exchange.ts"
+import { answeredNode } from "./lookup.ts"
 
 const Fixture = Schema.fromJsonString(Schema.Struct({ exchanges: Schema.Array(Exchange) }))
 
 const RequestBody = Schema.fromJsonString(
-  Schema.Struct({ query: Schema.String, variables: Schema.Record(Schema.String, Schema.String) }),
+  Schema.Struct({ query: Schema.String, variables: Variables }),
 )
 
-const BatchData = Schema.Struct({ data: Schema.Record(Schema.String, Schema.Json) })
-
-export type Exchange = typeof Exchange.Type
-
 export type RequestBody = typeof RequestBody.Type
-
-const key = (variables: Readonly<Record<string, string>>): string =>
-  JSON.stringify(
-    Object.entries(variables).toSorted(
-      ([left]: readonly [string, string], [right]: readonly [string, string]) =>
-        left.localeCompare(right),
-    ),
-  )
 
 export function fixture(name: string): readonly Exchange[] {
   const file = path.join(import.meta.dir, "..", "fixtures", "github", `${name}.json`)
@@ -50,14 +35,12 @@ export function fixture(name: string): readonly Exchange[] {
   return Schema.decodeUnknownSync(Fixture)(readFileSync(file, "utf8")).exchanges
 }
 
-/** The recorded GraphQL node for `alias` in the first exchange of fixture `name`. */
-export function recordedNode(name: string, alias: string): Schema.Json {
-  return Option.match(Option.fromNullishOr(fixture(name)[0]), {
+/** The recorded pull request node for `alias` in the first exchange of fixture `name`. */
+export const recordedNode = (name: string, alias: string): Schema.Json =>
+  Option.match(Option.fromNullishOr(fixture(name)[0]), {
     onNone: () => null,
-    onSome: (first: Exchange) =>
-      Schema.decodeUnknownSync(BatchData)(first.response).data[alias] ?? null,
+    onSome: (first: Exchange) => answeredNode(first.response, alias),
   })
-}
 
 function bodyOf(request: HttpClientRequest.HttpClientRequest): RequestBody {
   const bytes = request.body._tag === "Uint8Array" ? request.body.body : new Uint8Array()
@@ -99,17 +82,23 @@ export function httpClient(respond: Responder): HttpFake {
   return { layer: Layer.succeed(HttpClient.HttpClient, client), requests }
 }
 
-/** Replays recorded exchanges by request variables; an unrecorded request gets a 599. */
+/** Replays recorded exchanges by query and variables; an unrecorded request gets a 599. */
 export function replay(exchanges: readonly Exchange[]): HttpFake {
   const responses = new Map(
-    exchanges.map((exchange: Exchange) => [key(exchange.variables), exchange.response]),
+    exchanges.map((exchange: Exchange) => [
+      exchangeKey(exchange.queryDigest, exchange.variables),
+      exchange.response,
+    ]),
   )
 
   return httpClient((body: RequestBody) =>
-    Option.match(Option.fromNullishOr(responses.get(key(body.variables))), {
-      onNone: () => new Response("unrecorded request", { status: 599 }),
-      onSome: (response: Schema.Json) => Response.json(response),
-    }),
+    Option.match(
+      Option.fromNullishOr(responses.get(exchangeKey(queryDigest(body.query), body.variables))),
+      {
+        onNone: () => new Response("unrecorded request", { status: 599 }),
+        onSome: (response: Schema.Json) => Response.json(response),
+      },
+    ),
   )
 }
 
@@ -224,6 +213,8 @@ export interface ClientSetup {
   /** Plugin storage, where rate-limit waits are kept. Share one to model several plugin instances. */
   readonly storage?: StorageFake
   readonly reviews?: ReviewMode
+  /** Check contexts the client asks for per page. */
+  readonly pageSize?: number
 }
 
 /** Runs `use` against the real GitHub client over fake HTTP, token, storage and `gh`. */
@@ -235,7 +226,7 @@ export async function runClient<A, E>(
   const commands = setup.commands ?? fixedCommands({})
   const storage = setup.storage ?? memoryStorage()
 
-  const layer = clientLayer(setup.reviews ?? "all").pipe(
+  const layer = clientLayer(setup.reviews ?? "all", setup.pageSize).pipe(
     Layer.provide([setup.http.layer, token.layer, commands.layer, rateLimitLayer(storage.storage)]),
   )
 
