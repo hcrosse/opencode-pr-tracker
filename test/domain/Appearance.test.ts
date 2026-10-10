@@ -5,6 +5,7 @@ import { Result } from "effect"
 
 import { appearance } from "../../src/domain/Appearance.ts"
 import { parsePullRequestUrl } from "../../src/domain/PullRequest.ts"
+import { noReview } from "../../src/domain/Review.ts"
 import { failed, succeeded, type PullRequestState } from "../../src/domain/Snapshot.ts"
 import { diagnostics, snapshots } from "../support/generators.ts"
 
@@ -18,6 +19,7 @@ const open = (
   ci: fields.ci ?? "passed",
   draft: fields.draft ?? false,
   mergeability: fields.mergeability ?? "mergeable",
+  review: noReview,
 })
 
 const shown = (state: PullRequestState): readonly [string, string, boolean] => {

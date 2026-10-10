@@ -2,6 +2,9 @@
 
 export const defaultPageSize = 100
 
+/** Review threads fetched per pull request; when there are more, counts are lower bounds. */
+const reviewPageSize = 20
+
 const contexts = (pageSize: number, after: string): string => `
   contexts(first: ${String(pageSize)}${after}) {
     pageInfo { hasNextPage endCursor }
@@ -24,6 +27,12 @@ const pullRequest = (pageSize: number): string => `
   __typename
   ... on PullRequest {
     url title state isDraft mergeable mergeStateStatus
+    headRefOid author { login } reviewDecision
+    latestOpinionatedReviews(first: 20, writersOnly: true) { nodes { state commit { oid } } }
+    reviewThreads(first: ${String(reviewPageSize)}) {
+      pageInfo { hasNextPage }
+      nodes { isResolved comments(last: 5) { nodes { state author { login } } } }
+    }
     stack {
       id size
       entries(first: 100) {

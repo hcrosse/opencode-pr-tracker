@@ -116,8 +116,8 @@ const program = Effect.gen(function* () {
     ],
     100,
   )
-  yield* record("status-contexts", [`${kubernetes}/142335`, `${kubernetes}/142334`], 100)
-  yield* record("paginated", [`${kubernetes}/142339`, `${repository}/127`], 5)
+  yield* record("status-contexts", [`${kubernetes}/142875`, `${kubernetes}/142334`], 100)
+  yield* record("paginated", [`${kubernetes}/142865`, `${repository}/127`], 5)
 })
 
 NodeRuntime.runMain(program.pipe(Effect.provide([NodeServices.layer, commandLayer])))

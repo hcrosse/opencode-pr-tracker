@@ -1,10 +1,12 @@
-import { Array as Arr, Option, Result, Schema } from "effect"
+import { Array as Arr, Option, Result, Schema, Struct } from "effect"
 
 import { classifyCi, type Check, type CheckOutcome } from "../../domain/Checks.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../domain/PullRequest.ts"
+import { reviewOf } from "../../domain/Review.ts"
 import type { Diagnostic, Mergeability, PullRequestState } from "../../domain/Snapshot.ts"
 import type { Membership } from "../../domain/StackLayout.ts"
 import type { ItemResult, Report } from "../../ports/GitHub.ts"
+import { reviewFields, toReviewEvidence } from "./Reviews.ts"
 
 const PageInfo = Schema.Struct({
   endCursor: Schema.NullOr(Schema.String),
@@ -78,7 +80,7 @@ export const PullRequestNode = Schema.Struct({
   statusCheckRollup: Schema.NullOr(Schema.Struct({ contexts: Contexts })),
   title: Schema.String,
   url: Schema.String,
-})
+}).mapFields(Struct.assign(reviewFields))
 
 export type PullRequestNode = typeof PullRequestNode.Type
 
@@ -173,6 +175,7 @@ function toState(node: PullRequestNode, contexts: readonly ContextNode[]): PullR
     ci: classifyCi(contexts.map((context) => toCheck(context))),
     draft: node.isDraft,
     mergeability: mergeabilities[node.mergeable],
+    review: reviewOf(toReviewEvidence(node)),
   }
 }
 

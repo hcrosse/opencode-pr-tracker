@@ -2,6 +2,7 @@ import * as gs from "@hegeldev/hegel/generators"
 import { Result } from "effect"
 
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
+import { Decision, type Review } from "../../src/domain/Review.ts"
 import {
   Ci,
   Diagnostic,
@@ -56,6 +57,19 @@ const ci = gs.sampledFrom(Ci.literals)
 
 const mergeability = gs.sampledFrom(Mergeability.literals)
 
+/** Review states as GitHub's first 20 threads can produce them; incomplete when all 20 were fetched. */
+export const reviews: gs.Generator<Review> = gs.composite((tc) => {
+  const fetched = tc.draw(gs.integers({ maxValue: 20, minValue: 0 }))
+  const unresolved = tc.draw(gs.integers({ maxValue: fetched, minValue: 0 }))
+  const replied = tc.draw(gs.integers({ maxValue: unresolved, minValue: 0 }))
+  const complete = fetched < 20 || tc.draw(gs.booleans())
+
+  return {
+    decision: tc.draw(gs.sampledFrom(Decision.literals)),
+    threads: { complete, fetched, replied, unreplied: unresolved - replied },
+  }
+})
+
 export const pullRequestStates: gs.Generator<PullRequestState> = gs.oneOf<PullRequestState>(
   gs.record({
     _tag: gs.just("Open" as const),
@@ -63,6 +77,7 @@ export const pullRequestStates: gs.Generator<PullRequestState> = gs.oneOf<PullRe
     ci,
     draft: gs.booleans(),
     mergeability,
+    review: reviews,
   }),
   gs.just({ _tag: "Merged" }),
   gs.just({ _tag: "Closed" }),

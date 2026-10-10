@@ -38,6 +38,11 @@ Each item names the V2 module that owns it.
   - Checks tied for newest are all kept.
   - Every non-completed check run status counts as pending.
 - A null status rollup means no checks.
+- An open pull request, drafts included, also has a review state (`domain/Review`): a decision and counts of unresolved review threads. Merged and closed pull requests have none.
+  - The decision is GitHub's `reviewDecision` (approved, changes requested, review required). When that is null, it is derived from writers' latest opinionated reviews: any change request, else any approval, else none. Review required is never derived. A decision GitHub adds later reads as none.
+  - An approval, reported or derived, is a stale approval when no approving review is of the head commit.
+  - Only unresolved threads count, outdated ones included. A thread is replied when its latest submitted comment, among its last 5, is by the pull request author; otherwise, including ghost authors and threads with only pending comments, it is unreplied.
+  - Only the first 20 threads are fetched. When there are more, the counts are lower bounds.
 - "Behind" appears only when GitHub reports `mergeStateStatus: BEHIND`, which requires a strict up-to-date policy on the base.
 - A missing or inaccessible pull request is reported per item. Other items in the batch still succeed.
 - GraphQL partial errors affect only their own item.
@@ -74,6 +79,7 @@ Each item names the V2 module that owns it.
   CI is used while GitHub is still computing mergeability.
 
 - Stale status is shown as a separate soft-failure marker.
+- Review state follows the status on the first line, each part after a muted `·` and before the stale marker: `approved` (green), `stale approval` (yellow), `changes` (yellow) or `review` (gray), then `N unreplied` (yellow) and `N replied` (gray). Zero counts and no decision are omitted. Lower bounds show as `N+`, or `20+ threads` when none of the first 20 threads is unresolved. Review state never changes the status color. A stale status keeps its last review state.
 - Stacks:
   - Stack members appear together in Stack order with `┌─`, `├─` and `└─` markers.
   - Internal gaps show `├┄ N PR(s) not attached`. Missing members outside the attached range use open boundary markers, not extra rows.
@@ -89,7 +95,7 @@ Each item names the V2 module that owns it.
 
 - Slash commands: `/pr-attach`, `/pr-open`, `/pr-detach`, `/pr-sync`. Without a session they warn. With no attachments, `/pr-open` and `/pr-detach` report that.
 - Agent tools: list, attach and detach, scoped to the calling session.
-  - List returns canonical URLs in attachment order. It fetches statuses that are not yet known, as after the plugin restarts, before answering. The sidebar shows a pull request as `loading` until its first fetch.
+  - List returns canonical URLs in attachment order, each with its status and review state, such as `- https://github.com/acme/api/pull/13 (pending; changes requested; 2 unreplied, 1 replied review threads)`. It fetches statuses that are not yet known, as after the plugin restarts, before answering. The sidebar shows a pull request as `loading` until its first fetch.
   - Detach accepts a URL or a positive safe integer.
   - Invalid input returns a structured tool error.
 - Dialogs close when the plugin unloads.

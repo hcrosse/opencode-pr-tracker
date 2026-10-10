@@ -2,6 +2,7 @@ import type { StorageDomain } from "@opencode/plugin/effect/storage"
 import { Deferred, Effect, Layer, Option, Result, type Schema } from "effect"
 
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
+import { noReview } from "../../src/domain/Review.ts"
 import type { Diagnostic, PullRequestState } from "../../src/domain/Snapshot.ts"
 import type { Membership } from "../../src/domain/StackLayout.ts"
 import {
@@ -78,6 +79,7 @@ export const openState: PullRequestState = {
   ci: "passed",
   draft: false,
   mergeability: "mergeable",
+  review: noReview,
 }
 
 interface Hold {

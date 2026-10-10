@@ -11,6 +11,20 @@
             "isDraft": false,
             "mergeable": "UNKNOWN",
             "mergeStateStatus": "UNKNOWN",
+            "headRefOid": "664255f6731223cc7db54a97331e7e80d1ab893a",
+            "author": {
+              "login": "hcrosse"
+            },
+            "reviewDecision": null,
+            "latestOpinionatedReviews": {
+              "nodes": []
+            },
+            "reviewThreads": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
+              "nodes": []
+            },
             "stack": {
               "id": "PRS_kwDOTs91es4ABPv2",
               "size": 2,
@@ -277,6 +291,40 @@
             "isDraft": false,
             "mergeable": "CONFLICTING",
             "mergeStateStatus": "DIRTY",
+            "headRefOid": "fb3b7242e9ad402b3b24019c5ab4489686bded7b",
+            "author": {
+              "login": "hcrosse"
+            },
+            "reviewDecision": null,
+            "latestOpinionatedReviews": {
+              "nodes": []
+            },
+            "reviewThreads": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
+              "nodes": [
+                {
+                  "isResolved": true,
+                  "comments": {
+                    "nodes": [
+                      {
+                        "state": "SUBMITTED",
+                        "author": {
+                          "login": "copilot-pull-request-reviewer"
+                        }
+                      },
+                      {
+                        "state": "SUBMITTED",
+                        "author": {
+                          "login": "hcrosse"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
             "stack": {
               "id": "PRS_kwDOTs91es4ABPv2",
               "size": 2,
@@ -544,5 +592,5 @@
     }
   ],
   "pageSize": 100,
-  "recordedAt": "2026-09-23T22:30:54.854Z"
+  "recordedAt": "2026-10-10T01:19:06.573Z"
 }

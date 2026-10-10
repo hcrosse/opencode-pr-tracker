@@ -27,9 +27,14 @@ const stackOf = (
 
 const withStack = (stack: PullRequestNode["stack"]): PullRequestNode => ({
   __typename: "PullRequest",
+  author: { login: "author" },
+  headRefOid: "head",
   isDraft: false,
+  latestOpinionatedReviews: { nodes: [] },
   mergeStateStatus: "CLEAN",
   mergeable: "MERGEABLE",
+  reviewDecision: null,
+  reviewThreads: { nodes: [], pageInfo: { hasNextPage: false } },
   stack,
   state: "OPEN",
   statusCheckRollup: null,

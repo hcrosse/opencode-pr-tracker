@@ -1,6 +1,6 @@
 # OpenCode PR Tracker
 
-Track GitHub pull requests in an OpenCode session. Attach pull requests with a slash command or let the agent attach them, and the session's sidebar shows each one's state, checks, and mergeability.
+Track GitHub pull requests in an OpenCode session. Attach pull requests with a slash command or let the agent attach them, and the session's sidebar shows each one's state, checks, mergeability, and review state.
 
 ## Requirements
 
@@ -68,7 +68,20 @@ Stack members appear together in Stack order, including pull requests linked int
 
 The first matching row wins. A pull request shows as behind only when its base branch requires it to be up to date. Checks count only their most recent run.
 
-Open and closed pull requests refresh every 15 seconds in each session you have viewed or changed since OpenCode started, until the session is deleted. Merged pull requests stop refreshing. When a refresh fails, the sidebar keeps the last status and marks it `stale`. After five minutes of failures, it shows why instead, for example `authenticate` or `GitHub unavailable`.
+Open pull requests, drafts included, also show their review state after the status, for example `acme/api#13 pending · changes · 2 unreplied · 1 replied`. Review state never changes the status color.
+
+| Review state     | Appearance | Meaning                                                  |
+| ---------------- | ---------- | -------------------------------------------------------- |
+| `approved`       | Green      | Approved, with an approval of the latest commit          |
+| `stale approval` | Yellow     | Approved, but no approval is of the latest commit        |
+| `changes`        | Yellow     | Changes requested                                        |
+| `review`         | Gray       | The base branch requires a review                        |
+| `N unreplied`    | Yellow     | Unresolved review threads the author did not answer last |
+| `N replied`      | Gray       | Unresolved review threads the author answered last       |
+
+When GitHub reports no decision, as when the base branch requires no review, the decision comes from the latest reviews of people with write access: any change request wins, then any approval. Resolved threads aren't counted, and comments not yet submitted are ignored. Only the first 20 review threads are read, so a pull request with more shows lower bounds such as `12+ unreplied`, or `20+ threads` when none of the first 20 is unresolved.
+
+Open and closed pull requests refresh every 15 seconds in each session you have viewed or changed since OpenCode started, until the session is deleted. Merged pull requests stop refreshing. When a refresh fails, the sidebar keeps the last status and review state and marks them `stale`. After five minutes of failures, it shows why instead, for example `authenticate` or `GitHub unavailable`.
 
 ### Compact layout
 

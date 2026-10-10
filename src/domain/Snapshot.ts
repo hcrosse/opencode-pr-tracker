@@ -1,6 +1,7 @@
-import { Duration, Match, Schema } from "effect"
+import { Duration, Effect, Match, Schema } from "effect"
 
 import { PullRequestRef } from "./PullRequest.ts"
+import { noReview, Review } from "./Review.ts"
 
 export const Ci = Schema.Literals(["passed", "pending", "failed", "none"])
 
@@ -16,6 +17,8 @@ export const PullRequestState = Schema.Union([
     ci: Ci,
     draft: Schema.Boolean,
     mergeability: Mergeability,
+    // A server from before review state sends none, so a newer client shows none.
+    review: Review.pipe(Schema.withDecodingDefaultKey(Effect.succeed(noReview))),
   }),
   Schema.TaggedStruct("Merged", {}),
   Schema.TaggedStruct("Closed", {}),
