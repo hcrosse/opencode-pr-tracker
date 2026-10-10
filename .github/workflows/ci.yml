@@ -63,3 +63,28 @@ jobs:
         run: |
           test -z "$(git ls-files -- dist)"
           test -z "$(git status --short --untracked-files=all)"
+
+  hooks:
+    name: Hooks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up mise
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          install_args: prek shellcheck shfmt
+          cache: false
+
+      # The check job runs Oxlint and Oxfmt, and the workflow security job runs pinned actionlint and
+      # zizmor.
+      - name: Run prek checks
+        run: >-
+          prek run --all-files --group check
+          --skip oxfmt-check --skip oxlint-check --skip actionlint --skip zizmor
+        env:
+          MISE_EXEC_AUTO_INSTALL: "false"

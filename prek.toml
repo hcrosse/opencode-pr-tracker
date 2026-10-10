@@ -1,0 +1,129 @@
+minimum_prek_version = "0.5.4"
+
+[[repos]]
+repo = "builtin"
+
+[[repos.hooks]]
+id = "check-json"
+groups = ["check"]
+
+[[repos.hooks]]
+id = "check-merge-conflict"
+# Check outside a merge too: markers from a scripted resolution can be committed later.
+args = ["--assume-in-merge"]
+groups = ["check"]
+
+[[repos.hooks]]
+id = "check-toml"
+groups = ["check"]
+
+[[repos.hooks]]
+id = "check-yaml"
+groups = ["check"]
+
+[[repos.hooks]]
+id = "end-of-file-fixer"
+name = "End of file newline"
+groups = ["fix"]
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "end-of-file-fixer"
+name = "End of file newline (check)"
+args = ["--check"]
+groups = ["check"]
+stages = ["manual"]
+
+[[repos.hooks]]
+id = "trailing-whitespace"
+name = "Trailing whitespace"
+groups = ["fix"]
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "trailing-whitespace"
+name = "Trailing whitespace (check)"
+args = ["--check"]
+groups = ["check"]
+stages = ["manual"]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "oxfmt"
+name = "Oxfmt formatting"
+entry = "mise exec -- bun x --no-install oxfmt ."
+language = "system"
+pass_filenames = false
+groups = ["fix"]
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "oxfmt-check"
+name = "Oxfmt formatting (check)"
+entry = "mise exec -- bun x --no-install oxfmt --check ."
+language = "system"
+pass_filenames = false
+groups = ["check"]
+stages = ["manual"]
+
+[[repos.hooks]]
+id = "oxlint"
+name = "Oxlint"
+entry = "mise exec -- bun x --no-install oxlint --fix ."
+language = "system"
+pass_filenames = false
+groups = ["fix"]
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "oxlint-check"
+name = "Oxlint (check)"
+entry = "mise exec -- bun x --no-install oxlint ."
+language = "system"
+pass_filenames = false
+groups = ["check"]
+stages = ["manual"]
+
+[[repos.hooks]]
+id = "shfmt"
+name = "shfmt formatting"
+entry = "mise exec -- shfmt -w"
+language = "system"
+types = ["shell"]
+groups = ["fix"]
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "shfmt-check"
+name = "shfmt formatting (check)"
+entry = "mise exec -- shfmt -d"
+language = "system"
+types = ["shell"]
+groups = ["check"]
+stages = ["manual"]
+
+[[repos.hooks]]
+id = "shellcheck"
+name = "ShellCheck"
+entry = "mise exec -- shellcheck"
+language = "system"
+types = ["shell"]
+groups = ["check"]
+
+[[repos.hooks]]
+id = "actionlint"
+name = "actionlint"
+entry = "mise exec -- actionlint"
+language = "system"
+files = '^\.github/workflows/.*\.ya?ml$'
+groups = ["check"]
+
+[[repos.hooks]]
+id = "zizmor"
+name = "zizmor"
+entry = "mise exec -- zizmor"
+language = "system"
+files = '^\.github/(workflows/.*|dependabot)\.ya?ml$|(^|/)action\.ya?ml$'
+groups = ["check"]

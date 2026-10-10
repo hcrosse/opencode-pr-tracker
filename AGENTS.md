@@ -4,7 +4,12 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks, and pull request ti
 
 ## Checks
 
-`bun run check` must pass before a pull request. It runs lint, format, type checks, tests, and a package dry run.
+Two checks must pass before a pull request:
+
+- `bun run check` runs lint, format, type checks, tests, and a package dry run.
+- The prek check group adds shell, workflow, and data-file checks that CI also runs. In a Git checkout, run `mise run lint`. In a jj workspace, run `JJ_CHECK_SETUP="bun ci" jj check`; `mise run lint` refuses to run where Git resolves to another checkout, because prek would check no files there.
+
+Install dependencies with `bun ci`, which keeps `bun.lock` unchanged.
 
 Lint uses a strict oxlint profile (`.oxlintrc.jsonc`) with every correctness, pedantic, perf, restriction, and suspicious rule enabled, type-aware checks, and the repository's `anti-slop` rules in `tools/oxlint/anti-slop/`. Code that passes a default lint setup often fails here. Rules that new code most often breaks:
 

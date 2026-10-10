@@ -1,8 +1,45 @@
 [tools]
 bun = "1.4.2"
-prek = "latest"
+prek = "0.5.5"
+# actionlint and zizmor match the versions the workflow security job runs.
+actionlint = "1.7.12"
+shellcheck = "0.11.0"
+shfmt = "3.14.1"
+zizmor = "1.29.0"
 "aqua:charmbracelet/freeze" = "latest"
 
 [tasks.setup]
 description = "Resolve dependencies and install Git hooks"
 run = ["bun install", "UV_NO_BUILD=false prek install --prepare-hooks"]
+
+[tasks.build]
+description = "Build the plugin into dist"
+run = "bun run build"
+
+[tasks.require-git-root]
+description = "Fail when Git resolves to a different checkout, where prek would check no files"
+hide = true
+run = '''
+if [ "$(git rev-parse --show-toplevel)" != "$(pwd -P)" ]; then
+  echo "Git resolves to another checkout, so prek would skip every file. Run the checks from a Git checkout of this directory." >&2
+  exit 1
+fi
+'''
+
+[tasks.format]
+description = "Apply every automatic fix"
+depends = ["require-git-root"]
+run = "prek run --all-files --group fix"
+
+[tasks.lint]
+description = "Run every check without modifying files"
+depends = ["require-git-root"]
+run = "prek run --all-files --group check"
+
+[tasks.test]
+description = "Run Bun tests"
+run = "bun run test"
+
+[tasks.audit]
+description = "Audit the Bun dependency graph"
+run = "bun run audit"

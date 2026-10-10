@@ -119,8 +119,8 @@ Options left out take their defaults.
 
 ```sh
 mise install
-bun install
+mise run setup
 bun run check
 ```
 
-`bun run check` runs lint, format, type checks, tests and a package dry run. `bun run smoke:opencode` installs the packed plugin into a temporary project, starts OpenCode, and exercises the RPC and events against GitHub when `GH_TOKEN` is set. Set `OPENCODE_BIN` to test with a specific OpenCode binary. To verify the terminal UI, follow the project skill in `.opencode/skills/verify-tui/`.
+`bun run check` runs lint, format, type checks, tests and a package dry run. `mise run setup` installs the prek Git hook, which applies automatic fixes and runs the static checks on each commit. `mise run format` applies every automatic fix, and `mise run lint` runs the static checks, including shell scripts and GitHub workflows, without modifying files. `bun run smoke:opencode` installs the packed plugin into a temporary project, starts OpenCode, and exercises the RPC and events against GitHub when `GH_TOKEN` is set. Set `OPENCODE_BIN` to test with a specific OpenCode binary. To verify the terminal UI, follow the project skill in `.opencode/skills/verify-tui/`.

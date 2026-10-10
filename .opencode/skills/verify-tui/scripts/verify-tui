@@ -198,12 +198,12 @@ stop() {
 }
 
 case ${1:-} in
-start) start ;;
-doctor) doctor "${2:-}" ;;
-capture) capture "${2:-}" "${3:-}" ;;
-stop) stop "${2:-}" ;;
-*)
-  usage
-  exit 2
-  ;;
+  start) start ;;
+  doctor) doctor "${2:-}" ;;
+  capture) capture "${2:-}" "${3:-}" ;;
+  stop) stop "${2:-}" ;;
+  *)
+    usage
+    exit 2
+    ;;
 esac
