@@ -121,7 +121,15 @@ describe("GitHub client waits without a time from GitHub", () => {
 
     const result = await runClient({ http }, requestsAt(http, times))
 
-    expect(result).toEqual(Exit.succeed([1, 1, 2, 2, 3]))
+    expect(result).toEqual(
+      Exit.succeed([
+        { outcome: "RateLimited", requests: 1 },
+        { outcome: "RateLimited", requests: 1 },
+        { outcome: "RateLimited", requests: 2 },
+        { outcome: "RateLimited", requests: 2 },
+        { outcome: "RateLimited", requests: 3 },
+      ]),
+    )
   })
 
   test("does not pause after a server error", async () => {

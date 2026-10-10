@@ -39,6 +39,12 @@ describe("GitHub client rate-limit hints", () => {
 
     const result = await runClient({ http }, requestsAt(http, [0, wait - 1, wait]))
 
-    expect(result).toEqual(Exit.succeed([1, 1, 2]))
+    expect(result).toEqual(
+      Exit.succeed([
+        { outcome: "RateLimited", requests: 1 },
+        { outcome: "RateLimited", requests: 1 },
+        { outcome: "Answered", requests: 2 },
+      ]),
+    )
   })
 })

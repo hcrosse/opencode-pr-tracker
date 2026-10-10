@@ -4,7 +4,13 @@ import { Array as Arr, Option, Result } from "effect"
 
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
 import { Membership, Row, type Entry } from "../../src/domain/StackLayout.ts"
-import { attach, detach, type Attaching, type Tracking } from "../../src/domain/Tracking.ts"
+import {
+  attach,
+  detach,
+  maximumAttachments,
+  type Attaching,
+  type Tracking,
+} from "../../src/domain/Tracking.ts"
 
 export type Stack = readonly [PullRequestRef, ...PullRequestRef[]]
 
@@ -14,10 +20,22 @@ export const whole = (stack: Stack): Attaching => ({ adding: stack, stack })
 export const ref = (repository: string, number: number): PullRequestRef =>
   Result.getOrThrow(parsePullRequestUrl(`github.com/${repository}/pull/${String(number)}`))
 
+const pooledRepositories = ["acme/api", "acme/web"]
+
+const primaryMaximum = 8
+
+/**
+ * The pool and the primary Stack together hold at most `maximumAttachments` pull requests, so an
+ * attach never reaches the limit.
+ */
+const pooledPerRepository = Math.floor(
+  (maximumAttachments - primaryMaximum) / pooledRepositories.length,
+)
+
 export const pooledRefs = gs.composite((tc) =>
   ref(
-    tc.draw(gs.sampledFrom(["acme/api", "acme/web"])),
-    tc.draw(gs.integers({ maxValue: 24, minValue: 1 })),
+    tc.draw(gs.sampledFrom(pooledRepositories)),
+    tc.draw(gs.integers({ maxValue: pooledPerRepository, minValue: 1 })),
   ),
 )
 
@@ -44,7 +62,7 @@ export interface World {
 }
 
 const primaryStacks = gs
-  .sets(gs.integers({ maxValue: 99, minValue: 50 }), { maxSize: 8, minSize: 2 })
+  .sets(gs.integers({ maxValue: 99, minValue: 50 }), { maxSize: primaryMaximum, minSize: 2 })
   .map((numbers) => [...numbers].map((number) => ref("acme/api", number)))
   .map((refs: readonly PullRequestRef[]): Stack =>
     Arr.prepend(refs.slice(1), refs[0] ?? ref("acme/api", 50)),
@@ -81,15 +99,15 @@ export const worlds = gs.composite((tc): World => {
   return { membership, primary, stackOf }
 })
 
-/** Attaches a pull request the way a user does when its Stack is open: with the rest of its Stack. */
+/**
+ * Attaches a pull request the way a user does when its Stack is open: with the rest of its Stack.
+ * Throws if the attach is rejected, which the generators rule out.
+ */
 function attachWhole(tracking: Tracking, members: readonly PullRequestRef[], at: number): Tracking {
   return Arr.matchLeft(members, {
     onEmpty: () => tracking,
     onNonEmpty: (head: PullRequestRef, tail: readonly PullRequestRef[]) =>
-      Result.match(attach(tracking, whole([head, ...tail]), at), {
-        onFailure: () => tracking,
-        onSuccess: (change) => change.tracking,
-      }),
+      Result.getOrThrow(attach(tracking, whole([head, ...tail]), at)).tracking,
   })
 }
 
