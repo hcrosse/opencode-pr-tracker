@@ -13,7 +13,7 @@ import { bottom, entryOf, fresh } from "../support/ui.tsx"
 
 const viewFor = (sessionID: string, title: string): View => ({
   entries: [entryOf(bottom, fresh(bottom, title))],
-  layout: "default",
+  layout: "full",
   sessionID,
 })
 

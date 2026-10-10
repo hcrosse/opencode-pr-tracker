@@ -10,7 +10,7 @@ import { closed, merged, open, run, scripted, type App } from "../support/monito
 
 const numbers = (view: SessionView): number[] => view.entries.map((entry) => entry.ref.number)
 
-const over = (app: App): Requests => requests(app, { directory: "/work", layout: "default" })
+const over = (app: App): Requests => requests(app, { directory: "/work", layout: "full" })
 
 /** The next view the monitor publishes for `sessionID` after `act`, which must publish one. */
 const publishedAfter = <A, E>(

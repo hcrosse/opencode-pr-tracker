@@ -74,7 +74,7 @@ const withoutGitHub = Effect.fn("withoutGitHub")(function* (tracker: Tracker, lo
   yield* expectEqual(
     "an unused session is empty, in the configured layout",
     [empty.entries, empty.layout],
-    [[], "compact"],
+    [[], "full"],
   )
 
   const rejected = yield* Effect.flip(

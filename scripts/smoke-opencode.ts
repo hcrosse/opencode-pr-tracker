@@ -89,7 +89,7 @@ const preparePackage = Effect.fn("preparePackage")(function* (root: string, runD
   )
 
   const plugin = {
-    options: { layout: "compact" },
+    options: { layout: "full" },
     // A package spec, so OpenCode installs the tarball and its dependencies itself.
     package: `file:${path.join(
       runDirectory,

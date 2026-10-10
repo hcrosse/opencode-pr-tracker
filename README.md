@@ -70,17 +70,17 @@ The first matching row wins. A pull request shows as behind only when its base b
 
 Open and closed pull requests refresh every 15 seconds in each session you have viewed or changed since OpenCode started, until the session is deleted. Merged pull requests stop refreshing. When a refresh fails, the sidebar keeps the last status and marks it `stale`. After five minutes of failures, it shows why instead, for example `authenticate` or `GitHub unavailable`.
 
-### Compact layout
+### Full layout
 
-To show one line per pull request, without titles, set the `layout` option:
+The sidebar shows one line per pull request, without titles. To show each pull request's title too, set the `layout` option:
 
 ```jsonc
 {
-  "plugins": [{ "package": "@hcrosse/opencode-pr-tracker", "options": { "layout": "compact" } }],
+  "plugins": [{ "package": "@hcrosse/opencode-pr-tracker", "options": { "layout": "full" } }],
 }
 ```
 
-Any other value keeps the default layout.
+Any other value keeps the compact layout.
 
 ## Development
 

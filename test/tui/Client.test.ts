@@ -24,7 +24,7 @@ const malformed: ViewData = {
       status: { _tag: "Pending" },
     },
   ],
-  layout: "default",
+  layout: "full",
   sessionID: "ses_known",
 }
 
