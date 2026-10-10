@@ -1,11 +1,11 @@
 {
   "exchanges": [
     {
+      "queryDigest": "71a2ac4ba7d112a65e8ac8b31b0efd86f8d799ec90f78564e370146a7ba1f87b",
       "response": {
         "data": {
           "pr0": {
             "pullRequest": {
-              "url": "https://github.com/Effect-TS/effect/pull/8431",
               "title": "Add missing is guards to ClusterError, SocketServer and Trie",
               "state": "OPEN",
               "isDraft": false,
@@ -282,5 +282,5 @@
     }
   ],
   "pageSize": 100,
-  "recordedAt": "2026-10-10T02:08:27.005Z"
+  "recordedAt": "2026-10-10T02:22:51.969Z"
 }

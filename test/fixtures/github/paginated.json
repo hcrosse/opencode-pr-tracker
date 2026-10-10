@@ -1,11 +1,11 @@
 {
   "exchanges": [
     {
+      "queryDigest": "aef7d7f66ccca18891dfb5ee15e0c0bdc11e67e2092693f333c926df53eea829",
       "response": {
         "data": {
           "pr0": {
             "pullRequest": {
-              "url": "https://github.com/kubernetes/kubernetes/pull/142865",
               "title": "tests: reduce testing.T/TB usage",
               "state": "OPEN",
               "isDraft": false,
@@ -87,7 +87,6 @@
           },
           "pr1": {
             "pullRequest": {
-              "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/127",
               "title": "docs: draft stack-aware pull request moves",
               "state": "OPEN",
               "isDraft": true,
@@ -267,6 +266,7 @@
       }
     },
     {
+      "queryDigest": "4f57aa97c9fe7165d01278f191f846cbec6de2dae223a8164ef2121aad38c655",
       "response": {
         "data": {
           "repository": {
@@ -316,13 +316,14 @@
         }
       },
       "variables": {
-        "owner": "kubernetes",
+        "cursor": "NQ",
         "name": "kubernetes",
         "number": 142865,
-        "cursor": "NQ"
+        "owner": "kubernetes"
       }
     },
     {
+      "queryDigest": "4f57aa97c9fe7165d01278f191f846cbec6de2dae223a8164ef2121aad38c655",
       "response": {
         "data": {
           "repository": {
@@ -372,13 +373,14 @@
         }
       },
       "variables": {
-        "owner": "kubernetes",
+        "cursor": "MTA",
         "name": "kubernetes",
         "number": 142865,
-        "cursor": "MTA"
+        "owner": "kubernetes"
       }
     },
     {
+      "queryDigest": "4f57aa97c9fe7165d01278f191f846cbec6de2dae223a8164ef2121aad38c655",
       "response": {
         "data": {
           "repository": {
@@ -428,13 +430,14 @@
         }
       },
       "variables": {
-        "owner": "kubernetes",
+        "cursor": "MTU",
         "name": "kubernetes",
         "number": 142865,
-        "cursor": "MTU"
+        "owner": "kubernetes"
       }
     },
     {
+      "queryDigest": "4f57aa97c9fe7165d01278f191f846cbec6de2dae223a8164ef2121aad38c655",
       "response": {
         "data": {
           "repository": {
@@ -484,13 +487,14 @@
         }
       },
       "variables": {
-        "owner": "kubernetes",
+        "cursor": "MjA",
         "name": "kubernetes",
         "number": 142865,
-        "cursor": "MjA"
+        "owner": "kubernetes"
       }
     },
     {
+      "queryDigest": "4f57aa97c9fe7165d01278f191f846cbec6de2dae223a8164ef2121aad38c655",
       "response": {
         "data": {
           "repository": {
@@ -540,13 +544,14 @@
         }
       },
       "variables": {
-        "owner": "kubernetes",
+        "cursor": "MjU",
         "name": "kubernetes",
         "number": 142865,
-        "cursor": "MjU"
+        "owner": "kubernetes"
       }
     },
     {
+      "queryDigest": "4f57aa97c9fe7165d01278f191f846cbec6de2dae223a8164ef2121aad38c655",
       "response": {
         "data": {
           "repository": {
@@ -671,13 +676,14 @@
         }
       },
       "variables": {
-        "owner": "hcrosse",
+        "cursor": "NQ",
         "name": "opencode-pr-tracker",
         "number": 127,
-        "cursor": "NQ"
+        "owner": "hcrosse"
       }
     },
     {
+      "queryDigest": "4f57aa97c9fe7165d01278f191f846cbec6de2dae223a8164ef2121aad38c655",
       "response": {
         "data": {
           "repository": {
@@ -711,13 +717,13 @@
         }
       },
       "variables": {
-        "owner": "hcrosse",
+        "cursor": "MTA",
         "name": "opencode-pr-tracker",
         "number": 127,
-        "cursor": "MTA"
+        "owner": "hcrosse"
       }
     }
   ],
   "pageSize": 5,
-  "recordedAt": "2026-10-10T02:08:32.866Z"
+  "recordedAt": "2026-10-10T02:22:56.979Z"
 }

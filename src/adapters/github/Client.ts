@@ -15,7 +15,7 @@ import {
   batchVariables,
   continuation,
   continuationVariables,
-  queryable,
+  defaultPageSize,
 } from "./Query.ts"
 import { RateLimit, layer as rateLimitLayer } from "./RateLimit.ts"
 import { resolveInRepository } from "./Repository.ts"
@@ -47,9 +47,15 @@ const failed = (diagnostic: Diagnostic, charged: boolean): ItemResult => ({
 const failedBy = (requestFailure: RequestFailed): ItemResult =>
   failed(requestFailure.diagnostic, requestFailure.cost !== "Free")
 
+/** How the client asks GitHub: by posting queries, for `pageSize` check contexts a page. */
+interface Asking {
+  readonly post: Post
+  readonly pageSize: number
+}
+
 /** Every check context for a pull request, following continuation pages. */
 const allContexts = Effect.fn("allContexts")(function* (
-  post: Post,
+  { pageSize, post }: Asking,
   ref: PullRequestRef,
   node: PullRequestNode,
 ) {
@@ -69,7 +75,7 @@ const allContexts = Effect.fn("allContexts")(function* (
 
     followed.add(after)
 
-    const envelope = yield* post(continuation(), continuationVariables(ref, after))
+    const envelope = yield* post(continuation(pageSize), continuationVariables(ref, after))
 
     if ((envelope.errors ?? []).length > 0) return yield* failure("InvalidResponse", "Free")
 
@@ -83,9 +89,8 @@ const allContexts = Effect.fn("allContexts")(function* (
   return collected
 })
 
-interface Batch extends Answer {
+interface Batch extends Answer, Asking {
   readonly reviews: ReviewMode
-  readonly post: Post
   readonly suspects: Suspects
 }
 
@@ -94,7 +99,6 @@ const itemResult = Effect.fn("itemResult")(function* (
   ref: PullRequestRef,
   key: string,
 ) {
-  const { post } = request
   const raw = pullRequestAnswer(request, key)
 
   if (Result.isFailure(raw)) return failed(raw.failure, false)
@@ -107,7 +111,7 @@ const itemResult = Effect.fn("itemResult")(function* (
 
   if (Option.isNone(review)) return failed("InvalidResponse", false)
 
-  const contexts = yield* Effect.result(allContexts(post, ref, node.value))
+  const contexts = yield* Effect.result(allContexts(request, ref, node.value))
 
   if (Result.isFailure(contexts)) {
     if (contexts.failure.cost === "TimedOut") request.suspects.timedOut([ref.url])
@@ -125,13 +129,14 @@ const fetchBatch = Effect.fn("fetchBatch")(function* (
   sending: Sending,
   refs: readonly PullRequestRef[],
 ) {
-  const { post, reviews, suspects } = sending
-  const envelope = yield* post(batch(refs.length, reviews), batchVariables(refs))
+  const { pageSize, post, reviews, suspects } = sending
+  const envelope = yield* post(batch(refs.length, reviews, pageSize), batchVariables(refs))
   const aliases = new Set(refs.map((_, index) => alias(index)))
 
   const results = yield* Effect.forEach(
     refs,
-    (ref, index) => itemResult({ aliases, envelope, post, reviews, suspects }, ref, alias(index)),
+    (ref, index) =>
+      itemResult({ aliases, envelope, pageSize, post, reviews, suspects }, ref, alias(index)),
     {
       concurrency: 4,
     },
@@ -143,9 +148,8 @@ const fetchBatch = Effect.fn("fetchBatch")(function* (
   )
 })
 
-interface Sending {
+interface Sending extends Asking {
   readonly reviews: ReviewMode
-  readonly post: Post
   readonly suspects: Suspects
   /** Set once a batch times out: the fetch's remaining batches are not sent. */
   readonly stopped: Ref.Ref<boolean>
@@ -187,32 +191,14 @@ const outcomeOf = (
     }
   })
 
-/** Results for `refs`, each fetched once; one GitHub cannot be asked for is not found unasked. */
-const fetchAll = Effect.fn("fetchAll")(function* (
-  sending: Sending,
-  refs: readonly PullRequestRef[],
-) {
-  const unique = Arr.dedupeWith(refs, (left, right) => left.url === right.url)
-  const unaskable = unique.filter((ref) => !queryable(ref))
-  const unasked = failedAll(unaskable, failed("NotFound", false))
-
-  const outcomes = yield* Effect.forEach(
-    sending.suspects.batches(unique.filter((ref) => queryable(ref))),
-    (refsInBatch: readonly PullRequestRef[]) => outcomeOf(sending, refsInBatch),
-  )
-
-  const results = Result.map(combined(outcomes), (answered) => new Map([...answered, ...unasked]))
-
-  return yield* Effect.fromResult(results).pipe(
-    Effect.mapError((diagnostic: Diagnostic) => new GitHubFailure({ diagnostic })),
-  )
-})
-
 /** What the GitHub port requires: an HTTP client, a token source, a rate limit, and `gh`. */
 type Requirements = HttpClient.HttpClient | Token | RateLimit | CommandRunner
 
 /** The GitHub port over GraphQL, fetching the review state `reviews` asks for. */
-export const layer = (reviews: ReviewMode): Layer.Layer<GitHub, never, Requirements> =>
+export const layer = (
+  reviews: ReviewMode,
+  pageSize = defaultPageSize,
+): Layer.Layer<GitHub, never, Requirements> =>
   Layer.effect(
     GitHub,
     Effect.gen(function* () {
@@ -223,9 +209,20 @@ export const layer = (reviews: ReviewMode): Layer.Layer<GitHub, never, Requireme
 
       return GitHub.of({
         fetch: (refs) =>
-          Effect.flatMap(Ref.make(false), (stopped) =>
-            fetchAll({ post, reviews, stopped, suspects }, refs),
-          ),
+          Effect.gen(function* () {
+            const stopped = yield* Ref.make(false)
+            const sending: Sending = { pageSize, post, reviews, stopped, suspects }
+            const unique = Arr.dedupeWith(refs, (left, right) => left.url === right.url)
+
+            const outcomes = yield* Effect.forEach(
+              suspects.batches(unique),
+              (refsInBatch: readonly PullRequestRef[]) => outcomeOf(sending, refsInBatch),
+            )
+
+            return yield* Effect.fromResult(combined(outcomes)).pipe(
+              Effect.mapError((diagnostic: Diagnostic) => new GitHubFailure({ diagnostic })),
+            )
+          }),
         // `gh repo view` queries GitHub, so it waits out a rate limit too.
         pullRequestInRepository: (directory, number) =>
           Effect.andThen(

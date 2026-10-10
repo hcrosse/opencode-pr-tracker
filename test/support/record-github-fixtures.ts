@@ -18,6 +18,7 @@ import {
   continuationVariables,
 } from "../../src/adapters/github/Query.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
+import { queryDigest } from "./exchange.ts"
 
 const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Json))
 
@@ -84,14 +85,15 @@ interface Pending {
 }
 
 const pages = Effect.fn("pages")(function* (first: Schema.Json, { key, pageSize, ref }: Pending) {
-  const exchanges: { variables: Variables; response: Schema.Json }[] = []
+  const query = continuation(pageSize)
+  const exchanges: { queryDigest: string; variables: Variables; response: Schema.Json }[] = []
   let cursor = nextCursor(first, key)
 
   while (Option.isSome(cursor)) {
     const variables = continuationVariables(ref, cursor.value)
-    const response = yield* post(continuation(pageSize), variables)
+    const response = yield* post(query, variables)
 
-    exchanges.push({ response, variables })
+    exchanges.push({ queryDigest: queryDigest(query), response, variables })
     cursor = nextCursor(response, "repository")
   }
 
@@ -106,13 +108,18 @@ const record = Effect.fn("record")(function* (
   const fs = yield* FileSystem.FileSystem
   const refs = urls.map((url: string) => Result.getOrThrow(parsePullRequestUrl(url)))
   const variables = batchVariables(refs)
-  const first = yield* post(batch(refs.length, "all", pageSize), variables)
+  const query = batch(refs.length, "all", pageSize)
+  const first = yield* post(query, variables)
 
   const continuations = yield* Effect.forEach(refs, (ref: PullRequestRef, index: number) =>
     pages(first, { key: alias(index), pageSize, ref }),
   )
 
-  const exchanges = [{ response: first, variables }, ...continuations.flat()]
+  const exchanges = [
+    { queryDigest: queryDigest(query), response: first, variables },
+    ...continuations.flat(),
+  ]
+
   const file = path.join(import.meta.dir, "..", "fixtures", "github", `${name}.json`)
   const recorded = { exchanges, pageSize, recordedAt: new Date().toISOString() }
 

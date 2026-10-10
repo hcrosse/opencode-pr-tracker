@@ -1,11 +1,11 @@
 {
   "exchanges": [
     {
+      "queryDigest": "b0d70ccfb44a36f6c38f70fe16f83a02f3e1331e77e06d9e0f9a337f409aad55",
       "response": {
         "data": {
           "pr0": {
             "pullRequest": {
-              "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/78",
               "title": "refactor: split TUI domains",
               "state": "MERGED",
               "isDraft": false,
@@ -291,7 +291,6 @@
           },
           "pr1": {
             "pullRequest": {
-              "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/79",
               "title": "feat: add guided feedback command",
               "state": "MERGED",
               "isDraft": false,
@@ -608,5 +607,5 @@
     }
   ],
   "pageSize": 100,
-  "recordedAt": "2026-10-10T02:08:24.849Z"
+  "recordedAt": "2026-10-10T02:22:49.290Z"
 }

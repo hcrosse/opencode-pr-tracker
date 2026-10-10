@@ -2,11 +2,19 @@ import { describe, expect, test } from "bun:test"
 
 import { Effect, Option, Result } from "effect"
 
+import { defaultPageSize } from "../../../src/adapters/github/Query.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../../src/domain/PullRequest.ts"
 import type { Review } from "../../../src/domain/Review.ts"
 import type { PullRequestState } from "../../../src/domain/Snapshot.ts"
 import type { GitHubApi, ItemResult, Report } from "../../../src/ports/GitHub.ts"
-import { fixture, replay, runClient, trackerRef, type HttpFake } from "../../support/github.ts"
+import {
+  fixture,
+  replay,
+  runClient,
+  trackerRef,
+  type HttpFake,
+  type RequestBody,
+} from "../../support/github.ts"
 
 const ref = (url: string): PullRequestRef => Result.getOrThrow(parsePullRequestUrl(url))
 
@@ -28,8 +36,9 @@ const standalone = [
 async function fetch(
   http: HttpFake,
   refs: readonly PullRequestRef[],
+  pageSize = defaultPageSize,
 ): Promise<ReadonlyMap<string, ItemResult>> {
-  const exit = await runClient({ http }, (github: GitHubApi) => github.fetch(refs))
+  const exit = await runClient({ http, pageSize }, (github: GitHubApi) => github.fetch(refs))
   const results = await Effect.runPromise(exit)
 
   return results
@@ -120,21 +129,43 @@ describe("GitHub client on recorded standalone pull requests", () => {
   })
 })
 
+const batchLookup =
+  "pr0: repository(owner: $pr0_owner, name: $pr0_name) { pullRequest(number: $pr0_number)"
+
+const pageLookup = "repository(owner: $owner, name: $name) { pullRequest(number: $number)"
+
 describe("GitHub client on a recorded repository named with capitals", () => {
-  test("reports a pull request GitHub names in mixed case", async () => {
-    const results = await fetch(replay(fixture("mixed-case")), [effect8431])
+  test("asks for it by lowercase owner, name and number, and reports it", async () => {
+    const http = replay(fixture("mixed-case"))
+    const results = await fetch(http, [effect8431])
 
     expect(stateOf(results, effect8431)).toMatchObject(Option.some({ _tag: "Open" }))
+    expect(http.requests.map((request: RequestBody) => request.variables)).toEqual([
+      { pr0_name: "effect", pr0_number: 8431, pr0_owner: "effect-ts" },
+    ])
+    expect(
+      http.requests.map((request: RequestBody) => request.query.includes(batchLookup)),
+    ).toEqual([true])
+    expect(http.requests.some((request: RequestBody) => request.query.includes("resource("))).toBe(
+      false,
+    )
   })
 })
 
 describe("GitHub client on recorded pages of checks", () => {
   test("follows every page of checks, and paging does not change the result", async () => {
     const http = replay(fixture("paginated"))
-    const paged = await fetch(http, [kubernetes(142865), trackerRef(127)])
+    // The pages were recorded 5 checks at a time.
+    const paged = await fetch(http, [kubernetes(142865), trackerRef(127)], 5)
     const unpaged = await fetch(replay(fixture("standalone")), standalone)
+    const pages = http.requests.filter((request: RequestBody) => "cursor" in request.variables)
 
     expect(http.requests).toHaveLength(fixture("paginated").length)
+    expect(pages.length).toBeGreaterThan(0)
+    expect(pages.every((request: RequestBody) => request.query.includes(pageLookup))).toBe(true)
+    expect(http.requests.some((request: RequestBody) => request.query.includes("resource("))).toBe(
+      false,
+    )
     expect(stateOf(paged, kubernetes(142865))).toMatchObject(Option.some({ ci: "failed" }))
     expect(reportOf(paged, trackerRef(127))).toEqual(reportOf(unpaged, trackerRef(127)))
   })

@@ -70,15 +70,6 @@ const lookupVariables = (prefix: string, ref: PullRequestRef): [string, string |
   [`${prefix}number`, ref.number],
 ]
 
-/** The largest GraphQL `Int`, which is signed 32-bit. */
-const largestInt = 2_147_483_647
-
-/**
- * Whether GitHub can be asked for `ref`. A larger number fails the coercion of every variable, and
- * with it the whole batch, so no such pull request can exist.
- */
-export const queryable = (ref: PullRequestRef): boolean => ref.number <= largestInt
-
 /** The variable-name prefix for the pull request at `index` of a batch, as in `pr0_owner`. */
 const batchPrefix = (index: number): string => `${alias(index)}_`
 
@@ -108,5 +99,9 @@ export function continuation(pageSize = defaultPageSize): string {
 }
 
 /** The variables `continuation` takes for the page of `ref`'s check contexts after `cursor`. */
-export const continuationVariables = (ref: PullRequestRef, cursor: string): Variables =>
-  Object.fromEntries([...lookupVariables("", ref), ["cursor", cursor]])
+export const continuationVariables = (ref: PullRequestRef, cursor: string): Variables => ({
+  cursor,
+  name: ref.repository,
+  number: ref.number,
+  owner: ref.owner,
+})

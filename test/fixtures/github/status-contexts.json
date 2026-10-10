@@ -1,11 +1,11 @@
 {
   "exchanges": [
     {
+      "queryDigest": "b0d70ccfb44a36f6c38f70fe16f83a02f3e1331e77e06d9e0f9a337f409aad55",
       "response": {
         "data": {
           "pr0": {
             "pullRequest": {
-              "url": "https://github.com/kubernetes/kubernetes/pull/142875",
               "title": "DRA: use ktesting in staging repo",
               "state": "OPEN",
               "isDraft": false,
@@ -175,12 +175,11 @@
           },
           "pr1": {
             "pullRequest": {
-              "url": "https://github.com/kubernetes/kubernetes/pull/142334",
               "title": "volume: cap recycler timeout at math.MaxInt32",
               "state": "OPEN",
               "isDraft": false,
-              "mergeable": "MERGEABLE",
-              "mergeStateStatus": "BLOCKED",
+              "mergeable": "UNKNOWN",
+              "mergeStateStatus": "UNKNOWN",
               "headRefOid": "cfb0bc1897b001df3281bbe16e2f0cb82be63744",
               "author": {
                 "login": "antcybersec"
@@ -364,5 +363,5 @@
     }
   ],
   "pageSize": 100,
-  "recordedAt": "2026-10-10T02:08:28.110Z"
+  "recordedAt": "2026-10-10T02:22:52.762Z"
 }

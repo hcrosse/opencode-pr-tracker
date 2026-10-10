@@ -2,76 +2,47 @@ import { describe, expect, test } from "bun:test"
 
 import { Effect, Exit, Option, Result, type Schema } from "effect"
 
-import { continuation } from "../../../src/adapters/github/Query.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../../src/domain/PullRequest.ts"
 import type { GitHubApi, ItemResult } from "../../../src/ports/GitHub.ts"
 import {
+  acmeRef,
   httpClient,
   recordedPullRequest,
   runClient,
   tracker127,
-  type RequestBody,
 } from "../../support/github.ts"
 import { found } from "../../support/lookup.ts"
 
-const effect8431: PullRequestRef = Result.getOrThrow(
-  parsePullRequestUrl("https://github.com/Effect-TS/effect/pull/8431"),
+/** One past the largest GraphQL `Int`, which GitHub answers as a pull request it cannot find. */
+const oversized: PullRequestRef = Result.getOrThrow(
+  parsePullRequestUrl("https://github.com/acme/api/pull/2147483648"),
 )
 
-/** GitHub's repository lookup, which matches owner and name in any case, but numbers exactly. */
-const repositoryLookup = (body: RequestBody): Response => {
-  const owner = String(body.variables["pr0_owner"] ?? "").toLowerCase()
-  const name = String(body.variables["pr0_name"] ?? "").toLowerCase()
-
-  return owner === "effect-ts" && name === "effect" && body.variables["pr0_number"] === 8431
-    ? Response.json({ data: { pr0: found(recordedPullRequest) } })
-    : Response.json({ data: { pr0: null }, errors: [{ path: ["pr0"], type: "NOT_FOUND" }] })
-}
+const notFound: ItemResult = { _tag: "Failed", charged: false, diagnostic: "NotFound" }
 
 const tagOf = (item: ItemResult | undefined): string =>
   Option.match(Option.fromNullishOr(item), { onNone: () => "missing", onSome: (some) => some._tag })
 
-describe("GitHub client lookup of a repository named with capitals", () => {
-  test("reports a pull request whose URL was given in mixed case", async () => {
-    const http = httpClient(repositoryLookup)
-    const result = await runClient({ http }, (github: GitHubApi) => github.fetch([effect8431]))
+/** GitHub's answer for `ref` as `pr0` and a found #127 as `pr1`, in one batch. */
+interface Answered {
+  readonly ref: PullRequestRef
+  readonly pr0: Schema.Json
+  readonly errors: readonly Schema.Json[]
+}
 
-    expect(effect8431.url).toBe("https://github.com/effect-ts/effect/pull/8431")
-    expect(Exit.map(result, (results) => tagOf(results.get(effect8431.url)))).toEqual(
-      Exit.succeed("Reported"),
-    )
-  })
-
-  test("looks pull requests up by repository and number, not by URL", async () => {
-    const http = httpClient(repositoryLookup)
-
-    await runClient({ http }, (github: GitHubApi) => github.fetch([effect8431]))
-
-    const sent = http.requests.map((request: RequestBody) => request.query).join("\n")
-    const pages = continuation()
-
-    expect(sent).toContain(
-      "pr0: repository(owner: $pr0_owner, name: $pr0_name) { pullRequest(number: $pr0_number)",
-    )
-    expect(pages).toContain("repository(owner: $owner, name: $name) { pullRequest(number: $number)")
-    expect([sent, pages].some((query) => query.includes("resource("))).toBe(false)
-  })
-})
-
-const notFound: ItemResult = { _tag: "Failed", charged: false, diagnostic: "NotFound" }
-
-/** What the client reports for #8431, and a found #127 beside it, when GitHub answers `pr0` so. */
-async function besideFound(
-  pr0: Schema.Json,
-  errors: readonly Schema.Json[],
-): Promise<Exit.Exit<readonly (ItemResult | undefined)[], unknown>> {
+/** What the client reports for the pull request asked as `pr0`, and for #127 beside it. */
+async function besideFound({
+  errors,
+  pr0,
+  ref,
+}: Answered): Promise<Exit.Exit<readonly (ItemResult | undefined)[], unknown>> {
   const http = httpClient(() =>
     Response.json({ data: { pr0, pr1: found(recordedPullRequest) }, errors }),
   )
 
   const result = await runClient({ http }, (github: GitHubApi) =>
-    Effect.map(github.fetch([effect8431, tracker127]), (results) => [
-      results.get(effect8431.url),
+    Effect.map(github.fetch([ref, tracker127]), (results) => [
+      results.get(ref.url),
       results.get(tracker127.url),
     ]),
   )
@@ -79,12 +50,38 @@ async function besideFound(
   return result
 }
 
+const missingPullRequest = { pullRequest: null }
+
+const unfound: readonly (readonly [string, Answered])[] = [
+  [
+    "a missing pull request",
+    {
+      errors: [{ path: ["pr0", "pullRequest"], type: "NOT_FOUND" }],
+      pr0: missingPullRequest,
+      ref: acmeRef(1),
+    },
+  ],
+  [
+    "a missing pull request answered without errors",
+    { errors: [], pr0: missingPullRequest, ref: acmeRef(1) },
+  ],
+  [
+    "a missing repository",
+    { errors: [{ path: ["pr0"], type: "NOT_FOUND" }], pr0: null, ref: acmeRef(1) },
+  ],
+  [
+    "a pull request numbered beyond a GraphQL Int",
+    {
+      errors: [{ path: ["pr0", "pullRequest"], type: "NOT_FOUND" }],
+      pr0: missingPullRequest,
+      ref: oversized,
+    },
+  ],
+]
+
 describe("GitHub client lookup of a pull request GitHub does not find", () => {
-  test.each<readonly [string, Schema.Json, Schema.Json]>([
-    ["a missing pull request", { pullRequest: null }, ["pr0", "pullRequest"]],
-    ["a missing repository", null, ["pr0"]],
-  ])("reports %s as not found, and only it", async (_name, pr0, path) => {
-    const result = await besideFound(pr0, [{ path, type: "NOT_FOUND" }])
+  test.each(unfound)("reports %s as not found, and only it", async (_name, answered: Answered) => {
+    const result = await besideFound(answered)
 
     expect(Exit.map(result, (results) => results.map((item) => tagOf(item)))).toEqual(
       Exit.succeed(["Failed", "Reported"]),
@@ -93,7 +90,7 @@ describe("GitHub client lookup of a pull request GitHub does not find", () => {
   })
 
   test("reports a repository answer without a pull request field as invalid", async () => {
-    const result = await besideFound({}, [])
+    const result = await besideFound({ errors: [], pr0: {}, ref: acmeRef(1) })
 
     expect(Exit.map(result, (results) => results[0])).toEqual(
       Exit.succeed({ _tag: "Failed", charged: false, diagnostic: "InvalidResponse" }),

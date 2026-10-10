@@ -1,11 +1,11 @@
 {
   "exchanges": [
     {
+      "queryDigest": "42e5ee95881f1c6ae7e5b15588926f0e62234600b5f5a02a4eea0e30c1abf2b8",
       "response": {
         "data": {
           "pr0": {
             "pullRequest": {
-              "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/127",
               "title": "docs: draft stack-aware pull request moves",
               "state": "OPEN",
               "isDraft": true,
@@ -294,7 +294,6 @@
           },
           "pr1": {
             "pullRequest": {
-              "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/120",
               "title": "docs: record pull request reordering decision",
               "state": "OPEN",
               "isDraft": true,
@@ -595,7 +594,6 @@
           },
           "pr2": {
             "pullRequest": {
-              "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/93",
               "title": "fix: handle feedback confirmation through keymap",
               "state": "CLOSED",
               "isDraft": false,
@@ -857,7 +855,6 @@
           },
           "pr3": {
             "pullRequest": {
-              "url": "https://github.com/anomalyco/opencode/pull/50760",
               "title": "fix(core): coordinate OAuth credential refreshes",
               "state": "OPEN",
               "isDraft": false,
@@ -1000,5 +997,5 @@
     }
   ],
   "pageSize": 100,
-  "recordedAt": "2026-10-10T02:08:26.160Z"
+  "recordedAt": "2026-10-10T02:22:51.216Z"
 }
