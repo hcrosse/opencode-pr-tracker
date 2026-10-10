@@ -6,6 +6,7 @@ import { constVoid } from "effect/Function"
 import { View, type ViewData } from "../../src/rpc.ts"
 import {
   makeClient,
+  Update,
   type Location,
   type TrackerClientApi,
   type TrackerRpc,
@@ -178,16 +179,21 @@ describe("tracker client failures", () => {
 })
 
 describe("tracker client updates", () => {
-  test("delivers published views, decoded, and skips data that is not a view", () => {
+  test("delivers published views decoded, and reports data that is not a view with its session", () => {
     const fake = fakeRpc(Result.succeed(listed))
     const received: string[] = []
 
-    clientOver(fake).onUpdate((view) => {
-      received.push(view.entries.map((entry) => entry.ref.label).join(" "))
+    clientOver(fake).onUpdate((update) => {
+      received.push(
+        Update.$match(update, {
+          Published: ({ view }) => view.entries.map((entry) => entry.ref.label).join(" "),
+          Unreadable: ({ sessionID }) => `unreadable ${Option.getOrElse(sessionID, () => "?")}`,
+        }),
+      )
     })
     fake.publish(malformed)
     fake.publish(listed)
 
-    expect(received).toEqual(["acme/api#1"])
+    expect(received).toEqual(["unreadable ses_known", "acme/api#1"])
   })
 })

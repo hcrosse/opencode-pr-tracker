@@ -1,5 +1,5 @@
 /** The terminal's view of the tracker: RPC calls routed to each session's location, decoded on arrival. */
-import { Effect, Option, Schema } from "effect"
+import { Data, Effect, Option, Schema } from "effect"
 
 import { Changed, Done, View, type ViewData } from "../rpc.ts"
 
@@ -14,9 +14,34 @@ export interface TrackerClientApi {
   readonly detach: (sessionID: string, target: string) => Effect.Effect<Changed, RequestFailed>
   /** Renews the session's lease, so the server keeps refreshing it. */
   readonly watch: (sessionID: string) => Effect.Effect<void, RequestFailed>
-  /** Calls `handler` with each view the server publishes. Returns a function that stops the calls. */
-  readonly onUpdate: (handler: (view: View) => void) => () => void
+  /** Calls `handler` with each update the server publishes. Returns a function that stops the calls. */
+  readonly onUpdate: (handler: (update: Update) => void) => () => void
 }
+
+/**
+ * An update the server published: a session's new view, or data the terminal could not read as
+ * one, with its session when that much could be read.
+ */
+export type Update = Data.TaggedEnum<{
+  Published: { readonly view: View }
+  Unreadable: { readonly sessionID: Option.Option<string> }
+}>
+
+export const Update = Data.taggedEnum<Update>()
+
+const Addressed = Schema.Struct({ sessionID: Schema.String })
+
+const updateOf = (data: ViewData): Update =>
+  Option.match(Schema.decodeUnknownOption(View)(data), {
+    onNone: () =>
+      Update.Unreadable({
+        sessionID: Option.map(
+          Schema.decodeUnknownOption(Addressed)(data),
+          (addressed) => addressed.sessionID,
+        ),
+      }),
+    onSome: (view) => Update.Published({ view }),
+  })
 
 /** Where a session runs; RPC calls go to the plugin instance for that location. */
 export interface Location {
@@ -141,7 +166,7 @@ export function makeClient(host: Host): TrackerClientApi {
       }),
     onUpdate: (handler) =>
       rpc.events.on("updated", ({ data }) => {
-        Option.map(Schema.decodeUnknownOption(View)(data), handler)
+        handler(updateOf(data))
       }),
     refresh: (sessionID) =>
       decoded(View, async (signal) => {

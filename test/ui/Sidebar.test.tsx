@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import { Option } from "effect"
 
+import { SidebarState } from "../../src/ui/Sidebar.tsx"
 import { ref, stack } from "../support/stacks.ts"
 import {
   destroyMounted,
@@ -161,16 +162,15 @@ describe("Sidebar states", () => {
   })
 
   test("shows loading until the first view arrives", async () => {
-    const { lines } = await showSidebar({ _tag: "Loading" })
+    const { lines } = await showSidebar(SidebarState.Loading())
 
     expect(lines()).toEqual(["Pull requests", "", "Loading"])
   })
 
   test("shows a failure in red", async () => {
-    const { lines, style } = await showSidebar({
-      _tag: "Failed",
-      message: "Saved state is unreadable",
-    })
+    const { lines, style } = await showSidebar(
+      SidebarState.Failed({ message: "Saved state is unreadable" }),
+    )
 
     expect(lines()).toEqual(["Pull requests", "", "Saved state is unreadable"])
     expect(style("Saved state")).toEqual(Option.some(styled(palette.tones.red)))

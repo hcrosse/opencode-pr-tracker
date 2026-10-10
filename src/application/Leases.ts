@@ -1,9 +1,7 @@
 import { Duration, Effect } from "effect"
 
+import { leaseDuration } from "../domain/Lease.ts"
 import { currentMillis } from "./Time.ts"
-
-/** How long a lease lasts after its last renewal. */
-const lease = Duration.seconds(45)
 
 /** The sessions someone is watching. Each session's lease lapses unless it is renewed in time. */
 export class Leases {
@@ -26,7 +24,7 @@ export class Leases {
   public live(): Effect.Effect<string[]> {
     return Effect.map(currentMillis, (now) => {
       for (const [sessionID, renewedAt] of this.renewedAt)
-        if (now - renewedAt >= Duration.toMillis(lease)) this.renewedAt.delete(sessionID)
+        if (now - renewedAt >= Duration.toMillis(leaseDuration)) this.renewedAt.delete(sessionID)
 
       return [...this.renewedAt.keys()]
     })

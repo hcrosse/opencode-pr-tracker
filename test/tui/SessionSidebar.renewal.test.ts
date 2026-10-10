@@ -7,7 +7,7 @@ import { createRoot, createSignal, type Accessor } from "solid-js"
 import { View } from "../../src/rpc.ts"
 import { background } from "../../src/tui/Background.ts"
 import { makeClient, type TrackerClientApi, type TrackerRpc } from "../../src/tui/Client.ts"
-import { sessionView } from "../../src/tui/SessionSidebar.tsx"
+import { sessionView } from "../../src/tui/SessionView.ts"
 import { fakeTracker } from "../support/tui.ts"
 import { viewOf } from "../support/ui.tsx"
 
