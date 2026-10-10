@@ -55,10 +55,14 @@ export default Plugin.define({
     const collapsed = collapsedSessions()
     const tasks = background()
 
+    const runCommand = (effect: Effect.Effect<void>): void => {
+      tasks.run(effect)
+    }
+
     const disposers = [
       context.ui.slot({
         append: "app",
-        render: () => <Commands actions={commands} run={tasks.run} />,
+        render: () => <Commands actions={commands} run={runCommand} />,
       }),
       context.ui.slot({
         append: "sidebar.content",

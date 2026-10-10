@@ -1,12 +1,13 @@
 /** @jsxImportSource @opentui/solid */
 import { usePlugin } from "@opencode/plugin/tui"
 import type { JSX } from "@opentui/solid"
-import { Effect } from "effect"
+import { Effect, Schedule } from "effect"
 import { createEffect, createSignal, on, onCleanup, type Accessor } from "solid-js"
 
 import type { PullRequestRef } from "../domain/PullRequest.ts"
 import { paletteOf } from "../ui/Palette.ts"
 import { Sidebar, type SidebarState } from "../ui/Sidebar.tsx"
+import type { Interrupt } from "./Background.ts"
 import type { TrackerClientApi } from "./Client.ts"
 
 /** Which sessions' lists are collapsed, kept for the plugin's lifetime so it survives remounts. */
@@ -16,7 +17,10 @@ export interface Collapsed {
 }
 
 /** How often a shown session's lease is renewed, well within the server's 45-second lease. */
-const renewalInterval = 20_000
+const renewalInterval = 15_000
+
+/** How long one renewal may take, so a hung call cannot hold back the ones after it. */
+const renewalTimeout = 5000
 
 /** Numbers requests; each listing and each published update supersedes the listings before it. */
 interface Listings {
@@ -41,16 +45,18 @@ function newestFirst(): Listings {
 function renewWhileShown(
   sessionID: string,
   tracker: TrackerClientApi,
-  run: (effect: Effect.Effect<void>) => void,
+  run: (effect: Effect.Effect<void>) => Interrupt,
 ): void {
-  const renewal = setInterval(() => {
-    // A failed renewal is retried at the next one.
-    run(Effect.ignore(tracker.watch(sessionID)))
-  }, renewalInterval)
+  // Each renewal starts on a 15-second boundary, never overlaps the previous one and ends within
+  // 5 seconds, so successful renewals land at most 20 seconds apart, or 35 after one failed
+  // renewal, inside the 45-second lease. Renewal failures are not yet reported: the plugin API has
+  // no log sink. A defect stops renewal for that session until it switches or the sidebar remounts.
+  const renewals = Effect.schedule(
+    Effect.ignore(Effect.timeout(tracker.watch(sessionID), renewalTimeout)),
+    Schedule.fixed(renewalInterval),
+  )
 
-  onCleanup(() => {
-    clearInterval(renewal)
-  })
+  onCleanup(run(Effect.asVoid(renewals)))
 }
 
 /**
@@ -61,7 +67,7 @@ function renewWhileShown(
 export function sessionView(
   sessionID: Accessor<string>,
   tracker: TrackerClientApi,
-  run: (effect: Effect.Effect<void>) => void,
+  run: (effect: Effect.Effect<void>) => Interrupt,
 ): Accessor<SidebarState> {
   const [state, setState] = createSignal<SidebarState>({ _tag: "Loading" })
   const requests = newestFirst()
@@ -104,7 +110,7 @@ export function SessionSidebar(props: {
   readonly tracker: TrackerClientApi
   readonly collapsed: Collapsed
   readonly onOpen: (ref: PullRequestRef) => void
-  readonly run: (effect: Effect.Effect<void>) => void
+  readonly run: (effect: Effect.Effect<void>) => Interrupt
 }): JSX.Element {
   const context = usePlugin()
   const state = sessionView(() => props.sessionID, props.tracker, props.run)

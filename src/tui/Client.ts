@@ -26,6 +26,8 @@ export interface Location {
 
 interface CallOptions {
   readonly location?: Location
+  /** Aborts the request when the call is interrupted or times out. */
+  readonly signal?: AbortSignal
 }
 
 interface Session {
@@ -91,11 +93,16 @@ const unreadable = new RequestFailed({
 
 function decoded<S extends Schema.Decoder<unknown>>(
   schema: S,
-  call: () => Promise<S["Encoded"]>,
+  call: (signal: AbortSignal) => Promise<S["Encoded"]>,
 ): Effect.Effect<S["Type"], RequestFailed> {
   return Effect.tryPromise({
     catch: (error) => failureOf(Schema.decodeUnknownOption(Thrown)(error)),
-    try: call,
+    // The parameter makes Effect create a signal, which it aborts on interruption or timeout.
+    try: async (signal) => {
+      const output = await call(signal)
+
+      return output
+    },
   }).pipe(
     Effect.flatMap((output) =>
       Schema.decodeEffect(schema)(output).pipe(Effect.mapError(() => unreadable)),
@@ -103,11 +110,11 @@ function decoded<S extends Schema.Decoder<unknown>>(
   )
 }
 
-/** Where to send a call about the session. */
-const callOptions = (host: Host, sessionID: string): CallOptions =>
+/** Where to send a call about the session, and the signal that cancels it. */
+const callOptions = (host: Host, sessionID: string, signal: AbortSignal): CallOptions =>
   Option.match(host.locationOf(sessionID), {
-    onNone: () => ({}),
-    onSome: (location) => ({ location }),
+    onNone: () => ({ signal }),
+    onSome: (location) => ({ location, signal }),
   })
 
 export function makeClient(host: Host): TrackerClientApi {
@@ -115,20 +122,20 @@ export function makeClient(host: Host): TrackerClientApi {
 
   return {
     attach: (sessionID, target) =>
-      decoded(Changed, async () => {
-        const output = await rpc.attach({ sessionID, target }, callOptions(host, sessionID))
+      decoded(Changed, async (signal) => {
+        const output = await rpc.attach({ sessionID, target }, callOptions(host, sessionID, signal))
 
         return output
       }),
     detach: (sessionID, target) =>
-      decoded(Changed, async () => {
-        const output = await rpc.detach({ sessionID, target }, callOptions(host, sessionID))
+      decoded(Changed, async (signal) => {
+        const output = await rpc.detach({ sessionID, target }, callOptions(host, sessionID, signal))
 
         return output
       }),
     list: (sessionID) =>
-      decoded(View, async () => {
-        const output = await rpc.list({ sessionID }, callOptions(host, sessionID))
+      decoded(View, async (signal) => {
+        const output = await rpc.list({ sessionID }, callOptions(host, sessionID, signal))
 
         return output
       }),
@@ -137,14 +144,14 @@ export function makeClient(host: Host): TrackerClientApi {
         Option.map(Schema.decodeUnknownOption(View)(data), handler)
       }),
     refresh: (sessionID) =>
-      decoded(View, async () => {
-        const output = await rpc.refresh({ sessionID }, callOptions(host, sessionID))
+      decoded(View, async (signal) => {
+        const output = await rpc.refresh({ sessionID }, callOptions(host, sessionID, signal))
 
         return output
       }),
     watch: (sessionID) =>
-      decoded(Done, async () => {
-        const output = await rpc.watch({ sessionID }, callOptions(host, sessionID))
+      decoded(Done, async (signal) => {
+        const output = await rpc.watch({ sessionID }, callOptions(host, sessionID, signal))
 
         return output
       }).pipe(Effect.asVoid),
