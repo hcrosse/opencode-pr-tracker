@@ -1,62 +1,16 @@
 import { Array as Arr, Option, Result, Schema } from "effect"
 
-import { classifyCi, type Check, type CheckOutcome } from "../../domain/Checks.ts"
+import { classifyCi } from "../../domain/Checks.ts"
 import type { PullRequestRef } from "../../domain/PullRequest.ts"
 import type { Review } from "../../domain/Review.ts"
 import type { Diagnostic, Mergeability, PullRequestState } from "../../domain/Snapshot.ts"
 import type { ItemResult, Report } from "../../ports/GitHub.ts"
+import { Contexts, toCheck, type ContextNode } from "./Contexts.ts"
 import { LifecycleState, nonOpenMembersOf, StackNode, toMembership } from "./Stacks.ts"
-
-const PageInfo = Schema.Struct({
-  endCursor: Schema.NullOr(Schema.String),
-  hasNextPage: Schema.Boolean,
-})
-
-const StatusState = Schema.Literals(["EXPECTED", "PENDING", "SUCCESS", "ERROR", "FAILURE"])
 
 const MergeableState = Schema.Literals(["MERGEABLE", "CONFLICTING", "UNKNOWN"])
 
 type MergeableState = typeof MergeableState.Type
-
-type StatusState = typeof StatusState.Type
-
-const StatusContextNode = Schema.Struct({
-  __typename: Schema.Literal("StatusContext"),
-  context: Schema.String,
-  createdAt: Schema.String,
-  state: StatusState,
-})
-
-const CheckRunNode = Schema.Struct({
-  __typename: Schema.Literal("CheckRun"),
-  checkSuite: Schema.Struct({
-    app: Schema.NullOr(Schema.Struct({ id: Schema.String })),
-    createdAt: Schema.String,
-    id: Schema.String,
-    workflowRun: Schema.NullOr(
-      Schema.Struct({
-        event: Schema.String,
-        runAttempt: Schema.Int,
-        runNumber: Schema.Int,
-        workflow: Schema.Struct({ id: Schema.String }),
-      }),
-    ),
-  }),
-  conclusion: Schema.NullOr(Schema.String),
-  name: Schema.String,
-  status: Schema.String,
-})
-
-export const ContextNode = Schema.Union([StatusContextNode, CheckRunNode])
-
-export type ContextNode = typeof ContextNode.Type
-
-export const Contexts = Schema.Struct({
-  nodes: Schema.Array(ContextNode),
-  pageInfo: PageInfo,
-})
-
-export type Contexts = typeof Contexts.Type
 
 export const PullRequestNode = Schema.Struct({
   isDraft: Schema.Boolean,
@@ -70,84 +24,10 @@ export const PullRequestNode = Schema.Struct({
 
 export type PullRequestNode = typeof PullRequestNode.Type
 
-const failedConclusions = new Set([
-  "FAILURE",
-  "CANCELLED",
-  "TIMED_OUT",
-  "ACTION_REQUIRED",
-  "STARTUP_FAILURE",
-  "STALE",
-])
-
-const timestamp = /^(?<seconds>[^.]+?)(?:\.(?<fraction>\d+))?Z$/u
-
-/** `[epochSeconds, nanoseconds]`, so runs created in the same second still order correctly. */
-export function generationOf(createdAt: string): readonly number[] {
-  const match = timestamp.exec(createdAt)
-  const groups = match === null ? {} : (match.groups ?? {})
-  const seconds = Date.parse(`${groups["seconds"] ?? ""}Z`) / 1000
-  const nanoseconds = Number((groups["fraction"] ?? "").padEnd(9, "0").slice(0, 9))
-
-  return [Number.isFinite(seconds) ? seconds : 0, nanoseconds]
-}
-
-function checkRunOutcome(status: string, conclusion: string | null): CheckOutcome {
-  if (status !== "COMPLETED") return "pending"
-
-  if (conclusion === "SUCCESS") return "passed"
-
-  return failedConclusions.has(conclusion ?? "") ? "failed" : "ignored"
-}
-
 const mergeabilities: Record<MergeableState, Mergeability> = {
   CONFLICTING: "conflicting",
   MERGEABLE: "mergeable",
   UNKNOWN: "unknown",
-}
-
-const statusOutcomes: Record<StatusState, CheckOutcome> = {
-  ERROR: "failed",
-  EXPECTED: "pending",
-  FAILURE: "failed",
-  PENDING: "pending",
-  SUCCESS: "passed",
-}
-
-/**
- * Status contexts are one check per context name. The jobs of a workflow run are one check,
- * identified by app, workflow and event and ordered by run and attempt, so a newer run replaces
- * every job of an older one, including jobs it no longer has. Any other check run is identified
- * by its app (or suite) and name, and ordered by when its suite was created.
- */
-export function toCheck(node: ContextNode): Check {
-  if (node.__typename === "StatusContext") {
-    const identity = `status ${node.context.toLowerCase()}`
-
-    return {
-      generation: generationOf(node.createdAt),
-      identity,
-      outcome: statusOutcomes[node.state],
-    }
-  }
-
-  const outcome = checkRunOutcome(node.status, node.conclusion)
-
-  // Runs of one app's check replace each other across suites; without an app, each suite stands alone.
-  const source =
-    node.checkSuite.app === null ? `suite ${node.checkSuite.id}` : `app ${node.checkSuite.app.id}`
-
-  return Option.match(Option.fromNullishOr(node.checkSuite.workflowRun), {
-    onNone: () => ({
-      generation: generationOf(node.checkSuite.createdAt),
-      identity: `check ${source} ${node.name}`,
-      outcome,
-    }),
-    onSome: (run) => ({
-      generation: [run.runNumber, run.runAttempt],
-      identity: `workflow ${source} ${run.workflow.id} ${run.event}`,
-      outcome,
-    }),
-  })
 }
 
 /** What the client gathered beside the pull request node: every check context, and the review state. */
