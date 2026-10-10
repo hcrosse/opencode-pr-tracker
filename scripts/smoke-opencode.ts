@@ -1,15 +1,5 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
-import {
-  Array as Arr,
-  Config,
-  Duration,
-  Effect,
-  FileSystem,
-  Option,
-  Path,
-  Schedule,
-  Schema,
-} from "effect"
+import { Array as Arr, Duration, Effect, FileSystem, Option, Path, Schedule, Schema } from "effect"
 import {
   FetchHttpClient,
   HttpClient,
@@ -19,6 +9,7 @@ import {
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
 import packageManifest from "../package.json" with { type: "json" }
+import { smokeConfig } from "./smoke-config.ts"
 import { startServer, type ServerAddress } from "./smoke-opencode-server.ts"
 import { exerciseRpc } from "./smoke-rpc.ts"
 
@@ -183,11 +174,7 @@ const waitForPlugin = Effect.fn("SmokeOpenCode.waitForPlugin")(function* (
 })
 
 const smoke = Effect.gen(function* () {
-  const config = yield* Config.unwrap({
-    binary: Config.option(Config.string("OPENCODE_BIN")),
-    githubToken: Config.option(Config.redacted("GH_TOKEN")),
-    path: Config.string("PATH"),
-  })
+  const config = yield* smokeConfig
 
   const hasGitHubToken = Option.isSome(config.githubToken)
 
