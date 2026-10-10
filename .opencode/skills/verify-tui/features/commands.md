@@ -4,7 +4,7 @@ Four slash commands, also listed in the command palette under `Pull requests`, c
 
 ## Sub-features
 
-- `attach-url`: `/pr-attach <url>` attaches a pull request with the rest of its Stack.
+- `attach-url`: `/pr-attach <url>` attaches a pull request with the open members of its Stack. Merged and closed members are left out unless named.
 - `attach-number-outside`: `/pr-attach <number>` outside a GitHub repository explains that a URL is needed, and changes nothing.
 - `sync`: `/pr-sync` refreshes every attached pull request now and reports how many.
 - `detach`: `/pr-detach` offers the attached pull requests in a dialog and detaches the chosen one.
@@ -19,7 +19,7 @@ Four slash commands, also listed in the command palette under `Pull requests`, c
 
 Preconditions: the baseline in `README.md`.
 
-- **Attach by URL.** Send `/pr-attach github.com/hcrosse/opencode-pr-tracker/pull/78` and press enter. Wait for `feat: add guided feedback command`, then capture `commands-attach`. The capture contains the toast `Attached hcrosse/opencode-pr-tracker#78 with the rest of its Stack (2 pull requests).` and both Stack rows.
+- **Attach by URL.** Send `/pr-attach github.com/hcrosse/opencode-pr-tracker/pull/78` and press enter. Wait for `The rest of its Stack is merged or closed.`, then capture `commands-attach-merged`. The capture contains the toast `Attached hcrosse/opencode-pr-tracker#78. The rest of its Stack is merged or closed.` and only the #78 row, because #79 is merged. After the toast clears, send `/pr-attach github.com/hcrosse/opencode-pr-tracker/pull/79` and press enter. Wait for `feat: add guided feedback command`, then capture `commands-attach`. The capture contains the toast `Attached hcrosse/opencode-pr-tracker#79 with the rest of its Stack (2 pull requests).` and both Stack rows.
 - **Attach by number outside a GitHub repository.** Send `/pr-attach 120` and press enter. Wait for `not a GitHub repository`, then capture `commands-rejected`. The toast says the directory is not a GitHub repository that gh can see and suggests the pull request URL. The sidebar is unchanged.
 - **Sync.** Send `/pr-sync` and press enter. Wait for `Synced 2 pull requests.`
 - **Open.** Send `/pr-open` and press enter. Wait for `Open pull request`, then capture `commands-open-dialog`. The dialog lists `hcrosse/opencode-pr-tracker#78` and `#79`. Press `down`, then `enter`, to choose #79. Poll until `$RUN_DIR/artifacts/opened.txt` exists. It contains exactly `https://github.com/hcrosse/opencode-pr-tracker/pull/79`, and no toast appears.

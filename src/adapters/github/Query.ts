@@ -37,7 +37,7 @@ const pullRequest = (pageSize: number): string => `
       id size
       entries(first: 100) {
         pageInfo { hasNextPage }
-        nodes { position pullRequest { url } }
+        nodes { position pullRequest { url state } }
       }
     }
     statusCheckRollup { ${contexts(pageSize, "")} }

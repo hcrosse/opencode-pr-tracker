@@ -4,9 +4,12 @@ import { Array as Arr, Option, Result } from "effect"
 
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
 import type { Entry, Membership, Row } from "../../src/domain/StackLayout.ts"
-import { attach, detach, type Tracking } from "../../src/domain/Tracking.ts"
+import { attach, detach, type Attaching, type Tracking } from "../../src/domain/Tracking.ts"
 
 export type Stack = readonly [PullRequestRef, ...PullRequestRef[]]
+
+/** Attaching every member of `stack`. */
+export const whole = (stack: Stack): Attaching => ({ adding: stack, stack })
 
 export const ref = (repository: string, number: number): PullRequestRef =>
   Result.getOrThrow(parsePullRequestUrl(`github.com/${repository}/pull/${String(number)}`))
@@ -75,12 +78,12 @@ export const worlds = gs.composite((tc): World => {
   return { membership, primary, stackOf }
 })
 
-/** Attaches a pull request the way a user does: with the rest of its Stack. */
+/** Attaches a pull request the way a user does when its Stack is open: with the rest of its Stack. */
 function attachWhole(tracking: Tracking, members: readonly PullRequestRef[], at: number): Tracking {
   return Arr.matchLeft(members, {
     onEmpty: () => tracking,
     onNonEmpty: (head: PullRequestRef, tail: readonly PullRequestRef[]) =>
-      Result.match(attach(tracking, [head, ...tail], at), {
+      Result.match(attach(tracking, whole([head, ...tail]), at), {
         onFailure: () => tracking,
         onSuccess: (change) => change.tracking,
       }),

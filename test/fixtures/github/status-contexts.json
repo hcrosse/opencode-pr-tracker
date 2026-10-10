@@ -9,8 +9,8 @@
             "title": "DRA: use ktesting in staging repo",
             "state": "OPEN",
             "isDraft": false,
-            "mergeable": "UNKNOWN",
-            "mergeStateStatus": "UNKNOWN",
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "BLOCKED",
             "headRefOid": "28e332c912fdf2bbec05683df8a525f6f8dbef62",
             "author": {
               "login": "pohly"
@@ -352,5 +352,5 @@
     }
   ],
   "pageSize": 100,
-  "recordedAt": "2026-10-10T01:19:09.140Z"
+  "recordedAt": "2026-10-10T01:33:10.992Z"
 }

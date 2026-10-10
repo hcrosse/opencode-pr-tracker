@@ -15,7 +15,7 @@ Each item names the V2 module that owns it.
 
 - A session tracks at most 40 pull requests.
 - Attaching an already attached pull request succeeds without duplicating it.
-- Attaching any member of a GitHub Stack attaches the whole Stack in bottom-to-top order.
+- Attaching any member of a GitHub Stack also attaches the Stack's open members, including drafts, in bottom-to-top order. Merged and closed members are left out unless they are the one named, and nothing already attached is detached.
   - A Stack is inserted at the position of its earliest already-attached member. Other attachments keep their order.
   - When refreshes later report a changed Stack, such as pull requests linked into it after they were attached, its attached members are regrouped the same way. The order is saved only when it changes, and only once every attached member agrees on the Stack and no other Stack claims any of them.
   - Merged pull requests stop refreshing, so when a Stack member reports a changed Stack, attached merged members whose known membership contradicts it are refreshed once. This lets a Stack with a merged member regroup after a link or unlink.

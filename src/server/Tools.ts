@@ -97,7 +97,7 @@ export function registerTools(
     editor.add(
       changeTool(
         "attach",
-        "Attach a pull request to this session. Attaching a GitHub Stack member attaches the whole Stack.",
+        "Attach a pull request to this session. Attaching a GitHub Stack member also attaches the Stack's open members. Merged or closed members are left out unless named.",
         changes.attach,
       ),
     )

@@ -36,13 +36,15 @@
                   {
                     "position": 1,
                     "pullRequest": {
-                      "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/78"
+                      "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/78",
+                      "state": "MERGED"
                     }
                   },
                   {
                     "position": 2,
                     "pullRequest": {
-                      "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/79"
+                      "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/79",
+                      "state": "MERGED"
                     }
                   }
                 ]
@@ -336,13 +338,15 @@
                   {
                     "position": 1,
                     "pullRequest": {
-                      "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/78"
+                      "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/78",
+                      "state": "MERGED"
                     }
                   },
                   {
                     "position": 2,
                     "pullRequest": {
-                      "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/79"
+                      "url": "https://github.com/hcrosse/opencode-pr-tracker/pull/79",
+                      "state": "MERGED"
                     }
                   }
                 ]
@@ -592,5 +596,5 @@
     }
   ],
   "pageSize": 100,
-  "recordedAt": "2026-10-10T01:19:06.573Z"
+  "recordedAt": "2026-10-10T01:33:08.349Z"
 }

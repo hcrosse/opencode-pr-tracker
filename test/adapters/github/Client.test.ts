@@ -72,6 +72,9 @@ describe("GitHub client on a recorded Stack", () => {
       expect(
         Option.flatMap(reportOf(results, member), (report: Report) => report.membership),
       ).toMatchObject(Option.some({ _tag: "Stack", members: [trackerRef(78), trackerRef(79)] }))
+      expect(
+        Option.map(reportOf(results, member), (report: Report) => report.nonOpenMembers),
+      ).toEqual(Option.some([trackerRef(78).url, trackerRef(79).url]))
     }
   })
 })
