@@ -7,7 +7,7 @@
 import type { StorageDomain } from "@opencode/plugin/effect/storage"
 import { Clock, Duration, Effect, Option, Ref } from "effect"
 
-import { makeStoredNumber, readStored, type StoredNumber } from "./StoredNumber.ts"
+import { storedNumber, readStored, type StoredNumber } from "./StoredNumber.ts"
 
 /** Epoch milliseconds before which no request is sent, as earlier versions record it. */
 const legacyKey = "github/rate-limit/until"
@@ -153,8 +153,8 @@ const record = Effect.fn("RateLimit.record")(function* (instance: Instance, unti
  * update it by reading and writing it back. A malformed single key holds this instance back a
  * minute and is logged once, and that value stays malformed until it changes; see `StoredNumber`.
  */
-export const makeWaits = Effect.fn("RateLimit.makeWaits")(function* (storage: StorageDomain) {
-  const legacy = yield* makeStoredNumber({
+export const waitsIn = Effect.fn("RateLimit.waitsIn")(function* (storage: StorageDomain) {
+  const legacy = yield* storedNumber({
     key: legacyKey,
     replacement: (now: number) => now + malformedLegacyWait,
     storage,

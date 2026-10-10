@@ -6,7 +6,7 @@ import { createRoot, createSignal, type Accessor } from "solid-js"
 
 import { View } from "../../src/rpc.ts"
 import { background } from "../../src/tui/Background.ts"
-import { makeClient, type TrackerClientApi, type TrackerRpc } from "../../src/tui/Client.ts"
+import { trackerClient, type TrackerClientApi, type TrackerRpc } from "../../src/tui/Client.ts"
 import { sessionView } from "../../src/tui/SessionView.ts"
 import { fakeTracker } from "../support/tui.ts"
 import { viewOf } from "../support/ui.tsx"
@@ -93,7 +93,7 @@ function heldWatches(): HeldWatches {
   return {
     aborted: holds.aborted,
     calls,
-    client: makeClient({ locationOf: () => Option.none(), rpc }),
+    client: trackerClient({ locationOf: () => Option.none(), rpc }),
     peak: holds.peak,
     pending: holds.pending,
   }

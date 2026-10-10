@@ -3,8 +3,8 @@ import type { StorageDomain } from "@opencode/plugin/effect/storage"
 import { Clock, Context, Data, Duration, Effect, Layer, Option } from "effect"
 
 import { GitHubFailure } from "../../ports/GitHub.ts"
-import { makeStoredNumber, readStored, type StoredNumber } from "./StoredNumber.ts"
-import { longestHint, makeWaits } from "./Waits.ts"
+import { storedNumber, readStored, type StoredNumber } from "./StoredNumber.ts"
+import { longestHint, waitsIn } from "./Waits.ts"
 
 /** What a response says about rate limiting. Header names are lowercase. */
 export interface Evidence {
@@ -94,7 +94,7 @@ export class RateLimit extends Context.Service<RateLimit, RateLimitApi>()(
 
 /** The stored strike count. A malformed one hides how many came before, so it counts as most. */
 const strikesIn = (storage: StorageDomain): Effect.Effect<StoredNumber> =>
-  makeStoredNumber({ key: strikesKey, replacement: () => mostStrikes, storage, valid: () => true })
+  storedNumber({ key: strikesKey, replacement: () => mostStrikes, storage, valid: () => true })
 
 /** The end of a wait without a time from GitHub, counted as one more consecutive strike. */
 const unhintedUntil = Effect.fn("RateLimit.unhintedUntil")(function* (
@@ -119,7 +119,7 @@ export function layer(storage: StorageDomain): Layer.Layer<RateLimit> {
   return Layer.effect(
     RateLimit,
     Effect.gen(function* () {
-      const waits = yield* makeWaits(storage)
+      const waits = yield* waitsIn(storage)
       const strikes = yield* strikesIn(storage)
 
       return RateLimit.of({
