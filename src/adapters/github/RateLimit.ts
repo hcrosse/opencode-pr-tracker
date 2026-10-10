@@ -3,6 +3,7 @@ import type { StorageDomain } from "@opencode/plugin/effect/storage"
 import { Clock, Context, Duration, Effect, Layer, Option, Schema } from "effect"
 
 import { GitHubFailure } from "../../ports/GitHub.ts"
+import { longestHint, makeWaits, type WaitsApi } from "./Waits.ts"
 
 /** What a response says about rate limiting. Header names are lowercase. */
 export interface Evidence {
@@ -16,8 +17,6 @@ export type Verdict =
   | { readonly _tag: "Allowed" }
   /** `until` is the epoch millisecond GitHub said to wait until, if it said. */
   | { readonly _tag: "Limited"; readonly until: Option.Option<number> }
-
-const longestHint = Duration.toMillis(Duration.hours(1))
 
 /** A header of whole seconds. Anything else, such as an HTTP date, is unusable. */
 const secondsHeader = (evidence: Evidence, name: string): Option.Option<number> =>
@@ -66,13 +65,8 @@ export function verdictOf(evidence: Evidence, now: number): Verdict {
   return limited ? { _tag: "Limited", until: hintedUntil(evidence, now) } : { _tag: "Allowed" }
 }
 
-/** Epoch milliseconds before which no request is sent. */
-const untilKey = "github/rate-limit/until"
-
 /** Consecutive limits without a wait from GitHub. Each doubles the next wait. */
 const strikesKey = "github/rate-limit/strikes"
-
-const decodeUntil = Schema.decodeUnknownOption(Schema.Finite)
 
 const decodeStrikes = Schema.decodeUnknownOption(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)))
 
@@ -92,9 +86,6 @@ export interface RateLimitApi {
 export class RateLimit extends Context.Service<RateLimit, RateLimitApi>()(
   "opencode-pr-tracker/RateLimit",
 ) {}
-
-const storedUntil = (storage: StorageDomain): Effect.Effect<number> =>
-  Effect.map(storage.get(untilKey), (value) => Option.getOrElse(decodeUntil(value), () => 0))
 
 const storedStrikes = (storage: StorageDomain): Effect.Effect<number> =>
   Effect.map(storage.get(strikesKey), (value) => Option.getOrElse(decodeStrikes(value), () => 0))
@@ -117,30 +108,32 @@ const unhintedUntil = (storage: StorageDomain, now: number): Effect.Effect<numbe
 export function layer(storage: StorageDomain): Layer.Layer<RateLimit> {
   const now = Effect.map(Clock.currentTimeMillis, Math.floor)
 
-  return Layer.succeed(
+  return Layer.effect(
     RateLimit,
-    RateLimit.of({
-      answered: Effect.gen(function* () {
-        if ((yield* storedStrikes(storage)) > 0) yield* storage.set(strikesKey, 0)
-      }),
-      check: Effect.gen(function* () {
-        const waiting = (yield* now) < (yield* storedUntil(storage))
-
-        return yield* waiting
-          ? Effect.fail(new GitHubFailure({ diagnostic: "RateLimited" }))
-          : Effect.void
-      }),
-      limited: (hinted) =>
-        Effect.gen(function* () {
-          const at = yield* now
-
-          const next = yield* Option.match(hinted, {
-            onNone: () => unhintedUntil(storage, at),
-            onSome: Effect.succeed,
-          })
-
-          yield* storage.set(untilKey, Math.max(next, yield* storedUntil(storage)))
+    Effect.map(makeWaits(storage), (waits: WaitsApi) =>
+      RateLimit.of({
+        answered: Effect.gen(function* () {
+          if ((yield* storedStrikes(storage)) > 0) yield* storage.set(strikesKey, 0)
         }),
-    }),
+        check: Effect.gen(function* () {
+          const latest = yield* waits.latest
+
+          return yield* latest.now < latest.until
+            ? Effect.fail(new GitHubFailure({ diagnostic: "RateLimited" }))
+            : Effect.void
+        }),
+        limited: (hinted) =>
+          Effect.gen(function* () {
+            const at = yield* now
+
+            const next = yield* Option.match(hinted, {
+              onNone: () => unhintedUntil(storage, at),
+              onSome: Effect.succeed,
+            })
+
+            yield* waits.record(next)
+          }),
+      }),
+    ),
   )
 }
