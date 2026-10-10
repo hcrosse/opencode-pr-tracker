@@ -68,6 +68,26 @@ const examples: readonly Example[] = [
     ],
   ],
   [
+    "unknown checks and decision, with a thread of unknown reply",
+    [
+      15,
+      fresh(
+        15,
+        open("unknown", {
+          decision: "unknown",
+          threads: { complete: true, fetched: 1, replied: 0, unknown: 1, unreplied: 0 },
+        }),
+      ),
+    ],
+    [
+      [
+        ["review unknown", "gray"],
+        ["1 unknown", "gray"],
+      ],
+      "- https://github.com/acme/api/pull/15 (checks unknown; review decision unknown; 1 unknown review thread)",
+    ],
+  ],
+  [
     "review required, with one thread awaiting the author",
     [14, fresh(14, open("passed", reviewWith("reviewRequired", [1, 0])))],
     [

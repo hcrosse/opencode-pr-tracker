@@ -6,7 +6,7 @@ import * as gs from "@hegeldev/hegel/generators"
 import { classifyCi, type Check, type CheckOutcome } from "../../src/domain/Checks.ts"
 import type { Ci } from "../../src/domain/Snapshot.ts"
 
-const outcomes = gs.sampledFrom<CheckOutcome>(["passed", "pending", "failed", "ignored"])
+const outcomes = gs.sampledFrom<CheckOutcome>(["passed", "pending", "failed", "ignored", "unknown"])
 
 interface Keyed {
   readonly check: Check
@@ -27,7 +27,7 @@ interface Scenario {
 
 /** A generation strictly before `[major, minor]`, differing in either position. */
 function olderThan(major: number, minor: number): gs.Generator<number[]> {
-  return gs.composite((tc) =>
+  return gs.composite((tc): number[] =>
     tc.draw(gs.booleans()) && major > 0
       ? [tc.draw(gs.integers({ maxValue: major - 1, minValue: 0 })), tc.draw(gs.integers())]
       : [major, tc.draw(gs.integers({ maxValue: minor - 1 }))],
@@ -44,10 +44,15 @@ function identityRuns(
     const minor = tc.draw(gs.integers({ minValue: -1_000_000 }))
     const latest = tc.draw(gs.arrays(newestOutcomes, { minSize: 1 }))
     const older = tc.draw(gs.arrays(gs.tuples(olderThan(major, minor), outcomes)))
-    const newest = latest.map((outcome) => ({ generation: [major, minor], identity, outcome }))
+
+    const newest = latest.map((outcome): Check => ({
+      generation: [major, minor],
+      identity,
+      outcome,
+    }))
 
     const superseded = older.map(
-      ([generation, outcome]: readonly [readonly number[], CheckOutcome]) => ({
+      ([generation, outcome]: readonly [readonly number[], CheckOutcome]): Check => ({
         generation,
         identity,
         outcome,
@@ -88,6 +93,8 @@ const scenarios = scenariosWith(outcomes)
 
 function expectedCi(latest: readonly CheckOutcome[]): Ci {
   if (latest.includes("failed")) return "failed"
+
+  if (latest.includes("unknown")) return "unknown"
 
   if (latest.includes("pending")) return "pending"
 
@@ -153,6 +160,6 @@ describe("classifyCi examples", () => {
 
   test("reports no checks when there are none, or only skipped ones", () => {
     expect(classifyCi([])).toBe("none")
-    expect(classifyCi([run("ci/docs", [1], "ignored")])).toBe("none")
+    expect(classifyCi([run("ci/docs", [1, 1], "ignored")])).toBe("none")
   })
 })

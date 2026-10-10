@@ -156,15 +156,15 @@ describe("refresh status while rate limited", () => {
   })
 })
 
-describe("snapshot compatibility across versions", () => {
-  const openWithout = {
-    _tag: "Open",
-    behind: false,
-    ci: "passed",
-    draft: false,
-    mergeability: "mergeable",
-  } as const
+const openWithout = {
+  _tag: "Open",
+  behind: false,
+  ci: "passed",
+  draft: false,
+  mergeability: "mergeable",
+} as const
 
+describe("snapshot compatibility across versions", () => {
   test("reads an open state from a server without review state as having none", () => {
     expect(Schema.decodeUnknownSync(PullRequestState)(openWithout)).toEqual(
       Object.assign({ review: noReview }, openWithout),

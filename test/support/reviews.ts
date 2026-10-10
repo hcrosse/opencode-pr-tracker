@@ -7,5 +7,11 @@ export const reviewWith = (
   complete = true,
 ): Review => ({
   decision,
-  threads: { complete, fetched: complete ? unreplied + replied : 20, replied, unreplied },
+  threads: {
+    complete,
+    fetched: complete ? unreplied + replied : 20,
+    replied,
+    unknown: 0,
+    unreplied,
+  },
 })

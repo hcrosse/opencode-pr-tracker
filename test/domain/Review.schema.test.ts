@@ -9,7 +9,7 @@ import { evidence } from "../support/reviewEvidence.ts"
 
 const decode = Schema.decodeUnknownOption(Threads)
 
-const valid = { complete: true, fetched: 5, replied: 2, unreplied: 3 }
+const valid = { complete: true, fetched: 6, replied: 2, unknown: 1, unreplied: 3 }
 
 describe("Threads schema", () => {
   test("decodes every count the server derives from GitHub's threads", () => {
@@ -27,15 +27,34 @@ describe("Threads schema", () => {
       expect(decode(threads)).toEqual(Option.some(threads))
     })
   })
+})
 
+describe("Threads schema on impossible counts", () => {
   test.each<readonly [string, Threads]>([
-    ["a negative fetched count", { complete: true, fetched: -1, replied: 0, unreplied: 0 }],
-    ["a negative replied count", { complete: true, fetched: 5, replied: -1, unreplied: 3 }],
-    ["a negative unreplied count", { complete: true, fetched: 5, replied: 2, unreplied: -2 }],
-    ["a fractional count", { complete: true, fetched: 5, replied: 1.5, unreplied: 0 }],
+    [
+      "a negative fetched count",
+      { complete: true, fetched: -1, replied: 0, unknown: 0, unreplied: 0 },
+    ],
+    [
+      "a negative replied count",
+      { complete: true, fetched: 5, replied: -1, unknown: 0, unreplied: 3 },
+    ],
+    [
+      "a negative unreplied count",
+      { complete: true, fetched: 5, replied: 2, unknown: 0, unreplied: -2 },
+    ],
+    [
+      "a negative unknown count",
+      { complete: true, fetched: 5, replied: 2, unknown: -1, unreplied: 3 },
+    ],
+    ["a fractional count", { complete: true, fetched: 5, replied: 1.5, unknown: 0, unreplied: 0 }],
     [
       "more unresolved threads than fetched",
-      { complete: false, fetched: 4, replied: 2, unreplied: 3 },
+      { complete: false, fetched: 4, replied: 2, unknown: 0, unreplied: 3 },
+    ],
+    [
+      "more unresolved threads than fetched, counting unknown ones",
+      { complete: false, fetched: 5, replied: 2, unknown: 1, unreplied: 3 },
     ],
   ])("rejects %s", (_name, threads) => {
     expect(decode(valid)).toEqual(Option.some(valid))

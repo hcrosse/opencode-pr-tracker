@@ -12,7 +12,8 @@ const longestBackoff = Duration.minutes(15)
 
 /**
  * When to refresh a pull request next. An open pull request refreshes quickly while CI runs or
- * GitHub computes mergeability. A closed one still refreshes so a reopen is noticed. Merged pull
+ * GitHub computes mergeability. Unknown CI refreshes quickly too: a check in a status this version
+ * does not recognize may still be running, and CI does not record why a check is unknown. A closed one still refreshes so a reopen is noticed. Merged pull
  * requests never change, so they stop once a refresh succeeds. A failed refresh was still wanted,
  * such as to learn a merged pull request's current Stack, so it is retried quickly. After
  * `failures` consecutive failures that cost GitHub work, such as timed-out queries, the retry waits
@@ -33,6 +34,8 @@ export function nextRefresh(status: Status, failures: number): Option.Option<Dur
   if (state._tag === "Closed") return Option.some(closed)
 
   return Option.some(
-    state.ci === "pending" || state.mergeability === "unknown" ? settling : settled,
+    state.ci === "pending" || state.ci === "unknown" || state.mergeability === "unknown"
+      ? settling
+      : settled,
   )
 }

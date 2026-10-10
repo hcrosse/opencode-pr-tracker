@@ -30,18 +30,20 @@ Each item names the V2 module that owns it.
 
 ## Status (`domain/Snapshot`, `adapters/github`)
 
-- States: open, merged, closed. An open pull request has CI (passed, pending, failed, none), draft, mergeability (mergeable, conflicting, unknown) and behind.
+- States: open, merged, closed. An open pull request has CI (passed, pending, failed, none, unknown), draft, mergeability (mergeable, conflicting, unknown) and behind (yes, no, unknown).
+- An enumeration value GitHub adds later reads as unknown: a check run status or conclusion, a status context state, or a merge state status. A completed check run without a conclusion is unknown too. An unrecognized status or conclusion makes a check run unknown whatever its other field says. Unknown CI beats pending and passed; failed beats unknown. Unknown CI refreshes every 15 seconds, like pending CI, since a check in a new status may still be running. Each such value is logged with the value GitHub sent, once per plugin instance, for up to 20 values per field.
+- A terminal from an earlier plugin version, reading a newer server, shows unknown CI as pending, an unknown merge state as not behind and an unknown decision as none, and leaves unknown threads out of its counts, as it did before unknown states existed.
 - CI uses only the newest check runs per check identity and the newest status context per context name.
   - A workflow's jobs share one identity: app, workflow and event. The newest run and attempt replaces every job of older runs, including jobs it no longer has.
   - Other check runs are identified by app and name. Checks without an app fall back to the check suite.
   - Status context names are compared case-insensitively.
   - Checks tied for newest are all kept.
-  - Every non-completed check run status counts as pending.
+  - Every known non-completed check run status counts as pending.
 - A null status rollup means no checks.
 - With the `reviews` option set to `"all"`, an open pull request, drafts included, also has a review state (`domain/Review`): a decision and counts of unresolved review threads. Merged and closed pull requests have none. The option is `"off"` by default; then the query asks for no review fields and snapshots carry no review state, even when a response has review fields. An absent `reviews` or `layout` option takes its default. A value outside an option's allowed values, or any other option key, fails plugin startup with one `InvalidOptions` error that names every problem: each invalid value with its option and allowed values, and each unknown key with the known options (`server/Options`).
-  - The decision is GitHub's `reviewDecision` (approved, changes requested, review required). When that is null, it is derived from writers' latest opinionated reviews: any change request, else any approval, else none. Review required is never derived. A decision GitHub adds later reads as none. Up to 100 writers' reviews are fetched; when there are more, the decision is GitHub's own, or none when GitHub reports none, and is never derived.
+  - The decision is GitHub's `reviewDecision` (approved, changes requested, review required). When that is null, it is derived from writers' latest opinionated reviews: any change request, else any approval, else none. Review required is never derived. A decision or review state GitHub adds later reads as unknown; a derived decision is unknown when no writer requests changes and any writer's review is in an unknown state. Up to 100 writers' reviews are fetched; when there are more, the decision is GitHub's own, or none when GitHub reports none, and is never derived.
   - An approval, reported or derived, is a stale approval when no approving review is of the head commit. This is not checked when some writers' reviews were not fetched.
-  - Only unresolved threads count, outdated ones included. A thread is replied when its latest submitted comment, among its last 5, is by the pull request author; otherwise, including ghost authors and threads with only pending comments, it is unreplied.
+  - Only unresolved threads count, outdated ones included. A thread is replied when its latest submitted comment, among its last 5, is by the pull request author; otherwise, including ghost authors and threads with only pending comments, it is unreplied. It is unknown when a comment in a state GitHub added later comes after every submitted one.
   - Only the first 20 threads are fetched. When there are more, the counts are lower bounds.
 - "Behind" appears only when GitHub reports `mergeStateStatus: BEHIND`, which requires a strict up-to-date policy on the base.
 - A missing or inaccessible pull request is reported per item. Other items in the batch still succeed.
@@ -70,11 +72,13 @@ Each item names the V2 module that owns it.
   2. Closed: red, strikethrough.
   3. Conflict: red. Conflict takes precedence over draft and CI.
   4. Failed CI: red.
-  5. Draft: gray. Draft takes precedence over behind, and over pending CI.
-  6. Pending CI: yellow.
-  7. Behind: yellow.
-  8. Passed: green.
-  9. No checks, or unavailable: gray.
+  5. Draft: gray. Draft takes precedence over behind, and over unknown or pending CI.
+  6. Checks unknown: gray.
+  7. Pending CI: yellow.
+  8. Merge state unknown: gray.
+  9. Behind: yellow.
+  10. Passed: green.
+  11. No checks, or unavailable: gray.
 
   CI is used while GitHub is still computing mergeability.
 

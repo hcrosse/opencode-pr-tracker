@@ -29,19 +29,29 @@ const shown = (tone: Tone, label: string, strikethrough = false): Appearance => 
   tone,
 })
 
-/** Precedence: conflict, failed CI, draft, pending CI, behind, then passed or no checks. */
+/** How near a pull request with no conflict or failed CI, and not a draft, is to merging. */
+function readiness(open: Open): Appearance {
+  if (open.ci === "unknown") return shown("gray", "checks unknown")
+
+  if (open.ci === "pending") return shown("yellow", "pending")
+
+  if (open.behind === "unknown") return shown("gray", "merge state unknown")
+
+  if (open.behind) return shown("yellow", "behind")
+
+  return open.ci === "passed" ? shown("green", "passed") : shown("gray", "no checks")
+}
+
+/**
+ * Precedence: conflict, failed CI, draft, unknown or pending CI, behind or an unknown merge state,
+ * then passed or no checks.
+ */
 function openAppearance(open: Open): Appearance {
   if (open.mergeability === "conflicting") return shown("red", "conflict")
 
   if (open.ci === "failed") return shown("red", "failed")
 
-  if (open.draft) return shown("gray", "draft")
-
-  if (open.ci === "pending") return shown("yellow", "pending")
-
-  if (open.behind) return shown("yellow", "behind")
-
-  return open.ci === "passed" ? shown("green", "passed") : shown("gray", "no checks")
+  return open.draft ? shown("gray", "draft") : readiness(open)
 }
 
 function stateAppearance(state: PullRequestState): Appearance {

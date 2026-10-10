@@ -40,7 +40,7 @@ describe("review state thread counts", () => {
   test("every positive count appears in the sidebar and in pr.list", () => {
     hegel.test((tc) => {
       const review = tc.draw(reviews)
-      const { complete, replied, unreplied } = review.threads
+      const { complete, replied, unknown, unreplied } = review.threads
       const bound = complete ? "" : "+"
       const shown = reviewParts(review).map((part) => part.text)
       const summary = reviewSummary(review).join("; ")
@@ -50,6 +50,7 @@ describe("review state thread counts", () => {
       for (const [count, kind] of [
         [unreplied, "unreplied"],
         [replied, "replied"],
+        [unknown, "unknown"],
       ] as const) {
         if (count > 0) {
           expect(shown).toContain(`${String(count)}${bound} ${kind}`)
@@ -61,7 +62,7 @@ describe("review state thread counts", () => {
 })
 
 const nothingUnresolved = reviews.filter(
-  (drawn) => drawn.threads.unreplied + drawn.threads.replied === 0,
+  (drawn) => drawn.threads.unreplied + drawn.threads.replied + drawn.threads.unknown === 0,
 )
 
 describe("review state without unresolved threads", () => {

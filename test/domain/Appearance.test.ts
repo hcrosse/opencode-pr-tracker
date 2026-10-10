@@ -56,6 +56,29 @@ describe("appearance precedence", () => {
   })
 })
 
+describe("appearance precedence of unknown states", () => {
+  test.each([
+    ["draft over unknown CI", open({ ci: "unknown", draft: true }), ["gray", "draft", false]],
+    [
+      "unknown CI over behind",
+      open({ behind: true, ci: "unknown" }),
+      ["gray", "checks unknown", false],
+    ],
+    [
+      "pending CI over an unknown merge state",
+      open({ behind: "unknown", ci: "pending" }),
+      ["yellow", "pending", false],
+    ],
+    [
+      "an unknown merge state over passed CI",
+      open({ behind: "unknown" }),
+      ["gray", "merge state unknown", false],
+    ],
+  ] as const)("%s", (_name, state, expected) => {
+    expect(shown(state)).toEqual(expected)
+  })
+})
+
 describe("appearance of unloaded, unavailable and stale statuses", () => {
   test.each([
     ["GitHubCliMissing", "install gh"],

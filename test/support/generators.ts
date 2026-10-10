@@ -62,18 +62,19 @@ export const reviews: gs.Generator<Review> = gs.composite((tc) => {
   const fetched = tc.draw(gs.integers({ maxValue: 20, minValue: 0 }))
   const unresolved = tc.draw(gs.integers({ maxValue: fetched, minValue: 0 }))
   const replied = tc.draw(gs.integers({ maxValue: unresolved, minValue: 0 }))
+  const unknown = tc.draw(gs.integers({ maxValue: unresolved - replied, minValue: 0 }))
   const complete = fetched < 20 || tc.draw(gs.booleans())
 
   return {
     decision: tc.draw(gs.sampledFrom(Decision.literals)),
-    threads: { complete, fetched, replied, unreplied: unresolved - replied },
+    threads: { complete, fetched, replied, unknown, unreplied: unresolved - replied - unknown },
   }
 })
 
 export const pullRequestStates: gs.Generator<PullRequestState> = gs.oneOf<PullRequestState>(
   gs.record({
     _tag: gs.just("Open" as const),
-    behind: gs.booleans(),
+    behind: gs.oneOf<boolean | "unknown">(gs.booleans(), gs.just("unknown" as const)),
     ci,
     draft: gs.booleans(),
     mergeability,

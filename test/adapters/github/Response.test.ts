@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test"
 
 import * as hegel from "@hegeldev/hegel"
 import * as gs from "@hegeldev/hegel/generators"
-import { Array as Arr, Order } from "effect"
+import { Array as Arr, Order, Schema } from "effect"
 
-import { generationOf, toCheck, type ContextNode } from "../../../src/adapters/github/Contexts.ts"
+import { ContextNode, generationOf, toCheck } from "../../../src/adapters/github/Contexts.ts"
 import { classifyCi, type CheckOutcome } from "../../../src/domain/Checks.ts"
 
 /** A check run as recorded from hcrosse/opencode-pr-tracker#127. */
@@ -24,7 +24,7 @@ const recordedRun = {
   conclusion: "SUCCESS",
   name: "Lint",
   status: "COMPLETED",
-} as const satisfies ContextNode
+} as const
 
 interface RunFields {
   readonly name: string
@@ -55,7 +55,9 @@ const recordedFields: RunFields = {
   app: true,
 }
 
-/** The recorded check run with some fields changed. */
+const decoded = (node: Schema.Json): ContextNode => Schema.decodeUnknownSync(ContextNode)(node)
+
+/** The recorded check run with some fields changed, as the client decodes it. */
 function run(changes: Partial<RunFields>): ContextNode {
   const fields: RunFields = Object.assign({}, recordedFields, changes)
 
@@ -66,7 +68,7 @@ function run(changes: Partial<RunFields>): ContextNode {
     workflow: { id: fields.workflowId },
   }
 
-  return {
+  return decoded({
     __typename: "CheckRun",
     checkSuite: {
       app: fields.app ? recordedRun.checkSuite.app : null,
@@ -77,15 +79,11 @@ function run(changes: Partial<RunFields>): ContextNode {
     conclusion: fields.conclusion,
     name: fields.name,
     status: fields.status,
-  }
+  })
 }
 
-const status = (context: string, state: "SUCCESS" | "FAILURE", createdAt: string): ContextNode => ({
-  __typename: "StatusContext",
-  context,
-  createdAt,
-  state,
-})
+const status = (context: string, state: string, createdAt: string): ContextNode =>
+  decoded({ __typename: "StatusContext", context, createdAt, state })
 
 const ci = (nodes: readonly ContextNode[]): string =>
   classifyCi(nodes.map((node: ContextNode) => toCheck(node)))

@@ -10,15 +10,32 @@ import {
   type ReviewMode,
   type ReviewThread,
 } from "../../domain/Review.ts"
+import { enumeration, Unrecognized, unrecognizedAmong } from "./Enumeration.ts"
 
 const Author = Schema.NullOr(Schema.Struct({ login: Schema.String }))
 
+const ReviewState = enumeration("PullRequestReview.state", [
+  "APPROVED",
+  "CHANGES_REQUESTED",
+  "COMMENTED",
+  "DISMISSED",
+  "PENDING",
+])
+
+const CommentState = enumeration("PullRequestReviewComment.state", ["PENDING", "SUBMITTED"])
+
+const ReviewDecision = enumeration("PullRequest.reviewDecision", [
+  "APPROVED",
+  "CHANGES_REQUESTED",
+  "REVIEW_REQUIRED",
+])
+
 const ReviewNode = Schema.Struct({
   commit: Schema.NullOr(Schema.Struct({ oid: Schema.String })),
-  state: Schema.String,
+  state: ReviewState,
 })
 
-const CommentNode = Schema.Struct({ author: Author, state: Schema.String })
+const CommentNode = Schema.Struct({ author: Author, state: CommentState })
 
 const ThreadNode = Schema.Struct({
   comments: Schema.Struct({ nodes: Schema.Array(CommentNode) }),
@@ -26,8 +43,8 @@ const ThreadNode = Schema.Struct({
 })
 
 /**
- * The review fields of a pull request node. Enumerations are read as text, so a value GitHub adds
- * later cannot fail the whole pull request.
+ * The review fields of a pull request node. A value GitHub adds later to an enumeration reads as
+ * unknown rather than failing the whole pull request.
  */
 const ReviewFields = Schema.Struct({
   author: Author,
@@ -36,7 +53,7 @@ const ReviewFields = Schema.Struct({
     nodes: Schema.Array(ReviewNode),
     pageInfo: Schema.Struct({ hasNextPage: Schema.Boolean }),
   }),
-  reviewDecision: Schema.NullOr(Schema.String),
+  reviewDecision: Schema.NullOr(ReviewDecision),
   reviewThreads: Schema.Struct({
     nodes: Schema.Array(ThreadNode),
     pageInfo: Schema.Struct({ hasNextPage: Schema.Boolean }),
@@ -49,21 +66,28 @@ type ReviewNode = typeof ReviewNode.Type
 
 type ThreadNode = typeof ThreadNode.Type
 
-const reportedDecisions: ReadonlyMap<string, ReportedDecision> = new Map([
-  ["APPROVED", "approved"],
-  ["CHANGES_REQUESTED", "changesRequested"],
-  ["REVIEW_REQUIRED", "reviewRequired"],
-])
+const reportedDecisions: Readonly<
+  Record<(typeof ReviewDecision.members)[0]["Type"], ReportedDecision>
+> = {
+  APPROVED: "approved",
+  CHANGES_REQUESTED: "changesRequested",
+  REVIEW_REQUIRED: "reviewRequired",
+}
 
-const verdicts: ReadonlyMap<string, OpinionatedReview["verdict"]> = new Map([
-  ["APPROVED", "approved"],
-  ["CHANGES_REQUESTED", "changesRequested"],
-])
+const verdicts: Readonly<
+  Record<(typeof ReviewState.members)[0]["Type"], OpinionatedReview["verdict"]>
+> = {
+  APPROVED: "approved",
+  CHANGES_REQUESTED: "changesRequested",
+  COMMENTED: "other",
+  DISMISSED: "other",
+  PENDING: "other",
+}
 
-function reportedOf(decision: string | null): ReportedDecision {
+function reportedOf(decision: ReviewFields["reviewDecision"]): ReportedDecision {
   if (decision === null) return "unreported"
 
-  return reportedDecisions.get(decision) ?? "unrecognized"
+  return decision instanceof Unrecognized ? "unknown" : reportedDecisions[decision]
 }
 
 const loginOf = (author: ReviewFields["author"]): Option.Option<string> =>
@@ -71,13 +95,13 @@ const loginOf = (author: ReviewFields["author"]): Option.Option<string> =>
 
 const toReview = (node: ReviewNode): OpinionatedReview => ({
   commit: Option.map(Option.fromNullishOr(node.commit), (commit) => commit.oid),
-  verdict: verdicts.get(node.state) ?? "other",
+  verdict: node.state instanceof Unrecognized ? "unknown" : verdicts[node.state],
 })
 
 const toThread = (node: ThreadNode): ReviewThread => ({
   comments: node.comments.nodes.map((comment) => ({
     author: loginOf(comment.author),
-    submitted: comment.state === "SUBMITTED",
+    submitted: comment.state instanceof Unrecognized ? "unknown" : comment.state === "SUBMITTED",
   })),
   resolved: node.isResolved,
 })
@@ -94,18 +118,38 @@ export function toReviewEvidence(node: ReviewFields): ReviewEvidence {
   }
 }
 
-const notSent = SchemaGetter.forbidden<never, Review>(() => "Review state is never sent to GitHub")
+/** The enumeration values in a pull request's review fields this version does not know. */
+const unrecognizedIn = (node: ReviewFields): Unrecognized[] =>
+  unrecognizedAmong([
+    node.reviewDecision,
+    ...node.latestOpinionatedReviews.nodes.map((review) => review.state),
+    ...node.reviewThreads.nodes.flatMap((thread) =>
+      thread.comments.nodes.map((comment) => comment.state),
+    ),
+  ])
 
-const ReviewState = ReviewFields.pipe(
-  Schema.decodeTo(Review, {
-    decode: SchemaGetter.transform((fields: ReviewFields) => reviewOf(toReviewEvidence(fields))),
+/** A pull request's review state, and the values in its review fields this version does not know. */
+const ReadReview = Schema.Struct({ review: Review, unrecognized: Schema.Array(Unrecognized) })
+
+export type ReadReview = typeof ReadReview.Type
+
+const notSent = SchemaGetter.forbidden<never, ReadReview>(
+  () => "Review state is never sent to GitHub",
+)
+
+const FetchedReview = ReviewFields.pipe(
+  Schema.decodeTo(ReadReview, {
+    decode: SchemaGetter.transform((fields: ReviewFields) => ({
+      review: reviewOf(toReviewEvidence(fields)),
+      unrecognized: unrecognizedIn(fields),
+    })),
     encode: notSent,
   }),
 )
 
-const NoReviewState = Schema.Unknown.pipe(
-  Schema.decodeTo(Review, {
-    decode: SchemaGetter.transform((): Review => noReview),
+const NoReview = Schema.Unknown.pipe(
+  Schema.decodeTo(ReadReview, {
+    decode: SchemaGetter.transform(() => ({ review: noReview, unrecognized: [] })),
     encode: notSent,
   }),
 )
@@ -114,7 +158,7 @@ const NoReviewState = Schema.Unknown.pipe(
  * How each mode reads the review state from a pull request's response node. "off" reads none of
  * its review fields; "all" needs every one of them.
  */
-export const reviewStates: Readonly<Record<ReviewMode, Schema.Decoder<Review>>> = {
-  all: ReviewState,
-  off: NoReviewState,
+export const reviewStates: Readonly<Record<ReviewMode, Schema.Decoder<ReadReview>>> = {
+  all: FetchedReview,
+  off: NoReview,
 }

@@ -55,7 +55,7 @@ describe("review decision GitHub reports", () => {
       "staleApproval",
     ],
     ["review required", decided("REVIEW_REQUIRED"), "reviewRequired"],
-    ["a decision GitHub added later", decided("ESCALATED", approval), "none"],
+    ["a decision GitHub added later as unknown", decided("ESCALATED", approval), "unknown"],
   ])("reads %s", async (_name, fields, decision) => {
     expect(await decisionFrom(fields)).toEqual(Option.some(decision))
   })
@@ -74,7 +74,12 @@ describe("review decision derived when GitHub reports none", () => {
       decided(null, approval, reviewed("CHANGES_REQUESTED", head)),
       "changesRequested",
     ],
-    ["a review state GitHub added later", decided(null, reviewed("DISMISSED", head)), "none"],
+    ["a dismissed review as no decision", decided(null, reviewed("DISMISSED", head)), "none"],
+    [
+      "a review state GitHub added later as unknown",
+      decided(null, approval, reviewed("ESCALATED", head)),
+      "unknown",
+    ],
   ])("reads %s", async (_name, fields, decision) => {
     expect(await decisionFrom(fields)).toEqual(Option.some(decision))
   })
@@ -94,9 +99,9 @@ describe("review decision when GitHub has more writers' reviews", () => {
       "none",
     ],
     [
-      "no decision when GitHub reports one added later",
+      "an unknown decision when GitHub reports one added later",
       decidedInPart("ESCALATED", approval),
-      "none",
+      "unknown",
     ],
   ])("reads %s", async (_name, fields, decision) => {
     expect(await decisionFrom(fields)).toEqual(Option.some(decision))
@@ -104,7 +109,7 @@ describe("review decision when GitHub has more writers' reviews", () => {
 })
 
 describe("review threads from a response", () => {
-  test("count unresolved threads by the latest submitted comment, ignoring unknown states", async () => {
+  test("count unresolved threads by the latest submitted comment, or as unknown", async () => {
     const review = await reviewFrom({
       author: { login: "hcrosse" },
       reviewThreads: threadPage(
@@ -120,7 +125,7 @@ describe("review threads from a response", () => {
     expect(review).toEqual(
       Option.some({
         decision: "none",
-        threads: { complete: true, fetched: 5, replied: 2, unreplied: 2 },
+        threads: { complete: true, fetched: 5, replied: 1, unknown: 1, unreplied: 2 },
       }),
     )
   })
@@ -134,7 +139,7 @@ describe("review threads from a response with missing data", () => {
     })
 
     expect(Option.map(review, (found) => found.threads)).toEqual(
-      Option.some({ complete: true, fetched: 1, replied: 0, unreplied: 1 }),
+      Option.some({ complete: true, fetched: 1, replied: 0, unknown: 0, unreplied: 1 }),
     )
   })
 
@@ -142,7 +147,7 @@ describe("review threads from a response with missing data", () => {
     const review = await reviewFrom({ reviewThreads: threadPage(true, thread(true)) })
 
     expect(Option.map(review, (found) => found.threads)).toEqual(
-      Option.some({ complete: false, fetched: 1, replied: 0, unreplied: 0 }),
+      Option.some({ complete: false, fetched: 1, replied: 0, unknown: 0, unreplied: 0 }),
     )
   })
 })

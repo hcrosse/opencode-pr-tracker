@@ -5,35 +5,51 @@ export const ReviewMode = Schema.Literals(["off", "all"])
 
 export type ReviewMode = typeof ReviewMode.Type
 
-/** Where an open pull request stands with its reviewers. */
+/**
+ * Where an open pull request stands with its reviewers. `unknown` is a decision, or a review it
+ * depends on, that GitHub reported in a form this version does not know.
+ */
 export const Decision = Schema.Literals([
   "approved",
   "staleApproval",
   "changesRequested",
   "reviewRequired",
   "none",
+  "unknown",
 ])
 
 export type Decision = typeof Decision.Type
 
 const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 
+/** The thread counts that must be among the fetched threads. */
+interface Counted {
+  readonly fetched: number
+  readonly replied: number
+  readonly unknown: number
+  readonly unreplied: number
+}
+
+/** Every counted thread is one of the fetched ones. */
+export const amongFetched = Schema.makeFilter(
+  (threads: Counted) =>
+    threads.replied + threads.unreplied + threads.unknown <= threads.fetched ||
+    "replied, unreplied and unknown threads must be among the fetched ones",
+)
+
 /**
  * Unresolved review threads among the `fetched` ones, by whether the pull request's author
- * answered last. When `complete` is false, GitHub had more threads, so the counts are lower bounds.
+ * answered last. `unknown` threads have a comment in a state this version does not know where
+ * their latest submitted comment would be. When `complete` is false, GitHub had more threads, so
+ * the counts are lower bounds.
  */
 export const Threads = Schema.Struct({
   complete: Schema.Boolean,
   fetched: Count,
   replied: Count,
+  unknown: Count,
   unreplied: Count,
-}).check(
-  Schema.makeFilter(
-    (threads) =>
-      threads.replied + threads.unreplied <= threads.fetched ||
-      "replied and unreplied threads must be among the fetched ones",
-  ),
-)
+}).check(amongFetched)
 
 export type Threads = typeof Threads.Type
 
@@ -43,7 +59,7 @@ export type Review = typeof Review.Type
 
 export const noReview: Review = {
   decision: "none",
-  threads: { complete: true, fetched: 0, replied: 0, unreplied: 0 },
+  threads: { complete: true, fetched: 0, replied: 0, unknown: 0, unreplied: 0 },
 }
 
 /** GitHub's own decision. It reports none when the base branch requires no review. */
@@ -52,17 +68,23 @@ export type ReportedDecision =
   | "changesRequested"
   | "reviewRequired"
   | "unreported"
-  | "unrecognized"
+  | "unknown"
 
-/** The latest approving, change-requesting or other opinionated review of one writer. */
+/**
+ * The latest approving, change-requesting or other opinionated review of one writer. `unknown` is
+ * a review state this version does not know.
+ */
 export interface OpinionatedReview {
-  readonly verdict: "approved" | "changesRequested" | "other"
+  readonly verdict: "approved" | "changesRequested" | "other" | "unknown"
   readonly commit: Option.Option<string>
 }
 
 export interface ThreadComment {
-  /** False for a comment its author has not yet submitted, which only its author can see. */
-  readonly submitted: boolean
+  /**
+   * False for a comment its author has not yet submitted, which only its author can see.
+   * `unknown` for a comment state this version does not know.
+   */
+  readonly submitted: boolean | "unknown"
   readonly author: Option.Option<string>
 }
 
@@ -84,11 +106,19 @@ export interface ReviewEvidence {
   readonly moreThreads: boolean
 }
 
-/** Changes requested by any writer win, then any approval; review required is never derived. */
+/**
+ * Changes requested by any writer win, then a review in an unknown state, which may request
+ * changes, then any approval. Review required is never derived.
+ */
 function derivedDecision(reviews: readonly OpinionatedReview[]): Decision {
-  if (reviews.some((review) => review.verdict === "changesRequested")) return "changesRequested"
+  const has = (verdict: OpinionatedReview["verdict"]): boolean =>
+    reviews.some((review) => review.verdict === verdict)
 
-  return reviews.some((review) => review.verdict === "approved") ? "approved" : "none"
+  if (has("changesRequested")) return "changesRequested"
+
+  if (has("unknown")) return "unknown"
+
+  return has("approved") ? "approved" : "none"
 }
 
 /** Derived only from every writer's review, never from part of them. */
@@ -96,7 +126,7 @@ function reportedDecision(evidence: ReviewEvidence): Decision {
   if (evidence.reported === "unreported" && !evidence.moreReviews)
     return derivedDecision(evidence.reviews)
 
-  if (evidence.reported === "unreported" || evidence.reported === "unrecognized") return "none"
+  if (evidence.reported === "unreported") return "none"
 
   return evidence.reported
 }
@@ -117,23 +147,41 @@ export function decisionOf(evidence: ReviewEvidence): Decision {
   return stale ? "staleApproval" : decision
 }
 
-/** Replied when the latest submitted comment is the author's; resolved threads are not asked. */
-function replied(thread: ReviewThread, author: Option.Option<string>): boolean {
-  const last = Arr.findLast(thread.comments, (comment) => comment.submitted)
-  const login = Option.flatMap(last, (comment) => comment.author)
+type Reply = "replied" | "unreplied" | "unknown"
 
-  return Option.exists(login, (name) => Option.contains(author, name))
+/**
+ * Replied when the latest submitted comment is the author's. Unknown when a comment in an unknown
+ * state comes after every submitted one, since it may be the latest submitted comment.
+ */
+function replyOf(thread: ReviewThread, author: Option.Option<string>): Reply {
+  const last = Arr.findLast(thread.comments, (comment) => comment.submitted !== false)
+
+  return Option.match(last, {
+    onNone: (): Reply => "unreplied",
+    onSome: (comment): Reply => {
+      if (comment.submitted === "unknown") return "unknown"
+
+      const login = comment.author
+
+      return Option.exists(login, (name) => Option.contains(author, name)) ? "replied" : "unreplied"
+    },
+  })
 }
 
+/** Unresolved threads by their reply; resolved threads are not asked. */
 export function threadsOf(evidence: ReviewEvidence): Threads {
-  const unresolved = evidence.threads.filter((thread) => !thread.resolved)
-  const answered = unresolved.filter((thread) => replied(thread, evidence.author)).length
+  const replies = evidence.threads
+    .filter((thread) => !thread.resolved)
+    .map((thread) => replyOf(thread, evidence.author))
+
+  const count = (reply: Reply): number => replies.filter((found) => found === reply).length
 
   return {
     complete: !evidence.moreThreads,
     fetched: evidence.threads.length,
-    replied: answered,
-    unreplied: unresolved.length - answered,
+    replied: count("replied"),
+    unknown: count("unknown"),
+    unreplied: count("unreplied"),
   }
 }
 

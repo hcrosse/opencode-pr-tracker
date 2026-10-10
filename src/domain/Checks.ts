@@ -2,7 +2,8 @@ import { Array as Arr, Option, Order } from "effect"
 
 import type { Ci } from "./Snapshot.ts"
 
-export type CheckOutcome = "passed" | "pending" | "failed" | "ignored"
+/** `unknown` is a check whose state GitHub reported in a form this version does not know. */
+export type CheckOutcome = "passed" | "pending" | "failed" | "ignored" | "unknown"
 
 /**
  * One check run or status context. Checks with the same `identity` are runs of one check;
@@ -50,11 +51,17 @@ function latestOutcomes(checks: readonly Check[]): Set<CheckOutcome> {
   return new Set([...latest.values()].flatMap((entry: Latest) => entry.outcomes))
 }
 
-/** Failed beats pending beats passed. Superseded runs are ignored; so are skipped or neutral runs. */
+/**
+ * Failed beats unknown beats pending beats passed: a check in an unknown state may not have
+ * passed, so it is never hidden behind pending or passed. Superseded runs are ignored; so are
+ * skipped or neutral runs.
+ */
 export function classifyCi(checks: readonly Check[]): Ci {
   const outcomes = latestOutcomes(checks)
 
   if (outcomes.has("failed")) return "failed"
+
+  if (outcomes.has("unknown")) return "unknown"
 
   if (outcomes.has("pending")) return "pending"
 

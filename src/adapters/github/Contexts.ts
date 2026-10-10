@@ -3,6 +3,7 @@ import { Effect, Option, Schema } from "effect"
 
 import type { Check, CheckOutcome } from "../../domain/Checks.ts"
 import type { PullRequestRef } from "../../domain/PullRequest.ts"
+import { enumeration, Unrecognized } from "./Enumeration.ts"
 import { failure, type Post } from "./Post.ts"
 import { continuation, continuationVariables } from "./Query.ts"
 
@@ -11,9 +12,50 @@ const PageInfo = Schema.Struct({
   hasNextPage: Schema.Boolean,
 })
 
-const StatusState = Schema.Literals(["EXPECTED", "PENDING", "SUCCESS", "ERROR", "FAILURE"])
+const StatusState = enumeration("StatusContext.state", [
+  "EXPECTED",
+  "PENDING",
+  "SUCCESS",
+  "ERROR",
+  "FAILURE",
+])
 
-type StatusState = typeof StatusState.Type
+const CheckStatus = enumeration("CheckRun.status", [
+  "COMPLETED",
+  "IN_PROGRESS",
+  "PENDING",
+  "QUEUED",
+  "REQUESTED",
+  "WAITING",
+])
+
+const CheckConclusion = enumeration("CheckRun.conclusion", [
+  "ACTION_REQUIRED",
+  "CANCELLED",
+  "FAILURE",
+  "NEUTRAL",
+  "SKIPPED",
+  "STALE",
+  "STARTUP_FAILURE",
+  "SUCCESS",
+  "TIMED_OUT",
+])
+
+type KnownStatusState = (typeof StatusState.members)[0]["Type"]
+
+type KnownConclusion = (typeof CheckConclusion.members)[0]["Type"]
+
+const timestamp = /^(?<seconds>[^.]+?)(?:\.(?<fraction>\d+))?Z$/u
+
+/** `[epochSeconds, nanoseconds]`, so runs created in the same second still order correctly. */
+export function generationOf(createdAt: string): readonly number[] {
+  const match = timestamp.exec(createdAt)
+  const groups = match === null ? {} : (match.groups ?? {})
+  const seconds = Date.parse(`${groups["seconds"] ?? ""}Z`) / 1000
+  const nanoseconds = Number((groups["fraction"] ?? "").padEnd(9, "0").slice(0, 9))
+
+  return [Number.isFinite(seconds) ? seconds : 0, nanoseconds]
+}
 
 const StatusContextNode = Schema.Struct({
   __typename: Schema.Literal("StatusContext"),
@@ -37,10 +79,12 @@ const CheckRunNode = Schema.Struct({
       }),
     ),
   }),
-  conclusion: Schema.NullOr(Schema.String),
+  conclusion: Schema.NullOr(CheckConclusion),
   name: Schema.String,
-  status: Schema.String,
+  status: CheckStatus,
 })
+
+type CheckRunNode = typeof CheckRunNode.Type
 
 export const ContextNode = Schema.Union([StatusContextNode, CheckRunNode])
 
@@ -104,36 +148,33 @@ export const allContexts = Effect.fn("allContexts")(function* (
   return collected
 })
 
-const failedConclusions = new Set([
-  "FAILURE",
-  "CANCELLED",
-  "TIMED_OUT",
-  "ACTION_REQUIRED",
-  "STARTUP_FAILURE",
-  "STALE",
-])
-
-const timestamp = /^(?<seconds>[^.]+?)(?:\.(?<fraction>\d+))?Z$/u
-
-/** `[epochSeconds, nanoseconds]`, so runs created in the same second still order correctly. */
-export function generationOf(createdAt: string): readonly number[] {
-  const match = timestamp.exec(createdAt)
-  const groups = match === null ? {} : (match.groups ?? {})
-  const seconds = Date.parse(`${groups["seconds"] ?? ""}Z`) / 1000
-  const nanoseconds = Number((groups["fraction"] ?? "").padEnd(9, "0").slice(0, 9))
-
-  return [Number.isFinite(seconds) ? seconds : 0, nanoseconds]
+const conclusionOutcomes: Readonly<Record<KnownConclusion, CheckOutcome>> = {
+  ACTION_REQUIRED: "failed",
+  CANCELLED: "failed",
+  FAILURE: "failed",
+  NEUTRAL: "ignored",
+  SKIPPED: "ignored",
+  STALE: "failed",
+  STARTUP_FAILURE: "failed",
+  SUCCESS: "passed",
+  TIMED_OUT: "failed",
 }
 
-function checkRunOutcome(status: string, conclusion: string | null): CheckOutcome {
+/**
+ * A run with a status or conclusion this version does not recognize has an unknown outcome,
+ * whatever its other field says; so does a run GitHub reports as completed without a conclusion.
+ */
+function checkRunOutcome({ conclusion, status }: CheckRunNode): CheckOutcome {
+  if (status instanceof Unrecognized || conclusion instanceof Unrecognized) return "unknown"
+
   if (status !== "COMPLETED") return "pending"
 
-  if (conclusion === "SUCCESS") return "passed"
+  if (conclusion === null) return "unknown"
 
-  return failedConclusions.has(conclusion ?? "") ? "failed" : "ignored"
+  return conclusionOutcomes[conclusion]
 }
 
-const statusOutcomes: Record<StatusState, CheckOutcome> = {
+const statusOutcomes: Readonly<Record<KnownStatusState, CheckOutcome>> = {
   ERROR: "failed",
   EXPECTED: "pending",
   FAILURE: "failed",
@@ -150,27 +191,28 @@ const statusOutcomes: Record<StatusState, CheckOutcome> = {
 export function toCheck(node: ContextNode): Check {
   if (node.__typename === "StatusContext") {
     const identity = `status ${node.context.toLowerCase()}`
+    const { state } = node
 
     return {
       generation: generationOf(node.createdAt),
       identity,
-      outcome: statusOutcomes[node.state],
+      outcome: state instanceof Unrecognized ? "unknown" : statusOutcomes[state],
     }
   }
 
-  const outcome = checkRunOutcome(node.status, node.conclusion)
+  const outcome = checkRunOutcome(node)
 
   // Runs of one app's check replace each other across suites; without an app, each suite stands alone.
   const source =
     node.checkSuite.app === null ? `suite ${node.checkSuite.id}` : `app ${node.checkSuite.app.id}`
 
   return Option.match(Option.fromNullishOr(node.checkSuite.workflowRun), {
-    onNone: () => ({
+    onNone: (): Check => ({
       generation: generationOf(node.checkSuite.createdAt),
       identity: `check ${source} ${node.name}`,
       outcome,
     }),
-    onSome: (run) => ({
+    onSome: (run): Check => ({
       generation: [run.runNumber, run.runAttempt],
       identity: `workflow ${source} ${run.workflow.id} ${run.event}`,
       outcome,
