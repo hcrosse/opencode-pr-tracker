@@ -115,7 +115,8 @@ groups = ["check"]
 [[repos.hooks]]
 id = "actionlint"
 name = "actionlint"
-entry = "mise exec -- actionlint"
+# Match the workflow security job: pyflakes is not pinned, so leave its integration off.
+entry = "mise exec -- actionlint -pyflakes="
 language = "system"
 files = '^\.github/workflows/.*\.ya?ml$'
 groups = ["check"]
@@ -123,7 +124,9 @@ groups = ["check"]
 [[repos.hooks]]
 id = "zizmor"
 name = "zizmor"
-entry = "mise exec -- zizmor"
+# Match the workflow security job, which runs offline audits only, so a token in the environment
+# does not change what is checked.
+entry = "mise exec -- zizmor --no-online-audits"
 language = "system"
 files = '^\.github/(workflows/.*|dependabot)\.ya?ml$|(^|/)action\.ya?ml$'
 groups = ["check"]
