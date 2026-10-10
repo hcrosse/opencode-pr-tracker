@@ -1,4 +1,4 @@
-import { Config, Context, Effect, Layer, Option, Redacted, Ref } from "effect"
+import { Cache, Config, Context, Duration, Effect, Exit, Layer, Option, Redacted } from "effect"
 
 import { GitHubFailure } from "../../ports/GitHub.ts"
 import { CommandRunner } from "../Command.ts"
@@ -27,11 +27,12 @@ const environmentToken = Config.all([variable("GH_TOKEN"), variable("GITHUB_TOKE
   ),
 )
 
+const tokenKey = "token"
+
 export const layer = Layer.effect(
   Token,
   Effect.gen(function* () {
     const runner = yield* CommandRunner
-    const cached = yield* Ref.make(Option.none<Redacted.Redacted>())
 
     const fromGh = runner.run("gh", ["auth", "token"], process.cwd()).pipe(
       Effect.map((output) => output.trim()),
@@ -46,21 +47,24 @@ export const layer = Layer.effect(
       }),
     )
 
-    // Read once: the environment does not change while the plugin runs.
-    const fromEnvironment = yield* environmentToken.pipe(
-      Effect.orElseSucceed(() => Option.none<Redacted.Redacted>()),
-    )
+    // Read once at startup; environment changes need a restart.
+    const fromEnvironment = yield* environmentToken.pipe(Effect.orDie)
 
     const load = Option.match(fromEnvironment, {
       onNone: () => Effect.map(fromGh, Redacted.make),
       onSome: Effect.succeed,
-    }).pipe(Effect.tap((token) => Ref.set(cached, Option.some(token))))
+    })
+
+    // Concurrent misses share one load.
+    const cache = yield* Cache.makeWith((_key: typeof tokenKey) => load, {
+      capacity: 1,
+      timeToLive: (exit: Exit.Exit<Redacted.Redacted, GitHubFailure>) =>
+        Exit.isSuccess(exit) ? Duration.infinity : Duration.zero,
+    })
 
     return Token.of({
-      get: Ref.get(cached).pipe(
-        Effect.flatMap(Option.match({ onNone: () => load, onSome: Effect.succeed })),
-      ),
-      invalidate: Ref.set(cached, Option.none()),
+      get: Cache.get(cache, tokenKey),
+      invalidate: Cache.invalidate(cache, tokenKey),
     })
   }),
 )
