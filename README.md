@@ -4,7 +4,7 @@ Track GitHub pull requests in an OpenCode session. Attach pull requests with a s
 
 ## Requirements
 
-- [OpenCode](https://opencode.ai/) 2.0.15 or later, from plugin version 0.4.0. For OpenCode 1, use version 0.3.
+- [OpenCode](https://opencode.ai/) 2.0.24 or later. For OpenCode 2.0.15 to 2.0.23, use version 0.6. For OpenCode 1, use version 0.3.
 - A GitHub token: set `GH_TOKEN` or `GITHUB_TOKEN`, or sign in with the [GitHub CLI](https://cli.github.com/) (`gh auth login`).
 - The GitHub CLI, to attach a pull request by number.
 - macOS or Linux, to open pull requests in the browser.

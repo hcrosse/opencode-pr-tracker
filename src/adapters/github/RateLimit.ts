@@ -15,7 +15,7 @@ export interface Evidence {
 }
 
 export type Verdict = Data.TaggedEnum<{
-  Allowed: Readonly<Record<never, never>>
+  Allowed: object
   /** `until` is the epoch millisecond GitHub said to wait until, if it said. */
   Limited: { readonly until: Option.Option<number> }
 }>
