@@ -3,7 +3,6 @@ import { Array as Arr, Effect, Option } from "effect"
 
 import type { Tracking } from "../domain/Tracking.ts"
 import type { StoredStateInvalid } from "../ports/TrackingRepository.ts"
-import type { TrackerApi } from "./Tracker.ts"
 
 const warn = (message: string, sessionID: string): Effect.Effect<void> =>
   Effect.logWarning(message).pipe(Effect.annotateLogs({ sessionID }))
@@ -23,22 +22,25 @@ type Listed = Option.Option<readonly [string, Tracking]>
 /** Sessions whose stored state was invalid when last listed, so each is warned about once. */
 export class InvalidSessions {
   private readonly invalid = new Set<string>()
+  private readonly list: (sessionID: string) => Effect.Effect<Tracking, StoredStateInvalid>
+
+  /** `list` reads a session's attachments. */
+  public constructor(list: (sessionID: string) => Effect.Effect<Tracking, StoredStateInvalid>) {
+    this.list = list
+  }
 
   /**
    * The attachments of each of `sessions` whose stored state is valid. A session left out of
    * `sessions` is forgotten, so it is warned about again if it is invalid when it next appears.
    */
-  public validTrackings(
-    tracker: TrackerApi,
-    sessions: readonly string[],
-  ): Effect.Effect<ReadonlyMap<string, Tracking>> {
+  public validTrackings(sessions: readonly string[]): Effect.Effect<ReadonlyMap<string, Tracking>> {
     const forgotten = Effect.sync(() => {
       for (const sessionID of this.invalid)
         if (!sessions.includes(sessionID)) this.invalid.delete(sessionID)
     })
 
     const listed = Effect.forEach(sessions, (sessionID: string) =>
-      tracker.list(sessionID).pipe(
+      this.list(sessionID).pipe(
         Effect.map((tracking): Listed => {
           this.invalid.delete(sessionID)
 

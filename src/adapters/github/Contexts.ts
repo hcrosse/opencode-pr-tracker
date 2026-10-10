@@ -4,7 +4,7 @@ import { Effect, Option, Schema, Stream } from "effect"
 import type { Check, CheckOutcome } from "../../domain/Checks.ts"
 import type { PullRequestRef } from "../../domain/PullRequest.ts"
 import { enumeration, Unrecognized } from "./Enumeration.ts"
-import { failure, type Post } from "./Post.ts"
+import { failure, GitHubPost, type Envelope, type RequestFailed } from "./Post.ts"
 import { continuation, continuationVariables } from "./Query.ts"
 import { CreatedAt } from "./Timestamp.ts"
 
@@ -92,50 +92,44 @@ const ContinuationData = Schema.Struct({
   }),
 })
 
-/** How the client asks GitHub: by posting queries, for `pageSize` check contexts a page. */
-export interface Asking {
-  readonly post: Post
-  readonly pageSize: number
-}
-
 /** A pull request's check contexts as its node reports them: none, or a first page. */
 export type Rollup = Readonly<{ contexts: Contexts }> | null
 
-/** Every check context for a pull request, following continuation pages. */
-export const allContexts = Effect.fn("GitHub.allContexts")(function* (
-  { pageSize, post }: Asking,
-  ref: PullRequestRef,
-  rollup: Rollup,
-) {
-  if (rollup === null) return []
+/** The page of check contexts in an answer to a continuation query. */
+const continued = (envelope: Envelope): Effect.Effect<Contexts, RequestFailed> =>
+  (envelope.errors ?? []).length > 0
+    ? Effect.fail(failure("InvalidResponse"))
+    : Schema.decodeUnknownEffect(ContinuationData)(envelope.data).pipe(
+        Effect.map((data) => data.repository.pullRequest.statusCheckRollup.contexts),
+        Effect.mapError(() => failure("InvalidResponse")),
+      )
 
-  const followed = new Set<string>()
+/** Reads every check context for a pull request, following continuation pages of `pageSize`. */
+export const contextPages = Effect.fnUntraced(function* (pageSize: number) {
+  const { post } = yield* GitHubPost
 
-  const nextPage = Effect.fnUntraced(function* (page: Contexts) {
-    if (!page.pageInfo.hasNextPage) return [page.nodes, Option.none<Contexts>()] as const
+  return Effect.fn("GitHub.allContexts")(function* (ref: PullRequestRef, rollup: Rollup) {
+    if (rollup === null) return []
 
-    // A claimed next page needs a new cursor, or CI would be judged on part or paging never end.
-    const after = page.pageInfo.endCursor ?? ""
+    const followed = new Set<string>()
 
-    if (after === "" || followed.has(after)) return yield* failure("InvalidResponse")
+    const nextPage = Effect.fnUntraced(function* (page: Contexts) {
+      if (!page.pageInfo.hasNextPage) return [page.nodes, Option.none<Contexts>()] as const
 
-    followed.add(after)
+      // A claimed next page needs a new cursor, or CI would be judged on part or paging never end.
+      const after = page.pageInfo.endCursor ?? ""
 
-    const envelope = yield* post(continuation(pageSize), continuationVariables(ref, after))
+      if (after === "" || followed.has(after)) return yield* failure("InvalidResponse")
 
-    if ((envelope.errors ?? []).length > 0) return yield* failure("InvalidResponse")
+      followed.add(after)
 
-    const data = yield* Schema.decodeUnknownEffect(ContinuationData)(envelope.data).pipe(
-      Effect.mapError(() => failure("InvalidResponse")),
-    )
+      const envelope = yield* post(continuation(pageSize), continuationVariables(ref, after))
 
-    return [
-      page.nodes,
-      Option.some(data.repository.pullRequest.statusCheckRollup.contexts),
-    ] as const
+      return [page.nodes, Option.some(yield* continued(envelope))] as const
+    })
+
+    return yield* Stream.runCollect(Stream.paginate(rollup.contexts, nextPage))
   })
-
-  return yield* Stream.runCollect(Stream.paginate(rollup.contexts, nextPage))
 })
 
 const conclusionOutcomes: Readonly<Record<KnownConclusion, CheckOutcome>> = {

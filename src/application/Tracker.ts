@@ -11,22 +11,18 @@ import {
   type AmbiguousPullRequestNumber,
   type Attaching,
   type AttachmentLimitReached,
+  type Change,
   type Removal,
   type Tracking,
 } from "../domain/Tracking.ts"
 import {
   GitHub,
   ItemResult,
-  type GitHubApi,
   type GitHubFailure,
   type Report,
   type RepositoryUnavailable,
 } from "../ports/GitHub.ts"
-import {
-  TrackingRepository,
-  type StoredStateInvalid,
-  type TrackingRepositoryApi,
-} from "../ports/TrackingRepository.ts"
+import { TrackingRepository, type StoredStateInvalid } from "../ports/TrackingRepository.ts"
 import { SessionLocks } from "./SessionLocks.ts"
 import { currentMillis } from "./Time.ts"
 
@@ -142,38 +138,7 @@ function discovered(
   })
 }
 
-interface Services {
-  readonly github: GitHubApi
-  readonly repository: TrackingRepositoryApi
-}
-
-function resolve(
-  { github }: Services,
-  input: PullRequestInput,
-  directory: string,
-): Effect.Effect<PullRequestRef, GitHubFailure | RepositoryUnavailable> {
-  return PullRequestInput.$match(input, {
-    Reference: ({ ref }) => Effect.succeed(ref),
-    Number: ({ number }) => github.pullRequestInRepository(directory, number),
-  })
-}
-
-const attachTo = Effect.fn("Tracker.attach")(function* (
-  services: Services,
-  sessionID: string,
-  target: Readonly<{ input: PullRequestInput; directory: string }>,
-) {
-  const ref = yield* resolve(services, target.input, target.directory)
-  const reports = yield* services.github.fetch([ref])
-  // GitHub answers for every pull request it is asked about; an answer without one is incomplete.
-  const missing = ItemResult.Failed({ charged: false, diagnostic: "InvalidResponse" })
-  const { adding, report, stack } = yield* discovered(ref, reports.get(ref.url) ?? missing)
-  const current = yield* services.repository.load(sessionID)
-  const now = yield* currentMillis
-  const change = yield* Effect.fromResult(attach(current, { adding, stack }, now))
-
-  if (change.changed) yield* services.repository.save(sessionID, change.tracking)
-
+function attachedOf(ref: PullRequestRef, { report, stack }: Discovered, change: Change): Attached {
   const attached = stack.filter((member) =>
     change.tracking.some((attachment) => samePullRequest(attachment.ref, member)),
   )
@@ -186,49 +151,82 @@ const attachTo = Effect.fn("Tracker.attach")(function* (
     stackSize: stack.length,
     tracking: change.tracking,
   }
-})
+}
 
-const detachFrom = Effect.fn("Tracker.detach")(function* (
-  { repository }: Services,
-  sessionID: string,
-  input: PullRequestInput,
-) {
-  const current = yield* repository.load(sessionID)
+/** Attaches a pull request with its Stack's open members, as `TrackerApi.attach` describes. */
+const attacher = Effect.gen(function* () {
+  const github = yield* GitHub
+  const repository = yield* TrackingRepository
 
-  const removal: Removal = PullRequestInput.$is("Reference")(input)
-    ? detach(current, input.ref)
-    : yield* Effect.fromResult(detachNumber(current, input.number))
+  const resolve = (
+    input: PullRequestInput,
+    directory: string,
+  ): Effect.Effect<PullRequestRef, GitHubFailure | RepositoryUnavailable> =>
+    PullRequestInput.$match(input, {
+      Reference: ({ ref }) => Effect.succeed(ref),
+      Number: ({ number }) => github.pullRequestInRepository(directory, number),
+    })
 
-  if (Option.isSome(removal.removed)) yield* repository.save(sessionID, removal.tracking)
+  return Effect.fn("Tracker.attach")(function* (
+    sessionID: string,
+    input: PullRequestInput,
+    directory: string,
+  ) {
+    const ref = yield* resolve(input, directory)
+    const reports = yield* github.fetch([ref])
+    // GitHub answers for every pull request it is asked about; an answer without one is incomplete.
+    const missing = ItemResult.Failed({ charged: false, diagnostic: "InvalidResponse" })
+    const found = yield* discovered(ref, reports.get(ref.url) ?? missing)
+    const current = yield* repository.load(sessionID)
+    const now = yield* currentMillis
+    const change = yield* Effect.fromResult(attach(current, found, now))
 
-  return removal
-})
+    if (change.changed) yield* repository.save(sessionID, change.tracking)
 
-const regroupIn = Effect.fn("Tracker.regroup")(function* (
-  { repository }: Services,
-  sessionID: string,
-  stacks: readonly (readonly PullRequestRef[])[],
-) {
-  const change = group(yield* repository.load(sessionID), stacks)
-
-  if (change.changed) yield* repository.save(sessionID, change.tracking)
-
-  return change.tracking
+    return attachedOf(ref, found, change)
+  })
 })
 
 export const layer = Layer.effect(
   Tracker,
   Effect.gen(function* () {
-    const services: Services = { github: yield* GitHub, repository: yield* TrackingRepository }
+    const repository = yield* TrackingRepository
+    const attachTo = yield* attacher
     const locks = new SessionLocks()
+
+    const detachFrom = Effect.fn("Tracker.detach")(function* (
+      sessionID: string,
+      input: PullRequestInput,
+    ) {
+      const current = yield* repository.load(sessionID)
+
+      const removal: Removal = PullRequestInput.$is("Reference")(input)
+        ? detach(current, input.ref)
+        : yield* Effect.fromResult(detachNumber(current, input.number))
+
+      if (Option.isSome(removal.removed)) yield* repository.save(sessionID, removal.tracking)
+
+      return removal
+    })
+
+    const regroupIn = Effect.fn("Tracker.regroup")(function* (
+      sessionID: string,
+      stacks: readonly (readonly PullRequestRef[])[],
+    ) {
+      const change = group(yield* repository.load(sessionID), stacks)
+
+      if (change.changed) yield* repository.save(sessionID, change.tracking)
+
+      return change.tracking
+    })
 
     return Tracker.of({
       attach: (sessionID, input, directory) =>
-        locks.run(sessionID, attachTo(services, sessionID, { directory, input })),
-      detach: (sessionID, input) => locks.run(sessionID, detachFrom(services, sessionID, input)),
-      forget: (sessionID) => locks.run(sessionID, services.repository.remove(sessionID)),
-      list: (sessionID) => services.repository.load(sessionID),
-      regroup: (sessionID, stacks) => locks.run(sessionID, regroupIn(services, sessionID, stacks)),
+        locks.run(sessionID, attachTo(sessionID, input, directory)),
+      detach: (sessionID, input) => locks.run(sessionID, detachFrom(sessionID, input)),
+      forget: (sessionID) => locks.run(sessionID, repository.remove(sessionID)),
+      list: (sessionID) => repository.load(sessionID),
+      regroup: (sessionID, stacks) => locks.run(sessionID, regroupIn(sessionID, stacks)),
     })
   }),
 )
