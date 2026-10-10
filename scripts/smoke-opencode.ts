@@ -1,15 +1,5 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
-import {
-  Array as Arr,
-  Duration,
-  Effect,
-  FileSystem,
-  Option,
-  Path,
-  Schedule,
-  Schema,
-  Stream,
-} from "effect"
+import { Array as Arr, Duration, Effect, FileSystem, Option, Path, Schedule, Schema } from "effect"
 import {
   FetchHttpClient,
   HttpClient,
@@ -19,6 +9,8 @@ import {
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
 import packageManifest from "../package.json" with { type: "json" }
+import { smokeConfig } from "./smoke-config.ts"
+import { startServer, type ServerAddress } from "./smoke-opencode-server.ts"
 import { exerciseRpc } from "./smoke-rpc.ts"
 
 const pluginID = "opencode-pr-tracker"
@@ -31,12 +23,6 @@ const PluginEntry = Schema.Struct({
 })
 
 const PluginList = Schema.Struct({ data: Schema.Array(PluginEntry) })
-
-const ServerAddress = Schema.Struct({ password: Schema.String, url: Schema.String })
-
-interface ServerAddress extends Schema.Schema.Type<typeof ServerAddress> {}
-
-const addressPattern = /server listening on (?<url>\S+)\s+server password (?<password>\S+)/u
 
 const run = Effect.fn("SmokeOpenCode.run")(function* (
   command: string,
@@ -55,10 +41,10 @@ const run = Effect.fn("SmokeOpenCode.run")(function* (
     )
 })
 
-const opencodeBinary = Effect.fn("SmokeOpenCode.opencodeBinary")(function* () {
-  const override = process.env["OPENCODE_BIN"] ?? ""
-
-  if (override !== "") return override
+const opencodeBinary = Effect.fn("SmokeOpenCode.opencodeBinary")(function* (
+  override: Option.Option<string>,
+) {
+  if (Option.isSome(override)) return override.value
 
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
@@ -95,13 +81,14 @@ const preparePackage = Effect.fn("SmokeOpenCode.preparePackage")(function* (
     name.endsWith(".tgz"),
   )
 
+  if (Option.isNone(tarball)) {
+    return yield* Effect.die(`npm pack produced no tarball in ${runDirectory}`)
+  }
+
   const plugin = {
     options: { layout: "full" },
     // A package spec, so OpenCode installs the tarball and its dependencies itself.
-    package: `file:${path.join(
-      runDirectory,
-      Option.getOrElse(tarball, () => ""),
-    )}`,
+    package: `file:${path.join(runDirectory, tarball.value)}`,
   }
 
   const config = { plugins: [plugin] }
@@ -113,56 +100,6 @@ const preparePackage = Effect.fn("SmokeOpenCode.preparePackage")(function* (
   )
 
   return project
-})
-
-function parseAddress(output: string): Option.Option<ServerAddress> {
-  const match = addressPattern.exec(output)
-
-  return Schema.decodeUnknownOption(ServerAddress)(match === null ? null : match.groups)
-}
-
-const token = process.env["GH_TOKEN"] ?? ""
-
-// Isolate OpenCode from the developer's configuration, credentials, and data. The GitHub steps
-// need a token, which is passed on only when one is set.
-const startServer = Effect.fn("SmokeOpenCode.startServer")(function* (
-  binary: string,
-  runDirectory: string,
-) {
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-  const home = `${runDirectory}/home`
-
-  const variables: readonly (readonly [string, string])[] = [
-    ["HOME", home],
-    ["PATH", process.env["PATH"] ?? ""],
-    ["XDG_CACHE_HOME", `${home}/.cache`],
-    ["XDG_CONFIG_HOME", `${home}/.config`],
-    ["XDG_DATA_HOME", `${home}/.local/share`],
-    ["XDG_STATE_HOME", `${home}/.local/state`],
-    ["GH_TOKEN", token],
-  ]
-
-  const env = Object.fromEntries(variables.filter(([, value]) => value !== ""))
-
-  const args = ["serve", "--hostname", "127.0.0.1", "--port", "0"]
-
-  const handle = yield* spawner.spawn(
-    ChildProcess.make(binary, args, { cwd: runDirectory, env, stderr: "inherit" }),
-  )
-
-  const address = yield* handle.stdout.pipe(
-    Stream.decodeText(),
-    Stream.scan("", (output, chunk) => output + chunk),
-    Stream.map(parseAddress),
-    Stream.filter(Option.isSome),
-    Stream.runHead,
-    Effect.map(Option.flatten),
-  )
-
-  return yield* Option.match(address, {
-    onNone: () => Effect.die("opencode serve exited before reporting its address"),
-    onSome: Effect.succeed,
-  })
 })
 
 const pluginState = Effect.fn("SmokeOpenCode.pluginState")(function* (
@@ -210,16 +147,12 @@ const printOpenCodeLogs = Effect.fn("SmokeOpenCode.printOpenCodeLogs")(function*
   }
 })
 
-const smoke = Effect.gen(function* () {
-  const fs = yield* FileSystem.FileSystem
-  const path = yield* Path.Path
-  const root = path.join(import.meta.dir, "..")
-  const runDirectory = yield* fs.makeTempDirectoryScoped({ prefix: "opencode-pr-tracker-smoke-" })
-  const binary = yield* opencodeBinary()
-  const project = yield* preparePackage(root, runDirectory)
-  const { password, url } = yield* startServer(binary, runDirectory)
-
-  yield* pluginState(url, password, project).pipe(
+const waitForPlugin = Effect.fn("SmokeOpenCode.waitForPlugin")(function* (
+  address: ServerAddress,
+  project: string,
+  runDirectory: string,
+) {
+  return yield* pluginState(address.url, address.password, project).pipe(
     Effect.orDie,
     // Retry while the plugin is absent or loading; stop as soon as it has failed.
     Effect.filterOrFail(
@@ -238,8 +171,24 @@ const smoke = Effect.gen(function* () {
     ),
     Effect.mapError((state) => new Error(`Plugin ${pluginID} did not become active: ${state}`)),
   )
+})
+
+const smoke = Effect.gen(function* () {
+  const config = yield* smokeConfig
+
+  const hasGitHubToken = Option.isSome(config.githubToken)
+
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const root = path.join(import.meta.dir, "..")
+  const runDirectory = yield* fs.makeTempDirectoryScoped({ prefix: "opencode-pr-tracker-smoke-" })
+  const binary = yield* opencodeBinary(config.binary)
+  const project = yield* preparePackage(root, runDirectory)
+  const address = yield* startServer(binary, runDirectory, config)
+
+  yield* waitForPlugin(address, project, runDirectory)
   yield* Effect.logInfo(`${pluginID} is active`)
-  yield* exerciseRpc({ password, project, url }, token !== "")
+  yield* exerciseRpc({ password: address.password, project, url: address.url }, hasGitHubToken)
 })
 
 NodeRuntime.runMain(

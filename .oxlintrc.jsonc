@@ -36,7 +36,7 @@
     "typeAware": true,
     "typeCheck": true,
   },
-  "plugins": ["eslint", "oxc", "typescript", "unicorn"],
+  "plugins": ["eslint", "node", "oxc", "typescript", "unicorn"],
   "rules": {
     "anti-slop-effect/no-manual-effect-error-tag": "error",
     "anti-slop-effect/no-manual-tag-comparison": "error",
@@ -85,6 +85,8 @@
       },
     ],
     "eslint/max-params": ["error", { "countThis": "except-void", "max": 3 }],
+    // Effect Config reads environment variables at the program edge.
+    "node/no-process-env": "error",
     "oxc/no-accumulating-spread": "error",
     // Effect values and requests are immutable data that expose methods such as `pipe`; Ref,
     // PubSub, Semaphore, Deferred and Scope are shared handles changed only through Effect operations; Hegel's
@@ -162,6 +164,11 @@
       // These command-line scripts report through the console.
       "files": ["scripts/build.ts", "scripts/check-pr-title.ts"],
       "rules": { "eslint/no-console": "off" },
+    },
+    {
+      // Bun runs these scripts directly; nothing loads them with require(esm).
+      "files": ["scripts/**"],
+      "rules": { "node/no-top-level-await": "off" },
     },
     {
       // Oxlint passes mutable ESTree, SourceCode, and Context values to rule callbacks.
