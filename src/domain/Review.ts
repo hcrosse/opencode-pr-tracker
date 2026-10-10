@@ -16,12 +16,12 @@ export const Decision = Schema.Literals([
 
 export type Decision = typeof Decision.Type
 
+const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+
 /**
  * Unresolved review threads among the `fetched` ones, by whether the pull request's author
  * answered last. When `complete` is false, GitHub had more threads, so the counts are lower bounds.
  */
-const Count = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
-
 export const Threads = Schema.Struct({
   complete: Schema.Boolean,
   fetched: Count,
