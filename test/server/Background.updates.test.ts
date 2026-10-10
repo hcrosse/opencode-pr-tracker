@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Cause, Effect, Exit, Schema, Stream } from "effect"
+import { describe, expect, test } from "vitest"
 
 import type { SessionView } from "../../src/application/Monitor.ts"
 import { sentView, View, type ViewData } from "../../src/rpc.ts"

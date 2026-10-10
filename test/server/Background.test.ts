@@ -1,7 +1,6 @@
-import { describe, expect, test } from "bun:test"
-
 import { Cause, type Duration, Effect, Exit, Fiber, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
+import { describe, expect, test } from "vitest"
 
 import { forgetDeletedSessions, type CleanupEvent } from "../../src/server/Background.ts"
 import { memoryStorage, type StorageFake } from "../support/application.ts"

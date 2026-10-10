@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Exit, type Schema } from "effect"
+import { describe, expect, test } from "vitest"
 
 import type { GitHubApi } from "../../../src/ports/GitHub.ts"
 import { memoryStorage, type StorageFake } from "../../support/application.ts"

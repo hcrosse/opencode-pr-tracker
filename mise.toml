@@ -37,7 +37,7 @@ depends = ["require-git-root"]
 run = "prek run --all-files --group check"
 
 [tasks.test]
-description = "Run Bun tests"
+description = "Run Vitest tests under the Bun runtime"
 run = "bun run test"
 
 [tasks.audit]

@@ -1,8 +1,7 @@
-import { describe, expect, test } from "bun:test"
-
 import * as hegel from "@hegeldev/hegel"
 import * as gs from "@hegeldev/hegel/generators"
 import { Effect, Exit, Option, Result, type Schema } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { layer } from "../../src/adapters/Storage.ts"
 import { parsePullRequestUrl } from "../../src/domain/PullRequest.ts"

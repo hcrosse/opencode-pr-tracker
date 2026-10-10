@@ -1,7 +1,6 @@
-import { describe, expect, test } from "bun:test"
-
 import * as hegel from "@hegeldev/hegel"
 import { Array as Arr } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { layout, Row, type Entry } from "../../src/domain/StackLayout.ts"
 import { consistentEntries, rendered, worlds } from "../support/stacks.ts"

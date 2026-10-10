@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Duration, Option, Result } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { parsePullRequestUrl } from "../../src/domain/PullRequest.ts"
 import { nextRefresh } from "../../src/domain/RefreshPolicy.ts"

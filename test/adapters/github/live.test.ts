@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Option } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { live } from "../../../src/adapters/github/Client.ts"
 import { PullRequestState } from "../../../src/domain/Snapshot.ts"
@@ -37,7 +36,7 @@ describe.skipIf(!enabled)("GitHub client against api.github.com", () => {
 
   test("resolves a number in this checkout's repository", async () => {
     const found = await Effect.runPromise(
-      GitHub.use((github) => github.pullRequestInRepository(import.meta.dir, 78)).pipe(
+      GitHub.use((github) => github.pullRequestInRepository(import.meta.dirname, 78)).pipe(
         Effect.provide(live(memoryStorage().storage, "all")),
       ),
     )

@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Exit, type Schema } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { failed, type GitHubApi, type ItemResult } from "../../../src/ports/GitHub.ts"
 import { httpClient, recordedPullRequest, runClient, tracker127 } from "../../support/github.ts"

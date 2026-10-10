@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Array as Arr, Effect, Option } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { Status } from "../../src/domain/Snapshot.ts"
 import { actions, type Actions, type Services } from "../../src/tui/Actions.ts"

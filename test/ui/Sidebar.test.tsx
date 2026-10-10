@@ -1,5 +1,4 @@
-/** @jsxImportSource @opentui/solid */
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "vitest"
 
 import { Membership } from "../../src/domain/StackLayout.ts"
 import { ref } from "../support/stacks.ts"

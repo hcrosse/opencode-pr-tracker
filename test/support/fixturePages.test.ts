@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Array as Arr, Effect, Exit, Option, type Schema } from "effect"
+import { describe, expect, test } from "vitest"
 
 import type { Exchange } from "./exchange.ts"
 import { nextCursor, UnreadablePage } from "./fixturePages.ts"

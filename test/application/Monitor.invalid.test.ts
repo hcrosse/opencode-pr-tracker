@@ -1,7 +1,6 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Exit, Layer } from "effect"
 import { TestClock } from "effect/testing"
+import { describe, expect, test } from "vitest"
 
 import { layer as storageLayer } from "../../src/adapters/Storage.ts"
 import { layer as monitorLayer, Monitor } from "../../src/application/Monitor.ts"

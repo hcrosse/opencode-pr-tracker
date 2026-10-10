@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 
 import { agreedStacks, layout, Membership, type Entry } from "../../src/domain/StackLayout.ts"
 import { entry, ref, rendered, type Stack } from "../support/stacks.ts"

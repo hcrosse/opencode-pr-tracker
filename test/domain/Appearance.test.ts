@@ -1,7 +1,6 @@
-import { describe, expect, test } from "bun:test"
-
 import * as hegel from "@hegeldev/hegel"
 import { Result } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { appearance } from "../../src/domain/Appearance.ts"
 import { parsePullRequestUrl } from "../../src/domain/PullRequest.ts"

@@ -1,7 +1,6 @@
-import { jest } from "bun:test"
-
 import { Deferred, Effect } from "effect"
 import { createRoot, createSignal, type Accessor } from "solid-js"
+import { vi } from "vitest"
 
 import type { View } from "../../src/rpc.ts"
 import { background } from "../../src/tui/Background.ts"
@@ -69,7 +68,7 @@ function heldListings(first: string, base: TrackerClientApi): HeldListings {
       for (const deferred of held.splice(0, 1)) Effect.runSync(settled(deferred, answer))
 
       // The listing resumes on Effect's scheduler, which the fake timers run a millisecond later.
-      jest.advanceTimersByTime(1)
+      vi.advanceTimersByTime(1)
     },
   }
 }
@@ -143,11 +142,11 @@ const shownOf = (state: SidebarState): string =>
   })
 
 /**
- * Shows session `a` under Bun's fake timers, which also drive Effect's clock, and unmounts it
+ * Shows session `a` under Vitest's fake timers, which also drive Effect's clock, and unmounts it
  * after `body`. `shown` describes what the sidebar shows, as `liveness: titles`.
  */
 export function showing(script: Script, body: (shown: () => string) => void): void {
-  jest.useFakeTimers()
+  vi.useFakeTimers()
 
   const [session] = createSignal("a")
 
@@ -160,6 +159,6 @@ export function showing(script: Script, body: (shown: () => string) => void): vo
     body(() => shownOf(state()))
   } finally {
     dispose()
-    jest.useRealTimers()
+    vi.useRealTimers()
   }
 }

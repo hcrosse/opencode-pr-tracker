@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Cause, Effect, Exit, Fiber, type Schema } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { memoryStorage, type StorageFake } from "../support/application.ts"
 import { captureLogs, type Logged } from "../support/logs.ts"

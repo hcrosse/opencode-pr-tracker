@@ -1,8 +1,7 @@
-import { describe, expect, jest, test } from "bun:test"
-
 import { Option, Schema } from "effect"
 import { constVoid } from "effect/Function"
 import { createRoot, createSignal, type Accessor } from "solid-js"
+import { describe, expect, test, vi } from "vitest"
 
 import { View } from "../../src/rpc.ts"
 import { background } from "../../src/tui/Background.ts"
@@ -99,14 +98,14 @@ function heldWatches(): HeldWatches {
   }
 }
 
-/** Runs the test with Bun's fake timers, which also drive Effect's default clock. */
+/** Runs the test with Vitest's fake timers, which also drive Effect's default clock. */
 function withFakeTimers(body: () => void): void {
-  jest.useFakeTimers()
+  vi.useFakeTimers()
 
   try {
     body()
   } finally {
-    jest.useRealTimers()
+    vi.useRealTimers()
   }
 }
 
@@ -127,11 +126,11 @@ describe("sidebar lease renewal", () => {
     withFakeTimers(() => {
       const dispose = show(session, tracker.client)
 
-      jest.advanceTimersByTime(30_000)
+      vi.advanceTimersByTime(30_000)
       setSession("b")
-      jest.advanceTimersByTime(15_000)
+      vi.advanceTimersByTime(15_000)
       dispose()
-      jest.advanceTimersByTime(15_000)
+      vi.advanceTimersByTime(15_000)
     })
 
     expect(tracker.calls).toEqual(["list a", "watch a", "watch a", "list b", "watch b"])
@@ -144,7 +143,7 @@ describe("sidebar lease renewal", () => {
       const dispose = show(() => "a", tracker.client)
 
       tracker.fail("server unreachable")
-      jest.advanceTimersByTime(30_000)
+      vi.advanceTimersByTime(30_000)
       dispose()
     })
 
@@ -164,11 +163,11 @@ describe("sidebar lease renewal against a slow server", () => {
     withFakeTimers(() => {
       const dispose = show(() => "a", held.client)
 
-      jest.advanceTimersByTime(19_999)
+      vi.advanceTimersByTime(19_999)
       look()
-      jest.advanceTimersByTime(1)
+      vi.advanceTimersByTime(1)
       look()
-      jest.advanceTimersByTime(10_000)
+      vi.advanceTimersByTime(10_000)
       look()
       dispose()
     })
@@ -188,9 +187,9 @@ describe("sidebar lease renewal cadence", () => {
     withFakeTimers(() => {
       const dispose = show(() => "a", held.client)
 
-      jest.advanceTimersByTime(60_000)
+      vi.advanceTimersByTime(60_000)
       dispose()
-      jest.advanceTimersByTime(1)
+      vi.advanceTimersByTime(1)
     })
 
     expect([held.calls, held.peak(), held.aborted()]).toEqual([
@@ -214,17 +213,17 @@ describe("sidebar lease renewal when the shown session changes", () => {
     withFakeTimers(() => {
       const dispose = show(session, held.client)
 
-      jest.advanceTimersByTime(15_000)
+      vi.advanceTimersByTime(15_000)
       // Interruption finishes on Effect's scheduler, which the fake timers run a millisecond later.
       setSession("b")
-      jest.advanceTimersByTime(1)
+      vi.advanceTimersByTime(1)
       look()
-      jest.advanceTimersByTime(14_998)
+      vi.advanceTimersByTime(14_998)
       look()
-      jest.advanceTimersByTime(1)
+      vi.advanceTimersByTime(1)
       look()
       dispose()
-      jest.advanceTimersByTime(1)
+      vi.advanceTimersByTime(1)
       look()
     })
 

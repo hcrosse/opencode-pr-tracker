@@ -1,8 +1,7 @@
-import { describe, expect, test } from "bun:test"
-
 import type { StorageDomain } from "@opencode/plugin/effect/storage"
 import { Deferred, Effect, Exit, Fiber, Option } from "effect"
 import { TestClock } from "effect/testing"
+import { describe, expect, test } from "vitest"
 
 import { PullRequestInput } from "../../src/domain/PullRequest.ts"
 import { requests } from "../../src/server/Requests.ts"

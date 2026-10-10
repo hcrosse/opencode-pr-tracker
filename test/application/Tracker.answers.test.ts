@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Exit, Layer, Option } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { layer as storageLayer } from "../../src/adapters/Storage.ts"
 import {

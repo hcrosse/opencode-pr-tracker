@@ -1,7 +1,6 @@
-import { describe, expect, test } from "bun:test"
-
 import * as hegel from "@hegeldev/hegel"
 import { Option } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { reviewOfStatus, reviewParts, reviewSummary } from "../../src/domain/ReviewAppearance.ts"
 import { Status } from "../../src/domain/Snapshot.ts"

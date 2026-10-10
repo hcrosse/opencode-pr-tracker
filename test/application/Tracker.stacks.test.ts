@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Exit, Option } from "effect"
+import { describe, expect, test } from "vitest"
 
 import type { Attached, TrackerApi } from "../../src/application/Tracker.ts"
 import { PullRequestInput, type PullRequestRef } from "../../src/domain/PullRequest.ts"

@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Exit, Option, Result, type Schema } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { parsePullRequestUrl, type PullRequestRef } from "../../../src/domain/PullRequest.ts"
 import { ItemResult, type GitHubApi } from "../../../src/ports/GitHub.ts"

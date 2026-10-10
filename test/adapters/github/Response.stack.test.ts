@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Option, Result } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { toReport, type PullRequestNode } from "../../../src/adapters/github/Response.ts"
 import { toMembership } from "../../../src/adapters/github/Stacks.ts"

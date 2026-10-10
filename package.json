@@ -35,14 +35,14 @@
   "scripts": {
     "audit": "bun audit",
     "build": "bun ./scripts/build.ts",
-    "check": "bun run lint && bun run format:check && bun run typecheck && bun test && bun run package:check",
+    "check": "bun run lint && bun run format:check && bun run typecheck && bun run test && bun run package:check",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint .",
     "package:check": "bun run build && npm pack --dry-run --ignore-scripts",
     "prepack": "bun run build",
     "smoke:opencode": "bun run build && bun ./scripts/smoke-opencode.ts",
-    "test": "bun test",
+    "test": "bun --bun vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -64,7 +64,8 @@
     "oxlint": "1.86.0",
     "oxlint-tsgolint": "7.0.2003",
     "solid-js": "1.9.12",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
   },
   "peerDependencies": {
     "@opentui/core": ">=0.5.14",

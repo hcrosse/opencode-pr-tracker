@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { ConfigProvider, Effect, Exit, Fiber, Latch, Layer, Option, Redacted } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { CommandFailed } from "../../../src/adapters/Command.ts"
 import { layer as tokenLayer, Token, type TokenApi } from "../../../src/adapters/github/Token.ts"

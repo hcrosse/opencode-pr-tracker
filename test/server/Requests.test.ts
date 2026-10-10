@@ -1,7 +1,6 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Exit, Fiber, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
+import { describe, expect, test } from "vitest"
 
 import type { SessionView } from "../../src/application/Monitor.ts"
 import { requests, type Requests } from "../../src/server/Requests.ts"

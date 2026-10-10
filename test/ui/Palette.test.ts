@@ -1,8 +1,7 @@
-import { describe, expect, test } from "bun:test"
-
 import * as hegel from "@hegeldev/hegel"
 import * as gs from "@hegeldev/hegel/generators"
 import { RGBA } from "@opentui/core"
+import { describe, expect, test } from "vitest"
 
 import { paletteOf, type ThemeColors } from "../../src/ui/Palette.ts"
 

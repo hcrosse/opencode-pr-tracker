@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Exit } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { FetchQueue } from "../../src/application/FetchQueue.ts"
 import { open } from "../support/monitor.ts"

@@ -1,7 +1,6 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Exit } from "effect"
 import { TestClock } from "effect/testing"
+import { describe, expect, test } from "vitest"
 
 import type { PullRequestRef } from "../../src/domain/PullRequest.ts"
 import { memoryStorage, ScriptedGitHub, standalone } from "../support/application.ts"

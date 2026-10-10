@@ -1,6 +1,5 @@
-import { describe, expect, jest, test } from "bun:test"
-
 import { Option } from "effect"
+import { describe, expect, test, vi } from "vitest"
 
 import { Update } from "../../src/tui/Client.ts"
 import { scripted, showing } from "../support/sessionView.ts"
@@ -12,9 +11,9 @@ describe("sidebar view when renewals fail", () => {
 
     showing(script, (shown) => {
       script.renewals("fail")
-      jest.advanceTimersByTime(44_999)
+      vi.advanceTimersByTime(44_999)
       seen.push(shown())
-      jest.advanceTimersByTime(1)
+      vi.advanceTimersByTime(1)
       seen.push(shown())
     })
 
@@ -27,10 +26,10 @@ describe("sidebar view when renewals fail", () => {
 
     showing(script, (shown) => {
       script.renewals("fail")
-      jest.advanceTimersByTime(45_000)
+      vi.advanceTimersByTime(45_000)
       script.renewals("answer")
       script.holdLists()
-      jest.advanceTimersByTime(15_000)
+      vi.advanceTimersByTime(15_000)
       seen.push(shown())
       script.settle({ title: "relisted" })
       seen.push(shown())
@@ -47,11 +46,11 @@ describe("sidebar view lease timing", () => {
     const seen: string[] = []
 
     showing(script, (shown) => {
-      jest.advanceTimersByTime(15_000)
+      vi.advanceTimersByTime(15_000)
       script.renewals("fail")
-      jest.advanceTimersByTime(44_999)
+      vi.advanceTimersByTime(44_999)
       seen.push(shown())
-      jest.advanceTimersByTime(1)
+      vi.advanceTimersByTime(1)
       seen.push(shown())
     })
 
@@ -66,11 +65,11 @@ describe("sidebar view when renewal stops", () => {
 
     showing(script, (shown) => {
       script.renewals("die")
-      jest.advanceTimersByTime(44_999)
+      vi.advanceTimersByTime(44_999)
       seen.push(shown())
-      jest.advanceTimersByTime(1)
+      vi.advanceTimersByTime(1)
       seen.push(shown())
-      jest.advanceTimersByTime(60_000)
+      vi.advanceTimersByTime(60_000)
     })
 
     expect(seen).toEqual(["live: listed", "stale: listed"])
@@ -85,13 +84,13 @@ describe("sidebar view lease renewed by a listing", () => {
 
     showing(script, (shown) => {
       script.renewals("fail")
-      jest.advanceTimersByTime(30_000)
+      vi.advanceTimersByTime(30_000)
       script.publish(Update.Unreadable({ sessionID: Option.some("a") }))
-      jest.advanceTimersByTime(15_000)
+      vi.advanceTimersByTime(15_000)
       seen.push(shown())
-      jest.advanceTimersByTime(29_999)
+      vi.advanceTimersByTime(29_999)
       seen.push(shown())
-      jest.advanceTimersByTime(1)
+      vi.advanceTimersByTime(1)
       seen.push(shown())
     })
 

@@ -1,7 +1,5 @@
-/** @jsxImportSource @opentui/solid */
-import { afterEach, describe, expect, test } from "bun:test"
-
 import { Option } from "effect"
+import { afterEach, describe, expect, test } from "vitest"
 
 import { PullRequestState, Status } from "../../src/domain/Snapshot.ts"
 import {

@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Latch } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { background } from "../../src/tui/Background.ts"
 
