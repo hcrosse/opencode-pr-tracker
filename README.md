@@ -80,7 +80,7 @@ The sidebar shows one line per pull request, without titles. To show each pull r
 }
 ```
 
-Any other value keeps the compact layout.
+The default layout is `"compact"`.
 
 ### Review state
 
@@ -92,7 +92,7 @@ Review state is off by default. To show it after the status of each open pull re
 }
 ```
 
-A row then reads, for example, `acme/api#13 pending · changes · 2 unreplied · 1 replied`, and `pr.list` reports the same. Review state never changes the status color, and a stale row keeps its last review state. Any other value, or none, leaves review state off, and the plugin asks GitHub for no review data.
+A row then reads, for example, `acme/api#13 pending · changes · 2 unreplied · 1 replied`, and `pr.list` reports the same. Review state never changes the status color, and a stale row keeps its last review state. Without the option, or with `"off"`, review state is off and the plugin asks GitHub for no review data.
 
 | Review state     | Appearance | Meaning                                                  |
 | ---------------- | ---------- | -------------------------------------------------------- |
@@ -104,6 +104,16 @@ A row then reads, for example, `acme/api#13 pending · changes · 2 unreplied ·
 | `N replied`      | Gray       | Unresolved review threads the author answered last       |
 
 When GitHub reports no decision, as when the base branch requires no review, the decision comes from the latest reviews of people with write access: any change request wins, then any approval. If a pull request has more than 100 such reviews, only GitHub's own decision is shown, and an approval is not checked for staleness. Resolved threads aren't counted, and comments not yet submitted are ignored. Only the first 20 review threads are read, so a pull request with more shows lower bounds such as `12+ unreplied`, or `20+ threads` when none of the first 20 is unresolved.
+
+### Invalid options
+
+The plugin accepts only the `layout` and `reviews` options, each with the values above. An unknown option such as `"theme"`, or a value an option does not allow such as `"layout": "wide"`, stops the plugin from starting, and its sidebar section and commands are absent. OpenCode briefly shows `Plugin failed: opencode-pr-tracker` when it starts, and `/plugins` lists the plugin as failed. Select it to see an error that names every problem, for example:
+
+```text
+InvalidOptions: Invalid value "wide" for option "layout". Allowed values: "full", "compact". Unknown option "theme". Known options: "layout", "reviews".
+```
+
+Options left out take their defaults.
 
 ## Development
 
