@@ -20,8 +20,12 @@ export interface Entry {
   readonly membership: Option.Option<Membership>
 }
 
-/** `first`, `middle` and `last` draw a Stack's boundary; `bullet` is an ordinary pull request. */
-export type Marker = "bullet" | "first" | "middle" | "last"
+/**
+ * `first`, `middle` and `last` draw a Stack's boundary; `bullet` is an ordinary pull request.
+ * `openFirst`, `openLast` and `alone` close an edge that touches another Stack and would otherwise
+ * read as continuing into it: past unattached members, or around a Stack's only attached member.
+ */
+export type Marker = "bullet" | "first" | "middle" | "last" | "openFirst" | "openLast" | "alone"
 
 /** How the line under a row continues: to the next attached member, to unattached members, or not. */
 export type Connector = "continues" | "open" | "none"
@@ -167,7 +171,13 @@ function consistentStacks(entries: readonly Entry[]): Map<number, Place> {
   return places
 }
 
-function marker(place: Place): Marker {
+/** Whether another Stack's row sits directly before or after this Stack's edge rows. */
+interface Neighbors {
+  readonly before: boolean
+  readonly after: boolean
+}
+
+function boundary(place: Place): Marker {
   const { current } = place
 
   if (place.attached === 1 && current.size > 1) return "middle"
@@ -179,13 +189,29 @@ function marker(place: Place): Marker {
   return "middle"
 }
 
+function openEdge(place: Place, neighbors: Neighbors): Marker {
+  if (place.first && neighbors.before) return "openFirst"
+
+  if (place.last && neighbors.after) return "openLast"
+
+  return "middle"
+}
+
+function marker(place: Place, neighbors: Neighbors): Marker {
+  if (place.attached === 1 && (neighbors.before || neighbors.after)) return "alone"
+
+  const drawn = boundary(place)
+
+  return drawn === "middle" ? openEdge(place, neighbors) : drawn
+}
+
 function connector(place: Place): Connector {
   if (!place.last) return "continues"
 
   return place.current.position < place.current.size - 1 ? "open" : "none"
 }
 
-function stackRows<E extends Entry>(entry: E, place: Place): Row<E>[] {
+function stackRows<E extends Entry>(entry: E, place: Place, neighbors: Neighbors): Row<E>[] {
   const skipped = Option.match(place.previous, {
     onNone: () => 0,
     onSome: (before) => place.current.position - before.position - 1,
@@ -195,11 +221,21 @@ function stackRows<E extends Entry>(entry: E, place: Place): Row<E>[] {
     _tag: "PullRequest",
     connector: connector(place),
     entry,
-    marker: marker(place),
+    marker: marker(place, neighbors),
   }
 
   return skipped > 0 ? [{ _tag: "Gap", count: skipped }, row] : [row]
 }
+
+/** A Stack's members sit together, so a drawn row beside its edge belongs to another Stack. */
+const neighborsOf = (
+  places: ReadonlyMap<number, Place>,
+  index: number,
+  place: Place,
+): Neighbors => ({
+  after: place.last && places.has(index + 1),
+  before: place.first && places.has(index - 1),
+})
 
 /** Sidebar rows in attachment order, with Stack markers and gaps where membership is consistent. */
 export function layout<E extends Entry>(entries: readonly E[]): Row<E>[] {
@@ -208,7 +244,7 @@ export function layout<E extends Entry>(entries: readonly E[]): Row<E>[] {
   return entries.flatMap((entry, index) =>
     Option.match(Option.fromNullishOr(places.get(index)), {
       onNone: (): Row<E>[] => [{ _tag: "PullRequest", connector: "none", entry, marker: "bullet" }],
-      onSome: (place) => stackRows(entry, place),
+      onSome: (place) => stackRows(entry, place, neighborsOf(places, index, place)),
     }),
   )
 }

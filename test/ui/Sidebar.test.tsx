@@ -50,6 +50,44 @@ describe("Sidebar layouts", () => {
   })
 })
 
+describe("Sidebar Stack boundaries", () => {
+  const lower = [ref("acme/api", 1), ref("acme/api", 2), ref("acme/api", 3)] as const
+  const upper = [ref("acme/web", 1), ref("acme/web", 2), ref("acme/web", 3)] as const
+
+  const touching = [
+    entryOf(lower[0], fresh(lower[0], "Base A"), stack("a", lower)),
+    entryOf(lower[1], fresh(lower[1], "Middle A"), stack("a", lower)),
+    entryOf(upper[1], fresh(upper[1], "Middle B"), stack("b", upper)),
+    entryOf(upper[2], fresh(upper[2], "Head B"), stack("b", upper)),
+  ]
+
+  test("closes partial Stacks where they touch, without adding rows", async () => {
+    const { lines } = await showSidebar(ready(viewOf(touching, "compact")), { width: 36 })
+
+    expect(lines()).toEqual([
+      "▼ Pull requests",
+      "",
+      "┌─ acme/api#1 passed",
+      "╰─ acme/api#2 passed",
+      "╭─ acme/web#2 passed",
+      "└─ acme/web#3 passed",
+    ])
+  })
+
+  test("keeps the open connector under a closed edge in the full layout", async () => {
+    const { lines } = await showSidebar(ready(viewOf(touching.slice(1, 3))), { width: 36 })
+
+    expect(lines()).toEqual([
+      "Pull requests",
+      "",
+      "╶─ acme/api#2 passed",
+      "┊  Middle A",
+      "╶─ acme/web#2 passed",
+      "┊  Middle B",
+    ])
+  })
+})
+
 describe("Sidebar wrapping", () => {
   test("a wrapped status line continues its Stack line", async () => {
     const [first, last] = [ref("acme/platform", 1), ref("acme/platform", 3)]

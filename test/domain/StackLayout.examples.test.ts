@@ -42,7 +42,7 @@ describe("layout of several Stacks", () => {
 
     expect(rendered(layout(entries))).toEqual([
       "first/continues",
-      "middle/open",
+      "openLast/open",
       "first/continues",
       "last/none",
     ])
@@ -60,6 +60,40 @@ describe("layout of several Stacks", () => {
     ]
 
     expect(rendered(layout(entries))).toEqual(["bullet/none", "bullet/none", "bullet/none"])
+  })
+})
+
+const other: Stack = [ref("acme/web", 1), ref("acme/web", 2), ref("acme/web", 3)]
+
+const otherAt = (positions: readonly number[]): Entry[] =>
+  positions.map((position) => entry(other[position] ?? other[0], stack("t", other)))
+
+describe("layout of touching Stacks", () => {
+  test.each<readonly [string, readonly Entry[], readonly string[]]>([
+    ["lone members of each", [...attachedAt([2]), ...otherAt([1])], ["alone/open", "alone/open"]],
+    [
+      "partial Stacks open toward each other",
+      [...attachedAt([0, 1]), ...otherAt([1, 2])],
+      ["first/continues", "openLast/open", "openFirst/continues", "last/none"],
+    ],
+    [
+      "a true head beside an open base",
+      [...attachedAt([3, 4]), ...otherAt([1, 2])],
+      ["middle/continues", "last/none", "openFirst/continues", "last/none"],
+    ],
+    [
+      "a lone base beside a lone head",
+      [...attachedAt([0]), ...otherAt([2])],
+      ["alone/open", "alone/none"],
+    ],
+  ])("closes the touching edges of %s", (_name, entries, expected) => {
+    expect(rendered(layout(entries))).toEqual([...expected])
+  })
+
+  test("keeps open edges that only touch a standalone pull request", () => {
+    const entries = [...attachedAt([0, 1]), entry(ref("acme/web", 9), { _tag: "Standalone" })]
+
+    expect(rendered(layout(entries))).toEqual(["first/continues", "middle/open", "bullet/none"])
   })
 })
 
