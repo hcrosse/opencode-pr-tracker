@@ -1,5 +1,6 @@
 import type { StorageDomain } from "@opencode/plugin/effect/storage"
-import { Deferred, Effect, Layer, Option, Result, type Schema } from "effect"
+import type { StorageScanOptions, StorageScanResult } from "@opencode/plugin/storage"
+import { Deferred, Effect, Layer, Option, Predicate, Result, type Schema } from "effect"
 
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
 import { noReview } from "../../src/domain/Review.ts"
@@ -21,9 +22,36 @@ export interface StorageFake {
   readonly writes: () => number
 }
 
+/** A page of `values`, as the host's storage pages keys: in ascending order, after `after`. */
+function scanned(
+  values: ReadonlyMap<string, Schema.Json>,
+  { after, limit, prefix }: StorageScanOptions,
+): StorageScanResult {
+  const size = Number.isNaN(limit) ? 100 : Math.min(Math.max(Math.floor(limit ?? 100), 1), 1000)
+
+  const keys = [...values.keys()]
+    .filter(
+      (key: string) => key.startsWith(prefix) && (Predicate.isUndefined(after) || key > after),
+    )
+    .toSorted()
+
+  const entries = keys.slice(0, size).flatMap((key: string) => {
+    const value = values.get(key)
+
+    return Predicate.isUndefined(value) ? [] : [{ key, value }]
+  })
+
+  const last = entries.at(-1)
+
+  return keys.length > size && !Predicate.isUndefined(last)
+    ? { entries, next: last.key }
+    : { entries }
+}
+
 /**
  * Plugin storage kept in a map, as `ctx.storage` behaves for one plugin ID. Like the real storage,
- * every operation is asynchronous, so other fibers can run between a read and a write.
+ * every operation is asynchronous, so other fibers can run between a read and a write. A scan
+ * pages through keys in ascending order, at most 100 a page unless `limit` says otherwise.
  */
 export function memoryStorage(): StorageFake {
   const values = new Map<string, Schema.Json>()
@@ -39,12 +67,7 @@ export function memoryStorage(): StorageFake {
       Effect.sync(() => {
         values.delete(key)
       }),
-    scan: ({ prefix }) =>
-      Effect.sync(() => ({
-        entries: [...values].flatMap(([key, value]: readonly [string, Schema.Json]) =>
-          key.startsWith(prefix) ? [{ key, value }] : [],
-        ),
-      })),
+    scan: (options: StorageScanOptions) => Effect.sync(() => scanned(values, options)),
     set: (key: string, value: Schema.Json) =>
       Effect.andThen(
         Effect.yieldNow,
