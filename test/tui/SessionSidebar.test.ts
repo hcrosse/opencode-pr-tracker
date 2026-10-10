@@ -6,9 +6,9 @@ import { createRoot, createSignal } from "solid-js"
 
 import type { View } from "../../src/rpc.ts"
 import { background } from "../../src/tui/Background.ts"
-import { RequestFailed, type TrackerClientApi } from "../../src/tui/Client.ts"
-import { sessionView } from "../../src/tui/SessionSidebar.tsx"
-import type { SidebarState } from "../../src/ui/Sidebar.tsx"
+import { RequestFailed, Update, type TrackerClientApi } from "../../src/tui/Client.ts"
+import { sessionView } from "../../src/tui/SessionView.ts"
+import { SidebarState } from "../../src/ui/Sidebar.tsx"
 import { fakeTracker } from "../support/tui.ts"
 import { bottom, entryOf, fresh } from "../support/ui.tsx"
 
@@ -28,13 +28,13 @@ interface HeldLists {
 /** A tracker whose listings wait until the test settles them, in any order. */
 function heldLists(): HeldLists {
   const answers: Deferred.Deferred<View, RequestFailed>[] = []
-  const handlers: ((view: View) => void)[] = []
+  const handlers: ((update: Update) => void)[] = []
   const base = fakeTracker().client
 
   return {
     answer: (index) => Option.getOrThrow(Arr.get(answers, index)),
     publish: (view) => {
-      for (const handler of handlers) handler(view)
+      for (const handler of handlers) handler(Update.Published({ view }))
     },
     tracker: {
       attach: base.attach,
@@ -60,12 +60,15 @@ function heldLists(): HeldLists {
 
 /** The title shown, or the state's tag when nothing is shown. */
 function titleOf(state: SidebarState): string {
-  if (state._tag !== "Ready") return state._tag
-
-  return Option.match(Arr.head(state.view.entries), {
-    onNone: () => "empty",
-    onSome: (entry) =>
-      entry.status._tag === "Fresh" ? entry.status.snapshot.title : entry.status._tag,
+  return SidebarState.$match(state, {
+    Failed: () => "Failed",
+    Loading: () => "Loading",
+    Ready: ({ view }) =>
+      Option.match(Arr.head(view.entries), {
+        onNone: () => "empty",
+        onSome: (entry) =>
+          entry.status._tag === "Fresh" ? entry.status.snapshot.title : entry.status._tag,
+      }),
   })
 }
 
@@ -107,7 +110,10 @@ describe("sidebar view of a session", () => {
 
     held.publish(viewFor("a", "published"))
     await Effect.runPromise(
-      Deferred.fail(held.answer(0), new RequestFailed({ message: "late failure" })),
+      Deferred.fail(
+        held.answer(0),
+        new RequestFailed({ message: "late failure", reason: "Failed" }),
+      ),
     )
 
     expect(titleOf(state())).toBe("published")

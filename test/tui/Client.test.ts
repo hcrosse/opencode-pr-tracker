@@ -6,6 +6,8 @@ import { constVoid } from "effect/Function"
 import { View, type ViewData } from "../../src/rpc.ts"
 import {
   makeClient,
+  Update,
+  type FailureReason,
   type Location,
   type TrackerClientApi,
   type TrackerRpc,
@@ -37,6 +39,9 @@ const rpcFailure = (type: string, message: string): Error =>
 
 const rpcRefusal = (message: string): Error =>
   Object.assign(new Error("RPC method failed"), { data: { message }, type: "rejected" })
+
+const rpcRefusalFor = (message: string, reason: string): Error =>
+  Object.assign(new Error("RPC method failed"), { data: { message, reason }, type: "rejected" })
 
 type Outcome = Result.Result<ViewData, Error>
 
@@ -115,6 +120,14 @@ async function failureOf(outcome: Outcome): Promise<string> {
   return failure.message
 }
 
+async function reasonOf(outcome: Outcome): Promise<FailureReason> {
+  const failure = await Effect.runPromise(
+    Effect.flip(clientOver(fakeRpc(outcome)).list("ses_known")),
+  )
+
+  return failure.reason
+}
+
 describe("tracker client routing", () => {
   test("sends each call to its session's location, and a session without one to the default", async () => {
     const fake = fakeRpc(Result.succeed(listed))
@@ -177,17 +190,54 @@ describe("tracker client failures", () => {
   })
 })
 
+describe("tracker client failure reasons", () => {
+  test("names why each request failed, reading a server reason it does not know as a failure", async () => {
+    const outcomes: readonly Outcome[] = [
+      Result.fail(rpcRefusalFor("Saved state unreadable.", "StoredStateInvalid")),
+      Result.fail(rpcRefusalFor("Sign in.", "AuthenticationRequired")),
+      Result.fail(rpcRefusalFor("From a newer tracker.", "SomethingNew")),
+      Result.fail(rpcRefusal("No reason given.")),
+      Result.fail(rpcFailure("rpc.unavailable", "RPC is unavailable: opencode-pr-tracker")),
+      Result.fail(rpcFailure("rpc.internal", "RPC call failed")),
+      Result.succeed(malformed),
+    ]
+
+    expect(
+      await Promise.all(
+        outcomes.map(async (outcome) => {
+          const reason = await reasonOf(outcome)
+
+          return reason
+        }),
+      ),
+    ).toEqual([
+      "StoredStateInvalid",
+      "AuthenticationRequired",
+      "Failed",
+      "Failed",
+      "NotRunning",
+      "Failed",
+      "UnreadableResponse",
+    ])
+  })
+})
+
 describe("tracker client updates", () => {
-  test("delivers published views, decoded, and skips data that is not a view", () => {
+  test("delivers published views decoded, and reports data that is not a view with its session", () => {
     const fake = fakeRpc(Result.succeed(listed))
     const received: string[] = []
 
-    clientOver(fake).onUpdate((view) => {
-      received.push(view.entries.map((entry) => entry.ref.label).join(" "))
+    clientOver(fake).onUpdate((update) => {
+      received.push(
+        Update.$match(update, {
+          Published: ({ view }) => view.entries.map((entry) => entry.ref.label).join(" "),
+          Unreadable: ({ sessionID }) => `unreadable ${Option.getOrElse(sessionID, () => "?")}`,
+        }),
+      )
     })
     fake.publish(malformed)
     fake.publish(listed)
 
-    expect(received).toEqual(["acme/api#1"])
+    expect(received).toEqual(["unreadable ses_known", "acme/api#1"])
   })
 })

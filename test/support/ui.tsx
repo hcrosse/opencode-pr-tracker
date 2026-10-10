@@ -10,7 +10,7 @@ import type { PullRequestState, Status } from "../../src/domain/Snapshot.ts"
 import type { Membership } from "../../src/domain/StackLayout.ts"
 import type { EntryView, Layout, View } from "../../src/rpc.ts"
 import type { Palette } from "../../src/ui/Palette.ts"
-import { Sidebar, type SidebarState } from "../../src/ui/Sidebar.tsx"
+import { Liveness, Sidebar, SidebarState } from "../../src/ui/Sidebar.tsx"
 import { openState } from "./application.ts"
 import { ref, stack } from "./stacks.ts"
 
@@ -163,7 +163,8 @@ export interface SidebarOptions {
   readonly width?: number
 }
 
-export const ready = (view: View): SidebarState => ({ _tag: "Ready", view })
+export const ready = (view: View, liveness: Liveness = Liveness.Live()): SidebarState =>
+  SidebarState.Ready({ liveness, view })
 
 export async function showSidebar(
   state: SidebarState,

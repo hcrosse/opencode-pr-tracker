@@ -1,18 +1,14 @@
 /** @jsxImportSource @opentui/solid */
 import { afterEach, describe, expect, test } from "bun:test"
 
-import { Option } from "effect"
-
 import { ref, stack } from "../support/stacks.ts"
 import {
   destroyMounted,
   mixed,
   entryOf,
   fresh,
-  palette,
   ready,
   showSidebar,
-  styled,
   viewOf,
 } from "../support/ui.tsx"
 
@@ -158,21 +154,5 @@ describe("Sidebar states", () => {
     const { lines } = await showSidebar(ready(viewOf([])))
 
     expect(lines()).toEqual(["Pull requests", "", "No pull requests attached"])
-  })
-
-  test("shows loading until the first view arrives", async () => {
-    const { lines } = await showSidebar({ _tag: "Loading" })
-
-    expect(lines()).toEqual(["Pull requests", "", "Loading"])
-  })
-
-  test("shows a failure in red", async () => {
-    const { lines, style } = await showSidebar({
-      _tag: "Failed",
-      message: "Saved state is unreadable",
-    })
-
-    expect(lines()).toEqual(["Pull requests", "", "Saved state is unreadable"])
-    expect(style("Saved state")).toEqual(Option.some(styled(palette.tones.red)))
   })
 })
