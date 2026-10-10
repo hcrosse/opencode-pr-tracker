@@ -6,7 +6,9 @@ Install the toolchain with `mise install`, authenticate GitHub CLI, then run `mi
 
 ## Checks
 
-Run `bun run check` before opening a pull request.
+Run `bun run check` and `mise run lint` before opening a pull request. `bun run check`
+runs lint, format, type checks, tests, and a package dry run. `mise run lint` adds the
+prek checks for shell scripts, workflows, and data files that CI also runs.
 
 Use Hegel property tests for parsers, normalization, serialization, and state
 transitions when a general invariant is clearer than selected examples. Keep
