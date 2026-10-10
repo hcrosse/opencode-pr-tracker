@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.7.0](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.6.2...v0.7.0) (2026-10-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* the plugin now requires OpenCode 2.0.24 or later and @opentui/core and @opentui/solid 0.5.14 or later.
+* fail plugin startup on unknown options or invalid option values ([#190](https://github.com/hcrosse/opencode-pr-tracker/issues/190))
+* make the compact sidebar layout the default ([#182](https://github.com/hcrosse/opencode-pr-tracker/issues/182))
+
+### Features
+
+* make the compact sidebar layout the default ([#182](https://github.com/hcrosse/opencode-pr-tracker/issues/182)) ([b759116](https://github.com/hcrosse/opencode-pr-tracker/commit/b759116c8024dd037b89b0054ffafda03b237ad7))
+* show review decisions and replied or unreplied review threads ([#181](https://github.com/hcrosse/opencode-pr-tracker/issues/181)) ([99a5269](https://github.com/hcrosse/opencode-pr-tracker/commit/99a52699698e96f51661eab19e1c1aa32aa3f94e))
+
+
+### Bug Fixes
+
+* close Stack edges where two Stacks touch ([#175](https://github.com/hcrosse/opencode-pr-tracker/issues/175)) ([2981d22](https://github.com/hcrosse/opencode-pr-tracker/commit/2981d22afe35e190d570ca794d4db5bf81aad79f))
+* fail plugin startup on unknown options or invalid option values ([#190](https://github.com/hcrosse/opencode-pr-tracker/issues/190)) ([fabadc4](https://github.com/hcrosse/opencode-pr-tracker/commit/fabadc48da540e25394662a94e1cf226097f7ff3))
+* keep a longer rate-limit wait when two instances record one at once ([#197](https://github.com/hcrosse/opencode-pr-tracker/issues/197)) ([9f1fa9c](https://github.com/hcrosse/opencode-pr-tracker/commit/9f1fa9cc9255fe0250bf7f6a229f59d40c4e7f28))
+* leave merged and closed Stack members out when attaching ([#177](https://github.com/hcrosse/opencode-pr-tracker/issues/177)) ([6be100d](https://github.com/hcrosse/opencode-pr-tracker/commit/6be100da8fb4f50e4640559347c25feb18659c7d))
+* log background publish, update, poll, and session cleanup failures instead of ignoring them ([#192](https://github.com/hcrosse/opencode-pr-tracker/issues/192)) ([9991bfe](https://github.com/hcrosse/opencode-pr-tracker/commit/9991bfe606cda92148939a14192a80e2505f1262))
+* reject impossible review thread counts when decoding ([#187](https://github.com/hcrosse/opencode-pr-tracker/issues/187)) ([d7ec67d](https://github.com/hcrosse/opencode-pr-tracker/commit/d7ec67d6aaa3a48f8b937fa4cb58cb33674b57ec))
+* renew the sidebar lease only after the previous renewal finishes ([#185](https://github.com/hcrosse/opencode-pr-tracker/issues/185)) ([1e7ae82](https://github.com/hcrosse/opencode-pr-tracker/commit/1e7ae82fb8ce86c8b4dd342f60f9132b8b1a6e19))
+* report malformed GitHub answers as invalid responses ([#201](https://github.com/hcrosse/opencode-pr-tracker/issues/201)) ([19b7589](https://github.com/hcrosse/opencode-pr-tracker/commit/19b7589376b6c2052229149bd8dc5b2301e6a92e))
+* share one GitHub token load and stop stale loads re-caching it ([#184](https://github.com/hcrosse/opencode-pr-tracker/issues/184)) ([c0bc0aa](https://github.com/hcrosse/opencode-pr-tracker/commit/c0bc0aadd35c59b2e06b92c811619a916ec96fba))
+* show GitHub values this version does not recognize as unknown ([#200](https://github.com/hcrosse/opencode-pr-tracker/issues/200)) ([96340d2](https://github.com/hcrosse/opencode-pr-tracker/commit/96340d253e781e1412a62dba5637e3e7ebf6be1a))
+* show in the sidebar header when pull requests may be out of date ([#196](https://github.com/hcrosse/opencode-pr-tracker/issues/196)) ([ac830b7](https://github.com/hcrosse/opencode-pr-tracker/commit/ac830b7b1ce0e27bcbf61299a6f5a6ab9b752756))
+* warn about invalid stored state instead of quietly ignoring it ([#191](https://github.com/hcrosse/opencode-pr-tracker/issues/191)) ([a541ffc](https://github.com/hcrosse/opencode-pr-tracker/commit/a541ffc2467c49f9e290c0f58e3543ee53cdbdda))
+
+
+### Build System
+
+* update dependencies and require OpenCode 2.0.24 or later ([#203](https://github.com/hcrosse/opencode-pr-tracker/issues/203)) ([2e710d8](https://github.com/hcrosse/opencode-pr-tracker/commit/2e710d863b9f749f9287ffbcfcb2a18ede200f89))
+
 ## [0.6.2](https://github.com/hcrosse/opencode-pr-tracker/compare/v0.6.1...v0.6.2) (2026-10-07)
 
 
