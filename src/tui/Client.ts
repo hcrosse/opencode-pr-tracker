@@ -174,7 +174,7 @@ const callOptions = (host: Host, sessionID: string, signal: AbortSignal): CallOp
     onSome: (location) => ({ location, signal }),
   })
 
-export function makeClient(host: Host): TrackerClientApi {
+export function trackerClient(host: Host): TrackerClientApi {
   const { rpc } = host
 
   return {

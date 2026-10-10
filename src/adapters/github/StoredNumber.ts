@@ -45,7 +45,7 @@ export interface StoredNumber extends StoredNumberOptions {
   readonly held: Ref.Ref<Option.Option<Held>>
 }
 
-export const makeStoredNumber = (options: StoredNumberOptions): Effect.Effect<StoredNumber> =>
+export const storedNumber = (options: StoredNumberOptions): Effect.Effect<StoredNumber> =>
   Effect.map(Ref.make(Option.none<Held>()), (held) => ({
     held,
     key: options.key,

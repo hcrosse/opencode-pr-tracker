@@ -8,7 +8,7 @@ import { PullRequestTracker } from "./rpc.ts"
 import { actions } from "./tui/Actions.ts"
 import { background } from "./tui/Background.ts"
 import { openUrl, type OpenFailed } from "./tui/Browser.ts"
-import { makeClient, type Location, type TrackerClientApi } from "./tui/Client.ts"
+import { trackerClient, type Location, type TrackerClientApi } from "./tui/Client.ts"
 import { Commands } from "./tui/Commands.tsx"
 import { SessionSidebar, type Collapsed } from "./tui/SessionSidebar.tsx"
 import { hostTerminal } from "./tui/Terminal.ts"
@@ -35,7 +35,7 @@ function collapsedSessions(): Collapsed {
 
 /** The tracker client, routing each session's calls to the location it runs in. */
 function trackerFor(context: Plugin.Context): TrackerClientApi {
-  return makeClient({
+  return trackerClient({
     locationOf: (sessionID) =>
       Option.fromNullishOr(context.data.session.get(sessionID)).pipe(
         Option.flatMap(locationOfSession),

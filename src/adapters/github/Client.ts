@@ -10,7 +10,7 @@ import { CommandRunner, layer as commandLayer } from "../Command.ts"
 import { pullRequestAnswer, type Answer } from "./Answer.ts"
 import { allContexts, type Asking, type ContextNode } from "./Contexts.ts"
 import { UnrecognizedLog } from "./Enumeration.ts"
-import { makePost, type Charge } from "./Post.ts"
+import { GitHubPost, layer as postLayer, type Charge } from "./Post.ts"
 import { alias, batch, batchVariables, defaultPageSize } from "./Query.ts"
 import { RateLimit, layer as rateLimitLayer } from "./RateLimit.ts"
 import { resolveInRepository } from "./Repository.ts"
@@ -159,7 +159,7 @@ export const layer = (
   Layer.effect(
     GitHub,
     Effect.gen(function* () {
-      const post = yield* makePost()
+      const { post } = yield* GitHubPost
       const runner = yield* CommandRunner
       const rateLimit = yield* RateLimit
       const suspects = new Suspects()
@@ -190,7 +190,7 @@ export const layer = (
           ),
       })
     }),
-  )
+  ).pipe(Layer.provide(postLayer))
 
 /**
  * The GitHub port over `api.github.com`, with tokens from the environment or `gh`, and rate-limit

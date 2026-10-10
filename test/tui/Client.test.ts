@@ -6,7 +6,7 @@ import { constVoid } from "effect/Function"
 import { Status } from "../../src/domain/Snapshot.ts"
 import { View, type ViewData } from "../../src/rpc.ts"
 import {
-  makeClient,
+  trackerClient,
   Update,
   type FailureReason,
   type Location,
@@ -108,7 +108,7 @@ function fakeRpc(outcome: Outcome): FakeRpc {
 const here: Location = { directory: "/work/api" }
 
 const clientOver = (fake: FakeRpc): TrackerClientApi =>
-  makeClient({
+  trackerClient({
     locationOf: (sessionID) => (sessionID === "ses_known" ? Option.some(here) : Option.none()),
     rpc: fake.rpc,
   })

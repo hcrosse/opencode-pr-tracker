@@ -1,11 +1,11 @@
 /** Posting one GraphQL document to GitHub: token refresh, rate limits, and failure logs. */
-import { Clock, Effect, Option, Redacted, Schema } from "effect"
+import { Clock, Context, Effect, Layer, Option, Redacted, Schema } from "effect"
 import { HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/unstable/http"
 
 import { Diagnostic } from "../../domain/Snapshot.ts"
 import type { GitHubFailure } from "../../ports/GitHub.ts"
 import { RateLimit, Verdict, verdictOf, type Evidence, type RateLimitApi } from "./RateLimit.ts"
-import { Token, type TokenApi } from "./Token.ts"
+import { Token } from "./Token.ts"
 
 const endpoint = "https://api.github.com/graphql"
 
@@ -52,6 +52,18 @@ export type PostFailure = RequestFailed | RequestCharged
 /** Posts one GraphQL document and decodes GitHub's response envelope. */
 export type Post = (query: string, variables: Variables) => Effect.Effect<Envelope, PostFailure>
 
+export interface GitHubPostApi {
+  /**
+   * Posts one GraphQL document. A 401 refreshes the token and retries once. A rate-limited
+   * response stops every request until GitHub's wait ends, as `RateLimit` records it.
+   */
+  readonly post: Post
+}
+
+export class GitHubPost extends Context.Service<GitHubPost, GitHubPostApi>()(
+  "opencode-pr-tracker/GitHubPost",
+) {}
+
 export const failure = (diagnostic: Diagnostic): RequestFailed => new RequestFailed({ diagnostic })
 
 /** A failure found before any request reached GitHub. */
@@ -66,7 +78,7 @@ const loggedHeader = (name: string): boolean =>
   name === "retry-after" || name.startsWith("x-ratelimit-")
 
 /** Logs a failed request with what GitHub said, so rate limits and timeouts can be told apart. */
-const logFailure = Effect.fn("Post.logFailure")(function* (
+const logFailure = Effect.fn("GitHubPost.logFailure")(function* (
   evidence: Evidence,
   messages: readonly string[],
   started: number,
@@ -135,7 +147,7 @@ function unusableBody(cutOff: boolean, envelope: Option.Option<Envelope>): Unusa
 }
 
 /** The failure for a response that was not a usable answer, recording any rate limit it reports. */
-const unanswered = Effect.fn("Post.unanswered")(function* (
+const unanswered = Effect.fn("GitHubPost.unanswered")(function* (
   rateLimit: RateLimitApi,
   evidence: Evidence,
   unusable: Unusable,
@@ -153,24 +165,18 @@ const unanswered = Effect.fn("Post.unanswered")(function* (
   return yield* failure("RateLimited")
 })
 
-interface Services {
-  readonly http: HttpClient.HttpClient
-  readonly token: TokenApi
-  readonly rateLimit: RateLimitApi
-}
-
 /**
  * The envelope of a usable answer: a 2xx envelope with data and no `RATE_LIMITED` error, whatever
  * the body's Content-Type. Anything else, such as a rate-limited or timed-out query, is logged and
  * fails.
  */
-const read = Effect.fn("Post.read")(function* (
+const read = Effect.fn("GitHubPost.read")(function* (
   rateLimit: RateLimitApi,
   response: HttpClientResponse.HttpClientResponse,
   started: number,
 ) {
   // A body that could not be read counts as cut off, like one that ended early.
-  const body = yield* Effect.orElseSucceed(response.text, () => "")
+  const body = yield* Effect.catchTag(response.text, "HttpClientError", () => Effect.succeed(""))
   const ok = response.status >= 200 && response.status < 300
   const json = ok ? parseJson(body) : Option.none()
   const envelope = Option.flatMap(json, decodeEnvelope)
@@ -198,51 +204,43 @@ const read = Effect.fn("Post.read")(function* (
   return yield* unanswered(rateLimit, evidence, unusable)
 })
 
-const attempt = Effect.fn("Post.attempt")(function* (
-  services: Services,
-  query: string,
-  variables: Variables,
-) {
-  yield* Effect.mapError(services.rateLimit.check, free)
+const make = Effect.gen(function* () {
+  const http = yield* HttpClient.HttpClient
+  const rateLimit = yield* RateLimit
+  const token = yield* Token
 
-  const bearer = yield* Effect.mapError(services.token.get, free)
-  const started = yield* millis
+  const attempt = Effect.fn("GitHubPost.attempt")(function* (query: string, variables: Variables) {
+    yield* Effect.mapError(rateLimit.check, free)
 
-  const request = HttpClientRequest.post(endpoint).pipe(
-    HttpClientRequest.bearerToken(Redacted.value(bearer)),
-    HttpClientRequest.bodyJsonUnsafe({ query, variables }),
-  )
+    const bearer = yield* Effect.mapError(token.get, free)
+    const started = yield* millis
 
-  const response = yield* services.http.execute(request).pipe(
-    Effect.tapError((error: { readonly message: string }) =>
-      logFailure({ body: error.message, errorTypes: [], headers: {}, status: 0 }, [], started),
-    ),
-    Effect.mapError(() => failure("GitHubUnavailable")),
-  )
-
-  return yield* read(services.rateLimit, response, started)
-})
-
-/**
- * Posts one GraphQL document. A 401 refreshes the token and retries once. A rate-limited response
- * stops every request until GitHub's wait ends, as `RateLimit` records it.
- */
-export const makePost = Effect.fn("Post.makePost")(function* (): Effect.fn.Return<
-  Post,
-  never,
-  HttpClient.HttpClient | Token | RateLimit
-> {
-  const services: Services = {
-    http: yield* HttpClient.HttpClient,
-    rateLimit: yield* RateLimit,
-    token: yield* Token,
-  }
-
-  return (query: string, variables: Variables): Effect.Effect<Envelope, PostFailure> =>
-    attempt(services, query, variables).pipe(
-      Effect.catchTag("Unauthorized", () =>
-        Effect.andThen(services.token.invalidate, attempt(services, query, variables)),
-      ),
-      Effect.catchTag("Unauthorized", () => Effect.fail(failure("AuthenticationRequired"))),
+    const request = HttpClientRequest.post(endpoint).pipe(
+      HttpClientRequest.bearerToken(Redacted.value(bearer)),
+      HttpClientRequest.bodyJsonUnsafe({ query, variables }),
     )
+
+    const response = yield* http.execute(request).pipe(
+      Effect.tapError((error: { readonly message: string }) =>
+        logFailure({ body: error.message, errorTypes: [], headers: {}, status: 0 }, [], started),
+      ),
+      Effect.mapError(() => failure("GitHubUnavailable")),
+    )
+
+    return yield* read(rateLimit, response, started)
+  })
+
+  return GitHubPost.of({
+    post: (query: string, variables: Variables): Effect.Effect<Envelope, PostFailure> =>
+      attempt(query, variables).pipe(
+        Effect.catchTag("Unauthorized", () =>
+          Effect.andThen(token.invalidate, attempt(query, variables)),
+        ),
+        Effect.catchTag("Unauthorized", () => Effect.fail(failure("AuthenticationRequired"))),
+      ),
+  })
 })
+
+/** Posts over the HTTP client, with tokens from `Token` and waits shared through `RateLimit`. */
+export const layer: Layer.Layer<GitHubPost, never, HttpClient.HttpClient | Token | RateLimit> =
+  Layer.effect(GitHubPost, make)
