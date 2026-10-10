@@ -28,7 +28,7 @@ const RequestBody = Schema.fromJsonString(
   Schema.Struct({ query: Schema.String, variables: Variables }),
 )
 
-export type RequestBody = typeof RequestBody.Type
+export interface RequestBody extends Schema.Schema.Type<typeof RequestBody> {}
 
 export function fixture(name: string): readonly Exchange[] {
   const file = path.join(import.meta.dir, "..", "fixtures", "github", `${name}.json`)

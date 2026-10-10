@@ -20,7 +20,7 @@ const Envelope = Schema.Struct({
   errors: Schema.optional(Schema.Array(GraphQlError)),
 })
 
-export type Envelope = typeof Envelope.Type
+export interface Envelope extends Schema.Schema.Type<typeof Envelope> {}
 
 const parseJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))
 

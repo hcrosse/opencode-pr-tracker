@@ -51,11 +51,11 @@ export const Threads = Schema.Struct({
   unreplied: Count,
 }).check(amongFetched)
 
-export type Threads = typeof Threads.Type
+export interface Threads extends Schema.Schema.Type<typeof Threads> {}
 
 export const Review = Schema.Struct({ decision: Decision, threads: Threads })
 
-export type Review = typeof Review.Type
+export interface Review extends Schema.Schema.Type<typeof Review> {}
 
 export const noReview: Review = {
   decision: "none",

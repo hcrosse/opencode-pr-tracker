@@ -67,6 +67,9 @@
     "eslint/complexity": ["error", { "max": 8, "variant": "classic" }],
     "eslint/max-depth": ["error", { "max": 3 }],
     "eslint/max-lines": ["error", { "max": 250, "skipBlankLines": false, "skipComments": false }],
+    // Record schemas use `interface X extends Schema.Schema.Type<typeof X> {}`.
+    "typescript/no-empty-interface": "off",
+    "typescript/no-empty-object-type": ["error", { "allowInterfaces": "with-single-extends" }],
     // Effect pairs a schema value with a type of the same name; TypeScript reports real redeclarations.
     "eslint/no-redeclare": "off",
     // Effect tagged unions discriminate on `_tag`; GitHub GraphQL responses on `__typename`.

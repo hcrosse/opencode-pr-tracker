@@ -13,15 +13,14 @@ const Stored = Schema.Struct({
   version: Schema.Literal(1),
 })
 
-type Stored = typeof Stored.Type
+interface Stored extends Schema.Schema.Type<typeof Stored> {}
 
 const keyOf = (sessionID: string): string => `session/${sessionID}`
 
 function toTracking(stored: Stored): Option.Option<Tracking> {
   const attachments = stored.pullRequests.map((entry) =>
-    Result.map(
-      parsePullRequestUrl(entry.url),
-      (ref) => new Attachment({ attachedAt: entry.attachedAt, ref }),
+    Result.map(parsePullRequestUrl(entry.url), (ref) =>
+      Attachment.make({ attachedAt: entry.attachedAt, ref }),
     ),
   )
 
@@ -31,7 +30,7 @@ function toTracking(stored: Stored): Option.Option<Tracking> {
   return unique.length === stored.pullRequests.length ? Option.some(unique) : Option.none()
 }
 
-function toStored(tracking: Tracking): Stored {
+function toStored(tracking: Tracking): typeof Stored.Encoded {
   return {
     pullRequests: tracking.map((attachment) => ({
       attachedAt: attachment.attachedAt,

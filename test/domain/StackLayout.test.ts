@@ -202,7 +202,7 @@ describe("agreed Stacks after grouping", () => {
       )
 
       const scattered = Arr.dedupeWith(drawnRefs, (left, right) => left.url === right.url).map(
-        (ref) => new Attachment({ attachedAt: 0, ref }),
+        (ref) => Attachment.make({ attachedAt: 0, ref }),
       )
 
       const entriesOf = (tracking: Tracking): Entry[] =>

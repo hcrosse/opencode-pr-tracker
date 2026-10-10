@@ -34,7 +34,7 @@ const PluginList = Schema.Struct({ data: Schema.Array(PluginEntry) })
 
 const ServerAddress = Schema.Struct({ password: Schema.String, url: Schema.String })
 
-type ServerAddress = typeof ServerAddress.Type
+interface ServerAddress extends Schema.Schema.Type<typeof ServerAddress> {}
 
 const addressPattern = /server listening on (?<url>\S+)\s+server password (?<password>\S+)/u
 

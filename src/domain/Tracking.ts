@@ -4,10 +4,12 @@ import { PullRequestRef, samePullRequest } from "./PullRequest.ts"
 
 export const maximumAttachments = 40
 
-export class Attachment extends Schema.Class<Attachment>("Attachment")({
+export const Attachment = Schema.Struct({
   attachedAt: Schema.Int,
   ref: PullRequestRef,
-}) {}
+})
+
+export interface Attachment extends Schema.Schema.Type<typeof Attachment> {}
 
 /** The pull requests attached to one session, in display order. */
 export type Tracking = readonly Attachment[]
@@ -105,7 +107,7 @@ export function attach(
     return Result.fail(new AttachmentLimitReached({ limit: maximumAttachments, requested }))
   }
 
-  const appended = [...tracking, ...missing.map((ref) => new Attachment({ attachedAt: now, ref }))]
+  const appended = [...tracking, ...missing.map((ref) => Attachment.make({ attachedAt: now, ref }))]
   const next = group(appended, [members]).tracking
 
   return Result.succeed({ changed: differs(tracking, next), tracking: next })

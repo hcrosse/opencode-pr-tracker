@@ -34,7 +34,7 @@ export const PullRequestNode = Schema.Struct({
   title: Schema.String,
 })
 
-export type PullRequestNode = typeof PullRequestNode.Type
+export interface PullRequestNode extends Schema.Schema.Type<typeof PullRequestNode> {}
 
 const mergeabilities: Readonly<Record<MergeableState, Mergeability>> = {
   CONFLICTING: "conflicting",

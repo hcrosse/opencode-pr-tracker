@@ -60,11 +60,11 @@ const ReviewFields = Schema.Struct({
   }),
 })
 
-type ReviewFields = typeof ReviewFields.Type
+interface ReviewFields extends Schema.Schema.Type<typeof ReviewFields> {}
 
-type ReviewNode = typeof ReviewNode.Type
+interface ReviewNode extends Schema.Schema.Type<typeof ReviewNode> {}
 
-type ThreadNode = typeof ThreadNode.Type
+interface ThreadNode extends Schema.Schema.Type<typeof ThreadNode> {}
 
 const reportedDecisions: Readonly<
   Record<(typeof ReviewDecision.members)[0]["Type"], ReportedDecision>
@@ -131,7 +131,7 @@ const unrecognizedIn = (node: ReviewFields): Unrecognized[] =>
 /** A pull request's review state, and the values in its review fields this version does not know. */
 const ReadReview = Schema.Struct({ review: Review, unrecognized: Schema.Array(Unrecognized) })
 
-export type ReadReview = typeof ReadReview.Type
+export interface ReadReview extends Schema.Schema.Type<typeof ReadReview> {}
 
 const notSent = SchemaGetter.forbidden<never, ReadReview>(
   () => "Review state is never sent to GitHub",

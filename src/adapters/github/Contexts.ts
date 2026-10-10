@@ -73,7 +73,7 @@ const CheckRunNode = Schema.Struct({
   status: CheckStatus,
 })
 
-type CheckRunNode = typeof CheckRunNode.Type
+interface CheckRunNode extends Schema.Schema.Type<typeof CheckRunNode> {}
 
 export const ContextNode = Schema.Union([StatusContextNode, CheckRunNode])
 
@@ -84,7 +84,7 @@ export const Contexts = Schema.Struct({
   pageInfo: PageInfo,
 })
 
-export type Contexts = typeof Contexts.Type
+export interface Contexts extends Schema.Schema.Type<typeof Contexts> {}
 
 const ContinuationData = Schema.Struct({
   repository: Schema.Struct({

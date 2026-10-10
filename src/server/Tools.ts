@@ -23,7 +23,7 @@ export const PullRequestArgument = Schema.Struct({
   }),
 })
 
-export type PullRequestArgument = typeof PullRequestArgument.Type
+export interface PullRequestArgument extends Schema.Schema.Type<typeof PullRequestArgument> {}
 
 type PullRequestArgumentSchema = typeof PullRequestArgument
 
