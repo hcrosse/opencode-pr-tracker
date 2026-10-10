@@ -8,6 +8,7 @@ import { GitHub, ItemResult } from "../../../src/ports/GitHub.ts"
 import { memoryStorage } from "../../support/application.ts"
 import { trackerRef } from "../../support/github.ts"
 
+// oxlint-disable-next-line node/no-process-env -- The live-test toggle configures describe.skipIf at module load.
 const enabled = process.env["GITHUB_LIVE"] === "1"
 
 // Talks to api.github.com with the developer's token. Run with GITHUB_LIVE=1.

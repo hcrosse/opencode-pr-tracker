@@ -42,7 +42,7 @@ interface Routing {
 const stack = [
   "https://github.com/hcrosse/opencode-pr-tracker/pull/78",
   "https://github.com/hcrosse/opencode-pr-tracker/pull/79",
-]
+] as const
 
 const urlsOf = (view: ViewData): string[] =>
   view.entries.map(
@@ -122,7 +122,7 @@ const expectUpdate = Effect.fn("SmokeRpc.expectUpdate")(function* <A, E>(
     Stream.runHead,
     Effect.timeoutOption("30 seconds"),
     Effect.map(Option.flatten),
-    Effect.orElseSucceed(Option.none),
+    Effect.orDie,
     Effect.forkScoped,
   )
 
@@ -177,7 +177,7 @@ const attachStack = Effect.fn("SmokeRpc.attachStack")(function* (
   const bottom = yield* expectUpdate(
     watched,
     stack.slice(0, 1),
-    tracker.attach({ sessionID: watched.sessionID, target: stack[0] ?? "" }, location),
+    tracker.attach({ sessionID: watched.sessionID, target: stack[0] }, location),
   )
 
   yield* expectEqual(
@@ -189,10 +189,10 @@ const attachStack = Effect.fn("SmokeRpc.attachStack")(function* (
   const both = yield* expectUpdate(
     watched,
     stack,
-    tracker.attach({ sessionID: watched.sessionID, target: stack[1] ?? "" }, location),
+    tracker.attach({ sessionID: watched.sessionID, target: stack[1] }, location),
   )
 
-  yield* expectEqual("a merged Stack member is attached when named", urlsOf(both.view), stack)
+  yield* expectEqual("a merged Stack member is attached when named", urlsOf(both.view), [...stack])
 })
 
 const withGitHub = Effect.fn("SmokeRpc.withGitHub")(function* (harness: Harness) {
@@ -207,7 +207,7 @@ const withGitHub = Effect.fn("SmokeRpc.withGitHub")(function* (harness: Harness)
   const detached = yield* expectUpdate(
     watched,
     stack.slice(0, 1),
-    tracker.detach({ sessionID, target: stack[1] ?? "" }, location),
+    tracker.detach({ sessionID, target: stack[1] }, location),
   )
 
   yield* expectEqual("detaching a member leaves the rest", urlsOf(detached.view), stack.slice(0, 1))
