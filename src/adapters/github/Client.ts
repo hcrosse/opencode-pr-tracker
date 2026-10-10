@@ -5,10 +5,10 @@ import { FetchHttpClient, type HttpClient } from "effect/unstable/http"
 import type { PullRequestRef } from "../../domain/PullRequest.ts"
 import type { ReviewMode } from "../../domain/Review.ts"
 import type { Diagnostic } from "../../domain/Snapshot.ts"
-import { GitHub, GitHubFailure, type ItemResult } from "../../ports/GitHub.ts"
+import { charged, failed, GitHub, GitHubFailure, type ItemResult } from "../../ports/GitHub.ts"
 import { CommandRunner, layer as commandLayer } from "../Command.ts"
 import { pullRequestAnswer, type Answer } from "./Answer.ts"
-import { failure, makePost, type Post, type RequestFailed } from "./Post.ts"
+import { failure, makePost, type Charge, type Post } from "./Post.ts"
 import {
   alias,
   batch,
@@ -38,15 +38,6 @@ const ContinuationData = Schema.Struct({
   }),
 })
 
-const failed = (diagnostic: Diagnostic, charged: boolean): ItemResult => ({
-  _tag: "Failed",
-  charged,
-  diagnostic,
-})
-
-const failedBy = (requestFailure: RequestFailed): ItemResult =>
-  failed(requestFailure.diagnostic, requestFailure.cost !== "Free")
-
 /** How the client asks GitHub: by posting queries, for `pageSize` check contexts a page. */
 interface Asking {
   readonly post: Post
@@ -71,16 +62,16 @@ const allContexts = Effect.fn("allContexts")(function* (
     // A claimed next page needs a new cursor, or CI would be judged on part or paging never end.
     const after = page.value.pageInfo.endCursor ?? ""
 
-    if (after === "" || followed.has(after)) return yield* failure("InvalidResponse", "Free")
+    if (after === "" || followed.has(after)) return yield* failure("InvalidResponse")
 
     followed.add(after)
 
     const envelope = yield* post(continuation(pageSize), continuationVariables(ref, after))
 
-    if ((envelope.errors ?? []).length > 0) return yield* failure("InvalidResponse", "Free")
+    if ((envelope.errors ?? []).length > 0) return yield* failure("InvalidResponse")
 
     const data = yield* Schema.decodeUnknownEffect(ContinuationData)(envelope.data).pipe(
-      Effect.mapError(() => failure("InvalidResponse", "Free")),
+      Effect.mapError(() => failure("InvalidResponse")),
     )
 
     page = Option.some(data.repository.pullRequest.statusCheckRollup.contexts)
@@ -101,28 +92,32 @@ const itemResult = Effect.fn("itemResult")(function* (
 ) {
   const raw = pullRequestAnswer(request, key)
 
-  if (Result.isFailure(raw)) return failed(raw.failure, false)
+  if (Result.isFailure(raw)) return failed(raw.failure)
 
   const node = Schema.decodeUnknownOption(PullRequestNode)(raw.success)
 
-  if (Option.isNone(node)) return failed("InvalidResponse", false)
+  if (Option.isNone(node)) return failed("InvalidResponse")
 
   const review = Schema.decodeUnknownOption(reviewStates[request.reviews])(raw.success)
 
-  if (Option.isNone(review)) return failed("InvalidResponse", false)
+  if (Option.isNone(review)) return failed("InvalidResponse")
 
-  const contexts = yield* Effect.result(allContexts(request, ref, node.value))
+  return yield* allContexts(request, ref, node.value).pipe(
+    Effect.map((contexts: readonly ContextNode[]): ItemResult => ({
+      _tag: "Reported",
+      report: toReport(ref, node.value, { contexts, review: review.value }),
+    })),
+    Effect.catchTags({
+      RequestCharged: ({ charge }: { readonly charge: Charge }) =>
+        Effect.sync(() => {
+          if (charge === "TimedOut") request.suspects.timedOut([ref.url])
 
-  if (Result.isFailure(contexts)) {
-    if (contexts.failure.cost === "TimedOut") request.suspects.timedOut([ref.url])
-
-    return failedBy(contexts.failure)
-  }
-
-  return {
-    _tag: "Reported",
-    report: toReport(ref, node.value, { contexts: contexts.success, review: review.value }),
-  } satisfies ItemResult
+          return charged
+        }),
+      RequestFailed: ({ diagnostic }: { readonly diagnostic: Diagnostic }) =>
+        Effect.succeed(failed(diagnostic)),
+    }),
+  )
 })
 
 const fetchBatch = Effect.fn("fetchBatch")(function* (
@@ -168,27 +163,34 @@ const outcomeOf = (
 ): Effect.Effect<BatchOutcome> =>
   Effect.gen(function* () {
     if (yield* Ref.get(sending.stopped))
-      return { entries: failedAll(refs, failed("GitHubUnavailable", true)), failure: Option.none() }
+      return { entries: failedAll(refs, charged), failure: Option.none() }
 
-    const result = yield* Effect.result(fetchBatch(sending, refs))
+    const stop = Effect.andThen(
+      Ref.set(sending.stopped, true),
+      Effect.sync(() => {
+        sending.suspects.timedOut(refs.map((ref) => ref.url))
+      }),
+    )
 
-    if (Result.isSuccess(result)) {
-      sending.suspects.recorded(result.success)
+    return yield* fetchBatch(sending, refs).pipe(
+      Effect.map((entries: readonly Entry[]): BatchOutcome => {
+        sending.suspects.recorded(entries)
 
-      return { entries: result.success, failure: Option.none() }
-    }
-
-    const { cost, diagnostic } = result.failure
-
-    if (cost === "TimedOut") {
-      yield* Ref.set(sending.stopped, true)
-      sending.suspects.timedOut(refs.map((ref) => ref.url))
-    }
-
-    return {
-      entries: failedAll(refs, failedBy(result.failure)),
-      failure: cost === "Free" ? Option.some(diagnostic) : Option.none(),
-    }
+        return { entries, failure: Option.none() }
+      }),
+      Effect.catchTags({
+        RequestCharged: ({ charge }: { readonly charge: Charge }) =>
+          Effect.as(charge === "TimedOut" ? stop : Effect.void, {
+            entries: failedAll(refs, charged),
+            failure: Option.none(),
+          }),
+        RequestFailed: ({ diagnostic }: { readonly diagnostic: Diagnostic }) =>
+          Effect.succeed({
+            entries: failedAll(refs, failed(diagnostic)),
+            failure: Option.some(diagnostic),
+          }),
+      }),
+    )
   })
 
 /** What the GitHub port requires: an HTTP client, a token source, a rate limit, and `gh`. */

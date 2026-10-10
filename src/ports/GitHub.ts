@@ -26,16 +26,25 @@ export class RepositoryUnavailable extends Schema.TaggedError<RepositoryUnavaila
 
 export type ItemResult =
   | { readonly _tag: "Reported"; readonly report: Report }
-  | {
-      readonly _tag: "Failed"
-      readonly diagnostic: Diagnostic
-      /**
-       * Whether the failure cost GitHub work: a query it could not finish in time, another server
-       * error, or a pull request left unsent because an earlier query timed out. Repeating such a
-       * query soon is likely to fail the same way.
-       */
-      readonly charged: boolean
-    }
+  | { readonly _tag: "Failed"; readonly diagnostic: Diagnostic; readonly charged: false }
+  /**
+   * A failure that cost GitHub work: a query it could not finish in time, another server error, or
+   * a pull request left unsent because an earlier query timed out. Repeating such a query soon is
+   * likely to fail the same way.
+   */
+  | { readonly _tag: "Failed"; readonly diagnostic: "GitHubUnavailable"; readonly charged: true }
+
+export const failed = (diagnostic: Diagnostic): ItemResult => ({
+  _tag: "Failed",
+  charged: false,
+  diagnostic,
+})
+
+export const charged: ItemResult = {
+  _tag: "Failed",
+  charged: true,
+  diagnostic: "GitHubUnavailable",
+}
 
 export interface GitHubApi {
   /**

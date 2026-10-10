@@ -29,28 +29,33 @@ const decodeEnvelope = Schema.decodeUnknownOption(Envelope)
 /** GraphQL variables: strings, and pull request numbers. */
 export type Variables = Readonly<Record<string, string | number>>
 
-/**
- * What a failed request cost GitHub. `TimedOut` is a query GitHub could not finish in time: a 502,
- * a 504, or a 2xx answer cut off before its end. `Charged` is another server error.
- */
-const Cost = Schema.Literals(["Free", "Charged", "TimedOut"])
-
-export type Cost = typeof Cost.Type
-
-/** A request that got no usable answer. */
+/** A request that got no usable answer and cost GitHub no work. */
 export class RequestFailed extends Schema.TaggedError<RequestFailed>()("RequestFailed", {
-  cost: Cost,
   diagnostic: Diagnostic,
 }) {}
 
-/** Posts one GraphQL document and decodes GitHub's response envelope. */
-export type Post = (query: string, variables: Variables) => Effect.Effect<Envelope, RequestFailed>
+/**
+ * The work an unanswered request cost GitHub. `TimedOut` is a query GitHub could not finish in
+ * time: a 502, a 504, or a 2xx answer cut off before its end. `Charged` is another server error.
+ */
+const Charge = Schema.Literals(["Charged", "TimedOut"])
 
-export const failure = (diagnostic: Diagnostic, cost: Cost): RequestFailed =>
-  new RequestFailed({ cost, diagnostic })
+export type Charge = typeof Charge.Type
+
+/** A request GitHub spent work on without answering, so GitHub is unavailable. */
+export class RequestCharged extends Schema.TaggedError<RequestCharged>()("RequestCharged", {
+  charge: Charge,
+}) {}
+
+export type PostFailure = RequestFailed | RequestCharged
+
+/** Posts one GraphQL document and decodes GitHub's response envelope. */
+export type Post = (query: string, variables: Variables) => Effect.Effect<Envelope, PostFailure>
+
+export const failure = (diagnostic: Diagnostic): RequestFailed => new RequestFailed({ diagnostic })
 
 /** A failure found before any request reached GitHub. */
-const free = (refused: GitHubFailure): RequestFailed => failure(refused.diagnostic, "Free")
+const free = (refused: GitHubFailure): RequestFailed => failure(refused.diagnostic)
 
 /** A 401 from GitHub: the cached token may be stale. */
 class Unauthorized extends Schema.TaggedError<Unauthorized>()("Unauthorized", {}) {}
@@ -88,11 +93,14 @@ function logFailure(
 
 const timeoutStatuses = new Set([502, 504])
 
-/** How a failed response's cost is judged once it is known not to be a rate limit. */
-function costOf(evidence: Evidence, cutOff: boolean): Cost {
-  if (cutOff || timeoutStatuses.has(evidence.status)) return "TimedOut"
+/** The failure for an unavailable GitHub: charged for a timeout or another server error. */
+function unavailable(evidence: Evidence, cutOff: boolean): PostFailure {
+  if (cutOff || timeoutStatuses.has(evidence.status))
+    return new RequestCharged({ charge: "TimedOut" })
 
-  return evidence.status >= 500 ? "Charged" : "Free"
+  return evidence.status >= 500
+    ? new RequestCharged({ charge: "Charged" })
+    : failure("GitHubUnavailable")
 }
 
 /** What a 2xx body holds, if it is not a usable answer. */
@@ -112,16 +120,15 @@ const unanswered = Effect.fn("unanswered")(function* (
 ) {
   if (evidence.status === 401) return yield* new Unauthorized()
 
-  if (unusable === "NotEnvelope") return yield* failure("InvalidResponse", "Free")
+  if (unusable === "NotEnvelope") return yield* failure("InvalidResponse")
 
   const verdict = verdictOf(evidence, yield* millis)
 
-  if (verdict._tag === "Allowed")
-    return yield* failure("GitHubUnavailable", costOf(evidence, unusable === "CutOff"))
+  if (verdict._tag === "Allowed") return yield* unavailable(evidence, unusable === "CutOff")
 
   yield* rateLimit.limited(verdict.until)
 
-  return yield* failure("RateLimited", "Free")
+  return yield* failure("RateLimited")
 })
 
 interface Services {
@@ -187,7 +194,7 @@ const attempt = Effect.fn("attempt")(function* (
     Effect.tapError((error: { readonly message: string }) =>
       logFailure({ body: error.message, errorTypes: [], headers: {}, status: 0 }, [], started),
     ),
-    Effect.mapError(() => failure("GitHubUnavailable", "Free")),
+    Effect.mapError(() => failure("GitHubUnavailable")),
   )
 
   return yield* read(services.rateLimit, response, started)
@@ -208,11 +215,11 @@ export const makePost = Effect.fn("makePost")(function* (): Effect.fn.Return<
     token: yield* Token,
   }
 
-  return (query: string, variables: Variables): Effect.Effect<Envelope, RequestFailed> =>
+  return (query: string, variables: Variables): Effect.Effect<Envelope, PostFailure> =>
     attempt(services, query, variables).pipe(
       Effect.catchTag("Unauthorized", () =>
         Effect.andThen(services.token.invalidate, attempt(services, query, variables)),
       ),
-      Effect.catchTag("Unauthorized", () => Effect.fail(failure("AuthenticationRequired", "Free"))),
+      Effect.catchTag("Unauthorized", () => Effect.fail(failure("AuthenticationRequired"))),
     )
 })
