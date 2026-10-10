@@ -1,5 +1,5 @@
 /** Check contexts: how GitHub reports them, following their pages, and what each means as a check. */
-import { Effect, Option, Schema } from "effect"
+import { Effect, Option, Schema, Stream } from "effect"
 
 import type { Check, CheckOutcome } from "../../domain/Checks.ts"
 import type { PullRequestRef } from "../../domain/PullRequest.ts"
@@ -107,17 +107,15 @@ export const allContexts = Effect.fn("GitHub.allContexts")(function* (
   ref: PullRequestRef,
   rollup: Rollup,
 ) {
-  const collected: ContextNode[] = []
+  if (rollup === null) return []
+
   const followed = new Set<string>()
-  let page = Option.map(Option.fromNullishOr(rollup), (found) => found.contexts)
 
-  while (Option.isSome(page)) {
-    collected.push(...page.value.nodes)
-
-    if (!page.value.pageInfo.hasNextPage) break
+  const nextPage = Effect.fnUntraced(function* (page: Contexts) {
+    if (!page.pageInfo.hasNextPage) return [page.nodes, Option.none<Contexts>()] as const
 
     // A claimed next page needs a new cursor, or CI would be judged on part or paging never end.
-    const after = page.value.pageInfo.endCursor ?? ""
+    const after = page.pageInfo.endCursor ?? ""
 
     if (after === "" || followed.has(after)) return yield* failure("InvalidResponse")
 
@@ -131,10 +129,13 @@ export const allContexts = Effect.fn("GitHub.allContexts")(function* (
       Effect.mapError(() => failure("InvalidResponse")),
     )
 
-    page = Option.some(data.repository.pullRequest.statusCheckRollup.contexts)
-  }
+    return [
+      page.nodes,
+      Option.some(data.repository.pullRequest.statusCheckRollup.contexts),
+    ] as const
+  })
 
-  return collected
+  return yield* Stream.runCollect(Stream.paginate(rollup.contexts, nextPage))
 })
 
 const conclusionOutcomes: Readonly<Record<KnownConclusion, CheckOutcome>> = {
