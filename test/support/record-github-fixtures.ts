@@ -86,7 +86,7 @@ const record = Effect.fn("record")(function* (
 ) {
   const fs = yield* FileSystem.FileSystem
   const variables = Object.fromEntries(urls.map((url, index) => [alias(index), url]))
-  const first = yield* post(batch(urls.length, pageSize), variables)
+  const first = yield* post(batch(urls.length, "all", pageSize), variables)
 
   const continuations = yield* Effect.forEach(urls, (url: string, index: number) =>
     pages(first, { key: alias(index), pageSize, url }),

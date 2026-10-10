@@ -1,39 +1,18 @@
 import { describe, expect, test } from "bun:test"
 
-import { Option, Schema } from "effect"
+import { Option, type Schema } from "effect"
 
-import { PullRequestNode, toReport } from "../../../src/adapters/github/Response.ts"
-import type { Review } from "../../../src/domain/Review.ts"
-import { recordedNode, tracker127 } from "../../support/github.ts"
-
-const head = "5248a25"
-
-interface Fields {
-  readonly reviewDecision?: string | null
-  readonly author?: { readonly login: string } | null
-  readonly latestOpinionatedReviews?: Schema.Json
-  readonly reviewThreads?: Schema.Json
-}
-
-const decode = Schema.decodeUnknownOption(PullRequestNode)
-
-/** The review state parsed from the recorded #127 response with `fields` replaced. */
-function reviewFrom(fields: Fields): Option.Option<Review> {
-  const raw = Object.assign({}, recordedNode("standalone", "pr0"), { headRefOid: head }, fields)
-
-  return Option.flatMap(decode(raw), (node) => {
-    const { state } = toReport(tracker127, node, []).snapshot
-
-    return state._tag === "Open" ? Option.some(state.review) : Option.none()
-  })
-}
+import { head, reviewFrom, type ReviewFields as Fields } from "../../support/reviewResponses.ts"
 
 const reviewed = (state: string, oid: string | null): Schema.Json => ({
   commit: oid === null ? null : { oid },
   state,
 })
 
-const reviews = (...nodes: readonly Schema.Json[]): Schema.Json => ({ nodes: [...nodes] })
+const reviewPage = (hasNextPage: boolean, ...nodes: readonly Schema.Json[]): Schema.Json => ({
+  nodes: [...nodes],
+  pageInfo: { hasNextPage },
+})
 
 const comment = (state: string, login: string | null): Schema.Json => ({
   author: login === null ? null : { login },
@@ -50,12 +29,18 @@ const threadPage = (hasNextPage: boolean, ...nodes: readonly Schema.Json[]): Sch
   pageInfo: { hasNextPage },
 })
 
-const decisionFrom = (fields: Fields): Option.Option<string> =>
-  Option.map(reviewFrom(fields), (review) => review.decision)
+const decisionFrom = async (fields: Fields): Promise<Option.Option<string>> =>
+  Option.map(await reviewFrom(fields), (review) => review.decision)
 
 /** A response with GitHub's `decision` and writers' latest reviews `nodes`. */
 const decided = (decision: string | null, ...nodes: readonly Schema.Json[]): Fields => ({
-  latestOpinionatedReviews: reviews(...nodes),
+  latestOpinionatedReviews: reviewPage(false, ...nodes),
+  reviewDecision: decision,
+})
+
+/** As `decided`, with GitHub reporting more writers' reviews than `nodes`. */
+const decidedInPart = (decision: string | null, ...nodes: readonly Schema.Json[]): Fields => ({
+  latestOpinionatedReviews: reviewPage(true, ...nodes),
   reviewDecision: decision,
 })
 
@@ -71,8 +56,8 @@ describe("review decision GitHub reports", () => {
     ],
     ["review required", decided("REVIEW_REQUIRED"), "reviewRequired"],
     ["a decision GitHub added later", decided("ESCALATED", approval), "none"],
-  ])("reads %s", (_name, fields, decision) => {
-    expect(decisionFrom(fields)).toEqual(Option.some(decision))
+  ])("reads %s", async (_name, fields, decision) => {
+    expect(await decisionFrom(fields)).toEqual(Option.some(decision))
   })
 })
 
@@ -90,14 +75,37 @@ describe("review decision derived when GitHub reports none", () => {
       "changesRequested",
     ],
     ["a review state GitHub added later", decided(null, reviewed("DISMISSED", head)), "none"],
-  ])("reads %s", (_name, fields, decision) => {
-    expect(decisionFrom(fields)).toEqual(Option.some(decision))
+  ])("reads %s", async (_name, fields, decision) => {
+    expect(await decisionFrom(fields)).toEqual(Option.some(decision))
+  })
+})
+
+describe("review decision when GitHub has more writers' reviews", () => {
+  test.each<readonly [string, Fields, string]>([
+    [
+      "GitHub's approval, without judging it stale",
+      decidedInPart("APPROVED", reviewed("APPROVED", "older")),
+      "approved",
+    ],
+    ["GitHub's change request", decidedInPart("CHANGES_REQUESTED", approval), "changesRequested"],
+    [
+      "no decision when GitHub reports none",
+      decidedInPart(null, reviewed("CHANGES_REQUESTED", head)),
+      "none",
+    ],
+    [
+      "no decision when GitHub reports one added later",
+      decidedInPart("ESCALATED", approval),
+      "none",
+    ],
+  ])("reads %s", async (_name, fields, decision) => {
+    expect(await decisionFrom(fields)).toEqual(Option.some(decision))
   })
 })
 
 describe("review threads from a response", () => {
-  test("count unresolved threads by the latest submitted comment, ignoring unknown states", () => {
-    const review = reviewFrom({
+  test("count unresolved threads by the latest submitted comment, ignoring unknown states", async () => {
+    const review = await reviewFrom({
       author: { login: "hcrosse" },
       reviewThreads: threadPage(
         false,
@@ -119,8 +127,8 @@ describe("review threads from a response", () => {
 })
 
 describe("review threads from a response with missing data", () => {
-  test("leaves every thread unreplied when the author's account is gone", () => {
-    const review = reviewFrom({
+  test("leaves every thread unreplied when the author's account is gone", async () => {
+    const review = await reviewFrom({
       author: null,
       reviewThreads: threadPage(false, thread(false, comment("SUBMITTED", null))),
     })
@@ -130,8 +138,8 @@ describe("review threads from a response with missing data", () => {
     )
   })
 
-  test("marks counts as lower bounds when GitHub has more threads", () => {
-    const review = reviewFrom({ reviewThreads: threadPage(true, thread(true)) })
+  test("marks counts as lower bounds when GitHub has more threads", async () => {
+    const review = await reviewFrom({ reviewThreads: threadPage(true, thread(true)) })
 
     expect(Option.map(review, (found) => found.threads)).toEqual(
       Option.some({ complete: false, fetched: 1, replied: 0, unreplied: 0 }),

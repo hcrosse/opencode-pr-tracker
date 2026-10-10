@@ -17,6 +17,9 @@
             },
             "reviewDecision": null,
             "latestOpinionatedReviews": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
               "nodes": []
             },
             "reviewThreads": {
@@ -302,6 +305,9 @@
             },
             "reviewDecision": null,
             "latestOpinionatedReviews": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
               "nodes": []
             },
             "reviewThreads": {
@@ -599,6 +605,9 @@
             },
             "reviewDecision": null,
             "latestOpinionatedReviews": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
               "nodes": []
             },
             "reviewThreads": {
@@ -857,6 +866,9 @@
             },
             "reviewDecision": null,
             "latestOpinionatedReviews": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
               "nodes": []
             },
             "reviewThreads": {
@@ -959,5 +971,5 @@
     }
   ],
   "pageSize": 100,
-  "recordedAt": "2026-10-10T01:33:09.985Z"
+  "recordedAt": "2026-10-10T01:45:07.538Z"
 }

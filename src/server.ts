@@ -1,25 +1,17 @@
 import { Plugin } from "@opencode/plugin/effect"
-import { Context, Effect, Layer, Option, Schedule, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Schedule, Stream } from "effect"
 
 import { live as githubLive } from "./adapters/github/Client.ts"
 import { layer as storageLayer } from "./adapters/Storage.ts"
 import { Monitor, layer as monitorLayer } from "./application/Monitor.ts"
 import { Tracker, layer as trackerLayer } from "./application/Tracker.ts"
-import { Layout, PullRequestTracker } from "./rpc.ts"
+import { PullRequestTracker } from "./rpc.ts"
+import { settingsOf } from "./server/Options.ts"
 import { toView, type Services, type Settings } from "./server/Requests.ts"
 import { handlers } from "./server/Rpc.ts"
 import { registerTools } from "./server/Tools.ts"
 
 const pollInterval = "1 second"
-
-const Options = Schema.Struct({ layout: Layout })
-
-/** The sidebar layout from the plugin options; anything but "compact" is the default. */
-const layoutOf = (options: Plugin.Context["options"]): Layout =>
-  Option.match(Schema.decodeUnknownOption(Options)(options), {
-    onNone: () => "default",
-    onSome: ({ layout }) => layout,
-  })
 
 /** Forgets a session everywhere once OpenCode deletes it. Every plugin instance sees the event. */
 const forgetDeletedSessions = (ctx: Plugin.Context, services: Services): Effect.Effect<void> =>
@@ -38,9 +30,11 @@ const forgetDeletedSessions = (ctx: Plugin.Context, services: Services): Effect.
 export default Plugin.define({
   effect: (ctx) =>
     Effect.gen(function* () {
+      const { layout, reviews } = settingsOf(ctx.options)
+
       const application = monitorLayer.pipe(
         Layer.provideMerge(trackerLayer),
-        Layer.provide([githubLive(ctx.storage), storageLayer(ctx.storage)]),
+        Layer.provide([githubLive(ctx.storage, reviews), storageLayer(ctx.storage)]),
       )
 
       const context = yield* Layer.build(application)
@@ -52,7 +46,7 @@ export default Plugin.define({
 
       const settings: Settings = {
         directory: ctx.location.directory,
-        layout: layoutOf(ctx.options),
+        layout,
       }
 
       const registration = yield* ctx.rpc

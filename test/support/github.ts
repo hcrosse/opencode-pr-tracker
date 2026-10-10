@@ -15,6 +15,7 @@ import { layer as clientLayer } from "../../src/adapters/github/Client.ts"
 import { layer as rateLimitLayer } from "../../src/adapters/github/RateLimit.ts"
 import { Token } from "../../src/adapters/github/Token.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
+import type { ReviewMode } from "../../src/domain/Review.ts"
 import { GitHub, type GitHubApi, type ItemResult } from "../../src/ports/GitHub.ts"
 import { memoryStorage, type StorageFake } from "./application.ts"
 
@@ -222,6 +223,7 @@ export interface ClientSetup {
   readonly token?: TokenFake
   /** Plugin storage, where rate-limit waits are kept. Share one to model several plugin instances. */
   readonly storage?: StorageFake
+  readonly reviews?: ReviewMode
 }
 
 /** Runs `use` against the real GitHub client over fake HTTP, token, storage and `gh`. */
@@ -233,7 +235,7 @@ export async function runClient<A, E>(
   const commands = setup.commands ?? fixedCommands({})
   const storage = setup.storage ?? memoryStorage()
 
-  const layer = clientLayer.pipe(
+  const layer = clientLayer(setup.reviews ?? "all").pipe(
     Layer.provide([setup.http.layer, token.layer, commands.layer, rateLimitLayer(storage.storage)]),
   )
 

@@ -1,5 +1,10 @@
 import { Array as Arr, Option, Schema } from "effect"
 
+/** Which review state the tracker fetches and shows: none, or decisions and review threads. */
+export const ReviewMode = Schema.Literals(["off", "all"])
+
+export type ReviewMode = typeof ReviewMode.Type
+
 /** Where an open pull request stands with its reviewers. */
 export const Decision = Schema.Literals([
   "approved",
@@ -65,6 +70,8 @@ export interface ReviewEvidence {
   readonly head: string
   readonly author: Option.Option<string>
   readonly reviews: readonly OpinionatedReview[]
+  /** GitHub had more writers' reviews than `reviews` holds. */
+  readonly moreReviews: boolean
   readonly threads: readonly ReviewThread[]
   readonly moreThreads: boolean
 }
@@ -76,10 +83,14 @@ function derivedDecision(reviews: readonly OpinionatedReview[]): Decision {
   return reviews.some((review) => review.verdict === "approved") ? "approved" : "none"
 }
 
+/** Derived only from every writer's review, never from part of them. */
 function reportedDecision(evidence: ReviewEvidence): Decision {
-  if (evidence.reported === "unreported") return derivedDecision(evidence.reviews)
+  if (evidence.reported === "unreported" && !evidence.moreReviews)
+    return derivedDecision(evidence.reviews)
 
-  return evidence.reported === "unrecognized" ? "none" : evidence.reported
+  if (evidence.reported === "unreported" || evidence.reported === "unrecognized") return "none"
+
+  return evidence.reported
 }
 
 const approvesHead = (evidence: ReviewEvidence): boolean =>
@@ -87,11 +98,15 @@ const approvesHead = (evidence: ReviewEvidence): boolean =>
     (review) => review.verdict === "approved" && Option.contains(review.commit, evidence.head),
   )
 
-/** An approval with no approving review of the head commit is stale. */
+/**
+ * An approval with no approving review of the head commit is stale. Without every writer's review,
+ * an approval of the head commit may be among those missing, so the approval is kept.
+ */
 export function decisionOf(evidence: ReviewEvidence): Decision {
   const decision = reportedDecision(evidence)
+  const stale = decision === "approved" && !evidence.moreReviews && !approvesHead(evidence)
 
-  return decision === "approved" && !approvesHead(evidence) ? "staleApproval" : decision
+  return stale ? "staleApproval" : decision
 }
 
 /** Replied when the latest submitted comment is the author's; resolved threads are not asked. */

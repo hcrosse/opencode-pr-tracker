@@ -51,12 +51,15 @@ export interface EvidenceOptions {
   readonly reported?: gs.Generator<ReportedDecision>
   readonly reviews?: gs.Generator<OpinionatedReview[]>
   readonly author?: gs.Generator<Option.Option<string>>
+  /** Whether GitHub had more writers' reviews; by default it had none. */
+  readonly moreReviews?: gs.Generator<boolean>
 }
 
 export const evidence = (options: EvidenceOptions = {}): gs.Generator<ReviewEvidence> =>
   gs.record({
     author: options.author ?? gs.just(Option.some(author)),
     head: gs.just(head),
+    moreReviews: options.moreReviews ?? gs.just(false),
     moreThreads: gs.booleans(),
     reported: options.reported ?? reported,
     reviews: options.reviews ?? gs.arrays(opinionatedReviews, { maxSize: 6 }),
@@ -70,6 +73,7 @@ export const withThreads = (
 ): ReviewEvidence => ({
   author: base.author,
   head: base.head,
+  moreReviews: base.moreReviews,
   moreThreads: base.moreThreads,
   reported: base.reported,
   reviews: base.reviews,

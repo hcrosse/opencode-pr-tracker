@@ -1,10 +1,14 @@
-import { Option, Schema } from "effect"
+import { Option, Schema, Struct } from "effect"
 
-import type {
-  OpinionatedReview,
-  ReportedDecision,
-  ReviewEvidence,
-  ReviewThread,
+import {
+  noReview,
+  reviewOf,
+  type OpinionatedReview,
+  type ReportedDecision,
+  type Review,
+  type ReviewEvidence,
+  type ReviewMode,
+  type ReviewThread,
 } from "../../domain/Review.ts"
 
 const Author = Schema.NullOr(Schema.Struct({ login: Schema.String }))
@@ -28,7 +32,10 @@ const ThreadNode = Schema.Struct({
 export const reviewFields = {
   author: Author,
   headRefOid: Schema.String,
-  latestOpinionatedReviews: Schema.Struct({ nodes: Schema.Array(ReviewNode) }),
+  latestOpinionatedReviews: Schema.Struct({
+    nodes: Schema.Array(ReviewNode),
+    pageInfo: Schema.Struct({ hasNextPage: Schema.Boolean }),
+  }),
   reviewDecision: Schema.NullOr(Schema.String),
   reviewThreads: Schema.Struct({
     nodes: Schema.Array(ThreadNode),
@@ -39,6 +46,15 @@ export const reviewFields = {
 const ReviewFields = Schema.Struct(reviewFields)
 
 type ReviewFields = typeof ReviewFields.Type
+
+/** The review fields, each optional: a query asks only for those its review mode reads. */
+export const fetchedReviewFields = Struct.map(reviewFields, Schema.optionalKey)
+
+const FetchedReviewFields = Schema.Struct(fetchedReviewFields)
+
+type FetchedReviewFields = typeof FetchedReviewFields.Type
+
+const decodeReviewFields = Schema.decodeUnknownOption(ReviewFields)
 
 type ReviewNode = typeof ReviewNode.Type
 
@@ -81,9 +97,19 @@ export function toReviewEvidence(node: ReviewFields): ReviewEvidence {
   return {
     author: loginOf(node.author),
     head: node.headRefOid,
+    moreReviews: node.latestOpinionatedReviews.pageInfo.hasNextPage,
     moreThreads: node.reviewThreads.pageInfo.hasNextPage,
     reported: reportedOf(node.reviewDecision),
     reviews: node.latestOpinionatedReviews.nodes.map((review) => toReview(review)),
     threads: node.reviewThreads.nodes.map((thread) => toThread(thread)),
   }
+}
+
+/** The review state each mode reads from a pull request node; none when a field it needs is missing. */
+export const reviewReaders: Readonly<
+  Record<ReviewMode, (node: FetchedReviewFields) => Option.Option<Review>>
+> = {
+  all: (node) =>
+    Option.map(decodeReviewFields(node), (fields) => reviewOf(toReviewEvidence(fields))),
+  off: () => Option.some(noReview),
 }

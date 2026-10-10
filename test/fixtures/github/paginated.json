@@ -17,6 +17,9 @@
             },
             "reviewDecision": null,
             "latestOpinionatedReviews": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
               "nodes": []
             },
             "reviewThreads": {
@@ -95,6 +98,9 @@
             },
             "reviewDecision": null,
             "latestOpinionatedReviews": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
               "nodes": []
             },
             "reviewThreads": {
@@ -686,5 +692,5 @@
     }
   ],
   "pageSize": 5,
-  "recordedAt": "2026-10-10T01:33:15.598Z"
+  "recordedAt": "2026-10-10T01:45:12.449Z"
 }

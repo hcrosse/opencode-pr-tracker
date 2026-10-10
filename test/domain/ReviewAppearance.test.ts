@@ -81,3 +81,50 @@ describe("review state properties", () => {
     })
   })
 })
+
+describe("review state thread counts", () => {
+  test("every positive count appears in the sidebar and in pr.list", () => {
+    hegel.test((tc) => {
+      const review = tc.draw(reviews)
+      const { complete, replied, unreplied } = review.threads
+      const bound = complete ? "" : "+"
+      const shown = reviewParts(review).map((part) => part.text)
+      const summary = reviewSummary(review).join("; ")
+
+      tc.note(JSON.stringify(review))
+
+      for (const [count, kind] of [
+        [unreplied, "unreplied"],
+        [replied, "replied"],
+      ] as const) {
+        if (count > 0) {
+          expect(shown).toContain(`${String(count)}${bound} ${kind}`)
+          expect(summary).toContain(`${String(count)}${bound} ${kind}`)
+        }
+      }
+    })
+  })
+})
+
+const nothingUnresolved = reviews.filter(
+  (drawn) => drawn.threads.unreplied + drawn.threads.replied === 0,
+)
+
+describe("review state without unresolved threads", () => {
+  test("shows the fetched threads only when there are more", () => {
+    hegel.test((tc) => {
+      const review = tc.draw(nothingUnresolved)
+      const fetched = `${String(review.threads.fetched)}+`
+      const counts = reviewParts(review).filter((part) => /^\d/u.test(part.text))
+
+      tc.note(JSON.stringify(review))
+
+      expect(counts.map((part) => part.text)).toEqual(
+        review.threads.complete ? [] : [`${fetched} threads`],
+      )
+      expect(reviewSummary(review).includes(`${fetched} review threads`)).toBe(
+        !review.threads.complete,
+      )
+    })
+  })
+})

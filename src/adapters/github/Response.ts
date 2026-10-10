@@ -2,10 +2,10 @@ import { Array as Arr, Option, Result, Schema, Struct } from "effect"
 
 import { classifyCi, type Check, type CheckOutcome } from "../../domain/Checks.ts"
 import type { PullRequestRef } from "../../domain/PullRequest.ts"
-import { reviewOf } from "../../domain/Review.ts"
+import type { Review } from "../../domain/Review.ts"
 import type { Diagnostic, Mergeability, PullRequestState } from "../../domain/Snapshot.ts"
 import type { ItemResult, Report } from "../../ports/GitHub.ts"
-import { reviewFields, toReviewEvidence } from "./Reviews.ts"
+import { fetchedReviewFields } from "./Reviews.ts"
 import { LifecycleState, nonOpenMembersOf, StackNode, toMembership } from "./Stacks.ts"
 
 const PageInfo = Schema.Struct({
@@ -69,7 +69,7 @@ export const PullRequestNode = Schema.Struct({
   statusCheckRollup: Schema.NullOr(Schema.Struct({ contexts: Contexts })),
   title: Schema.String,
   url: Schema.String,
-}).mapFields(Struct.assign(reviewFields))
+}).mapFields(Struct.assign(fetchedReviewFields))
 
 export type PullRequestNode = typeof PullRequestNode.Type
 
@@ -153,7 +153,13 @@ export function toCheck(node: ContextNode): Check {
   })
 }
 
-function toState(node: PullRequestNode, contexts: readonly ContextNode[]): PullRequestState {
+/** What the client gathered beside the pull request node: every check context, and the review state. */
+export interface Details {
+  readonly contexts: readonly ContextNode[]
+  readonly review: Review
+}
+
+function toState(node: PullRequestNode, { contexts, review }: Details): PullRequestState {
   if (node.state === "MERGED") return { _tag: "Merged" }
 
   if (node.state === "CLOSED") return { _tag: "Closed" }
@@ -164,19 +170,15 @@ function toState(node: PullRequestNode, contexts: readonly ContextNode[]): PullR
     ci: classifyCi(contexts.map((context) => toCheck(context))),
     draft: node.isDraft,
     mergeability: mergeabilities[node.mergeable],
-    review: reviewOf(toReviewEvidence(node)),
+    review,
   }
 }
 
-export function toReport(
-  ref: PullRequestRef,
-  node: PullRequestNode,
-  contexts: readonly ContextNode[],
-): Report {
+export function toReport(ref: PullRequestRef, node: PullRequestNode, details: Details): Report {
   return {
     membership: toMembership(node),
     nonOpenMembers: nonOpenMembersOf(node),
-    snapshot: { ref, state: toState(node, contexts), title: node.title },
+    snapshot: { ref, state: toState(node, details), title: node.title },
   }
 }
 

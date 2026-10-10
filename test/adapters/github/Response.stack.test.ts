@@ -5,6 +5,7 @@ import { Option, Result } from "effect"
 import { toReport, type PullRequestNode } from "../../../src/adapters/github/Response.ts"
 import { toMembership } from "../../../src/adapters/github/Stacks.ts"
 import { parsePullRequestUrl } from "../../../src/domain/PullRequest.ts"
+import { noReview } from "../../../src/domain/Review.ts"
 
 interface StackEntry {
   readonly position: number
@@ -30,14 +31,9 @@ const stackOf = (
 
 const withStack = (stack: PullRequestNode["stack"]): PullRequestNode => ({
   __typename: "PullRequest",
-  author: { login: "author" },
-  headRefOid: "head",
   isDraft: false,
-  latestOpinionatedReviews: { nodes: [] },
   mergeStateStatus: "CLEAN",
   mergeable: "MERGEABLE",
-  reviewDecision: null,
-  reviewThreads: { nodes: [], pageInfo: { hasNextPage: false } },
   stack,
   state: "OPEN",
   statusCheckRollup: null,
@@ -76,7 +72,7 @@ describe("Stack member states", () => {
   const named = Result.getOrThrow(parsePullRequestUrl(first.url))
 
   const nonOpenOf = (stack: PullRequestNode["stack"]): readonly string[] =>
-    toReport(named, withStack(stack), []).nonOpenMembers
+    toReport(named, withStack(stack), { contexts: [], review: noReview }).nonOpenMembers
 
   test("reports the members GitHub lists as merged or closed, by canonical URL", () => {
     const stack = stackOf(4, false, [
