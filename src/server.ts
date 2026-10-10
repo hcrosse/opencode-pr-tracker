@@ -14,10 +14,10 @@ const pollInterval = "1 second"
 
 const Options = Schema.Struct({ layout: Layout })
 
-/** The sidebar layout from the plugin options; anything but "compact" is the default. */
+/** The sidebar layout from the plugin options; anything but "full" is compact. */
 const layoutOf = (options: Plugin.Context["options"]): Layout =>
   Option.match(Schema.decodeUnknownOption(Options)(options), {
-    onNone: () => "default",
+    onNone: () => "compact",
     onSome: ({ layout }) => layout,
   })
 

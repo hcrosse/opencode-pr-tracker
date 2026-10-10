@@ -62,7 +62,7 @@ describe("Monitor sessions without a lease", () => {
 
     const result = await run(github, (app: App) =>
       Effect.gen(function* () {
-        yield* requests(app, { directory: "/work", layout: "default" }).attach("a", checking.url)
+        yield* requests(app, { directory: "/work", layout: "full" }).attach("a", checking.url)
         yield* app.tracker.attach("b", { _tag: "Reference", ref: checking }, "/work")
         yield* app.monitor.show("b")
 
@@ -79,7 +79,7 @@ describe("Monitor sessions without a lease", () => {
     const result = await run(github, (app: App) =>
       Effect.gen(function* () {
         yield* app.tracker.attach("b", { _tag: "Reference", ref: checking }, "/work")
-        yield* requests(app, { directory: "/work", layout: "default" }).list("b")
+        yield* requests(app, { directory: "/work", layout: "full" }).list("b")
 
         return [
           yield* pollAfter(github, app, "15 seconds"),
@@ -138,7 +138,7 @@ function holdingStorage(): HoldingStorage {
   }
 }
 
-const settings = { directory: "/work", layout: "default" } as const
+const settings = { directory: "/work", layout: "full" } as const
 
 describe("Monitor polls racing an agent read", () => {
   test("keeps the statuses of a session an agent listed while a poll was listing", async () => {

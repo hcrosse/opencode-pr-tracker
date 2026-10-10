@@ -42,7 +42,7 @@ export const entryOf = (
   membership: Membership | null = null,
 ): EntryView => ({ attachedAt: 0, membership, ref: pullRequest, status })
 
-export const viewOf = (entries: readonly EntryView[], layout: Layout = "default"): View => ({
+export const viewOf = (entries: readonly EntryView[], layout: Layout = "full"): View => ({
   entries,
   layout,
   sessionID: "ses_test",
