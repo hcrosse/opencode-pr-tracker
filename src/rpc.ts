@@ -34,6 +34,9 @@ export type View = typeof View.Type
 /** A view as clients receive it: plain JSON data. */
 export type ViewData = typeof View.Encoded
 
+/** A view encoded to the plain JSON data the wire format defines, as every client decodes it. */
+export const sentView: (view: View) => ViewData = Schema.encodeSync(View)
+
 const Session = Schema.Struct({ sessionID: Schema.String })
 
 /** A pull request URL, with or without `https://`, or a number in the session's repository. */
@@ -43,6 +46,8 @@ const Target = Schema.Struct({ sessionID: Schema.String, target: Schema.String }
 export const Changed = Schema.Struct({ message: Schema.String, view: View })
 
 export type Changed = typeof Changed.Type
+
+export const sentChanged: (changed: Changed) => typeof Changed.Encoded = Schema.encodeSync(Changed)
 
 /** A request that could not be carried out, with a message for the person who made it. */
 const Rejected = Schema.Struct({ message: Schema.String })

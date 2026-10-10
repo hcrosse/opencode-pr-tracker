@@ -8,7 +8,7 @@ import { Tracker, layer as trackerLayer } from "./application/Tracker.ts"
 import { PullRequestTracker } from "./rpc.ts"
 import { settingsOf } from "./server/Options.ts"
 import { toView, type Services, type Settings } from "./server/Requests.ts"
-import { handlers } from "./server/Rpc.ts"
+import { handlers, publishView } from "./server/Rpc.ts"
 import { registerTools } from "./server/Tools.ts"
 
 const pollInterval = "1 second"
@@ -60,7 +60,10 @@ export default Plugin.define({
       yield* Effect.forkScoped(Effect.repeat(services.monitor.poll, Schedule.spaced(pollInterval)))
       yield* services.monitor.changes.pipe(
         Stream.runForEach((view) =>
-          registration.events.emit("updated", toView(view, settings.layout)).pipe(Effect.ignore),
+          publishView(
+            (data) => registration.events.emit("updated", data),
+            toView(view, settings.layout),
+          ),
         ),
         Effect.forkScoped,
       )
