@@ -30,6 +30,8 @@ const unavailable = (charged: boolean): ItemResult => ({
 
 const notFound: ItemResult = { _tag: "Failed", charged: false, diagnostic: "NotFound" }
 
+const invalid: ItemResult = { _tag: "Failed", charged: false, diagnostic: "InvalidResponse" }
+
 /** Answers the first request with `first` and every later one as GitHub would. */
 const firstAnswer =
   (answer: () => Response | "unreachable"): Responder =>
@@ -60,7 +62,15 @@ describe("GitHub client timeouts", () => {
   test.each([
     ["a 502", (): Response => new Response("bad gateway", { status: 502 })],
     ["a 504", (): Response => new Response("gateway timeout", { status: 504 })],
-    ["a 2xx answer cut off", (): Response => new Response('{"data":{"pr0":', { status: 200 })],
+    [
+      "a 2xx JSON answer cut off",
+      (): Response =>
+        new Response('{"data":{"pr0":', {
+          headers: { "content-type": "application/json; charset=utf-8" },
+          status: 200,
+        }),
+    ],
+    ["an empty 2xx answer", (): Response => new Response("", { status: 200 })],
     ["a 2xx answer that could not be read", unreadable],
   ])("stops the fetch after %s, charging every pull request", async (_name, timedOut) => {
     const http = httpClient(firstAnswer(timedOut))
@@ -76,10 +86,26 @@ describe("GitHub client failures that are not timeouts", () => {
   test.each([
     ["a 500", (): Response => new Response("", { status: 500 }), unavailable(true)],
     ["a 503", (): Response => new Response("", { status: 503 }), unavailable(true)],
+    ["JSON that is not a GraphQL answer", (): Response => Response.json(["not", "an"]), invalid],
+    ["a JSON object without data or errors", (): Response => Response.json({}), invalid],
     [
-      "JSON that is not a GraphQL answer",
-      (): Response => Response.json(["not", "an", "answer"]),
-      { _tag: "Failed", charged: false, diagnostic: "InvalidResponse" } satisfies ItemResult,
+      "a JSON message without data or errors",
+      (): Response => Response.json({ message: "Something went wrong" }),
+      invalid,
+    ],
+    [
+      "an HTML page with quotes and unclosed brackets",
+      (): Response =>
+        new Response('<html><body><p class="x">Proxy error: {"retry" [</p></body></html>', {
+          headers: { "content-type": "text/html" },
+          status: 200,
+        }),
+      invalid,
+    ],
+    [
+      "a GraphQL error without data",
+      (): Response => Response.json({ data: null, errors: [{ message: "Something went wrong" }] }),
+      unavailable(false),
     ],
     ["a request that never reached GitHub", (): "unreachable" => "unreachable", unavailable(false)],
   ])("sends every batch after %s", async (_name, answer, expected: ItemResult) => {

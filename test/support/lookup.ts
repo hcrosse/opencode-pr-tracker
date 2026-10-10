@@ -7,12 +7,20 @@ const BatchData = Schema.Struct({
   data: Schema.Record(Schema.String, Schema.NullOr(Schema.Struct({ pullRequest: Schema.Json }))),
 })
 
-/** The pull request node answered under `alias` in a batch `response`, or null. */
-export const answeredNode = (response: Schema.Json, alias: string): Schema.Json =>
-  Option.match(Option.fromNullishOr(Schema.decodeUnknownSync(BatchData)(response).data[alias]), {
+/**
+ * The pull request node answered under `alias` in a batch `response`, or null when GitHub answered
+ * the alias as null. Throws when the response has no answer under `alias`.
+ */
+export function answeredNode(response: Schema.Json, alias: string): Schema.Json {
+  const { data } = Schema.decodeUnknownSync(BatchData)(response)
+
+  if (!Object.hasOwn(data, alias)) throw new Error(`The response has no answer under ${alias}`)
+
+  return Option.match(Option.fromNullishOr(data[alias]), {
     onNone: () => null,
     onSome: (answer) => answer.pullRequest,
   })
+}
 
 /** What GitHub answers under an alias for a pull request `node` in a repository it found. */
 export const found = (node: Schema.Json): Schema.Json => ({ pullRequest: node })

@@ -3,7 +3,12 @@ import { describe, expect, test } from "bun:test"
 import * as hegel from "@hegeldev/hegel"
 import * as gs from "@hegeldev/hegel/generators"
 
-import { classifyCi, type Check, type CheckOutcome } from "../../src/domain/Checks.ts"
+import {
+  classifyCi,
+  type Check,
+  type CheckOutcome,
+  type Generation,
+} from "../../src/domain/Checks.ts"
 import type { Ci } from "../../src/domain/Snapshot.ts"
 
 const outcomes = gs.sampledFrom<CheckOutcome>(["passed", "pending", "failed", "ignored", "unknown"])
@@ -26,8 +31,8 @@ interface Scenario {
 }
 
 /** A generation strictly before `[major, minor]`, differing in either position. */
-function olderThan(major: number, minor: number): gs.Generator<number[]> {
-  return gs.composite((tc): number[] =>
+function olderThan(major: number, minor: number): gs.Generator<Generation> {
+  return gs.composite((tc): Generation =>
     tc.draw(gs.booleans()) && major > 0
       ? [tc.draw(gs.integers({ maxValue: major - 1, minValue: 0 })), tc.draw(gs.integers())]
       : [major, tc.draw(gs.integers({ maxValue: minor - 1 }))],
@@ -52,7 +57,7 @@ function identityRuns(
     }))
 
     const superseded = older.map(
-      ([generation, outcome]: readonly [readonly number[], CheckOutcome]): Check => ({
+      ([generation, outcome]: readonly [Generation, CheckOutcome]): Check => ({
         generation,
         identity,
         outcome,
@@ -103,7 +108,7 @@ function expectedCi(latest: readonly CheckOutcome[]): Ci {
   return "none"
 }
 
-const run = (identity: string, generation: readonly number[], outcome: CheckOutcome): Check => ({
+const run = (identity: string, generation: Generation, outcome: CheckOutcome): Check => ({
   generation,
   identity,
   outcome,
