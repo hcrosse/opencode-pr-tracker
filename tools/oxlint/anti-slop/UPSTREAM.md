@@ -15,6 +15,6 @@ This project enables both the generic and the Effect plugin. Upstream tests, ins
 
 ## Local policy and updates
 
-There are no local changes to the copied source. The project owns rule enablement in `.oxlintrc.jsonc` and excludes the plugin from project formatting and linting. Oxlint and `@oxlint/plugins` remain pinned together in `package.json`.
+Local change: `tools/oxlint/anti-slop/effect/rules/no-manual-tag-comparison.ts` directs its comparison and switch diagnostics to type-checked union helpers and Effect guards instead of `Predicate.isTagged` with a literal. TypeScript cannot check that predicate's literal against the union. Future upstream updates must preserve or re-apply this change. The project owns rule enablement in `.oxlintrc.jsonc` and excludes the plugin from project formatting and linting. Oxlint and `@oxlint/plugins` remain pinned together in `package.json`.
 
 For a future update, compare local source against this commit before incorporating the incoming revision. Preserve local customizations, review added rules, and update this record. Keep both licenses. Verify this project's lint, formatting, tests, and build, including rule rejection and spacing autofix behavior.
