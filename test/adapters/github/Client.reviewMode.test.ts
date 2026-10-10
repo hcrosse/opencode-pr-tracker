@@ -58,8 +58,6 @@ describe("review state on", () => {
   test("fails a pull request whose review fields GitHub did not return", async () => {
     const { result } = await fetch127({ reviewThreads: null }, "all")
 
-    expect(result).toEqual(
-      Option.some(ItemResult.Failed({ charged: false, diagnostic: "InvalidResponse" })),
-    )
+    expect(result).toEqual(ItemResult.Failed({ charged: false, diagnostic: "InvalidResponse" }))
   })
 })

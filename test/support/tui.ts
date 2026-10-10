@@ -21,7 +21,10 @@ export interface TerminalScript {
   readonly select: (index: Option.Option<number>) => void
 }
 
-/** A selection dialog that records itself as `title: choice, …` and answers with `next`. */
+/**
+ * A selection dialog that records itself as `title: choice, …` and answers with `next`. It dies
+ * when `next` names an index outside the choices, so a wrong script cannot pass as a dismissal.
+ */
 function selectionDialog(
   record: (dialog: string) => void,
   next: () => Option.Option<number>,
@@ -30,8 +33,14 @@ function selectionDialog(
     Effect.sync(() => {
       record(`${title}: ${choices.map((choice) => choice.title).join(", ")}`)
 
-      return Option.flatMap(next(), (index) =>
-        Option.map(Arr.get(choices, index), (choice) => choice.value),
+      return Option.map(
+        next(),
+        (index: number) =>
+          Option.getOrThrowWith(
+            Arr.get(choices, index),
+            () =>
+              new Error(`Selection ${String(index)} is outside ${String(choices.length)} choices`),
+          ).value,
       )
     })
 }

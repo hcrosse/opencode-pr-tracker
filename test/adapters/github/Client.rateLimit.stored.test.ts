@@ -4,7 +4,13 @@ import { Effect, Exit, type Schema } from "effect"
 
 import type { GitHubApi } from "../../../src/ports/GitHub.ts"
 import { memoryStorage, type StorageFake } from "../../support/application.ts"
-import { httpClient, requestsAt, runClient, type HttpFake } from "../../support/github.ts"
+import {
+  httpClient,
+  requestsAt,
+  runClient,
+  type Fetch,
+  type HttpFake,
+} from "../../support/github.ts"
 import { captureLogs, type Logged } from "../../support/logs.ts"
 
 /** The single key earlier versions record a wait in. Recorded waits now have a key each. */
@@ -27,13 +33,13 @@ function storedWith(values: Readonly<Record<string, Schema.Json>>): StorageFake 
 }
 
 interface Fetched {
-  readonly requests: readonly number[]
+  readonly fetches: readonly Fetch[]
   /** The annotations of each warning about malformed stored state. */
   readonly warnings: readonly Logged["annotations"][]
   readonly lines: readonly Logged[]
 }
 
-/** Fetches at each of `times`, returning the requests sent so far after each and the logs. */
+/** Fetches at each of `times`, returning each fetch and the logs. */
 async function fetchesAt(
   http: HttpFake,
   storage: StorageFake,
@@ -47,9 +53,9 @@ async function fetchesAt(
       times,
     )(github).pipe(
       Effect.provide(logs.layer),
-      Effect.map((requests: readonly number[]) => ({
+      Effect.map((fetches: readonly Fetch[]) => ({
+        fetches,
         lines: logs.lines(),
-        requests,
         warnings: logs
           .lines()
           .flatMap((line: Logged) =>
@@ -63,7 +69,7 @@ async function fetchesAt(
 }
 
 const requestsAndWarnings = (fetched: Fetched): Omit<Fetched, "lines"> => ({
-  requests: fetched.requests,
+  fetches: fetched.fetches,
   warnings: fetched.warnings,
 })
 
@@ -84,7 +90,13 @@ describe("GitHub client single-key waits that cannot be read", () => {
 
       expect(Exit.map(result, requestsAndWarnings)).toEqual(
         Exit.succeed({
-          requests: [0, 0, 0, 1, 2],
+          fetches: [
+            { outcome: "RateLimited", requests: 0 },
+            { outcome: "RateLimited", requests: 0 },
+            { outcome: "RateLimited", requests: 0 },
+            { outcome: "Answered", requests: 1 },
+            { outcome: "Answered", requests: 2 },
+          ],
           warnings: [{ key: legacyKey, replacement: 60_000, stored: kind }],
         }),
       )
@@ -104,7 +116,12 @@ describe("GitHub client single-key waits too far ahead", () => {
 
     expect(Exit.map(result, requestsAndWarnings)).toEqual(
       Exit.succeed({
-        requests: [0, 1, 2, 3],
+        fetches: [
+          { outcome: "RateLimited", requests: 0 },
+          { outcome: "Answered", requests: 1 },
+          { outcome: "Answered", requests: 2 },
+          { outcome: "Answered", requests: 3 },
+        ],
         warnings: [{ key: legacyKey, replacement: 60_000, stored: "number too far ahead" }],
       }),
     )
@@ -123,7 +140,12 @@ describe("GitHub client stored strike counts that cannot be read", () => {
 
     expect(Exit.map(result, requestsAndWarnings)).toEqual(
       Exit.succeed({
-        requests: [1, 1, 1, 2],
+        fetches: [
+          { outcome: "RateLimited", requests: 1 },
+          { outcome: "RateLimited", requests: 1 },
+          { outcome: "RateLimited", requests: 1 },
+          { outcome: "RateLimited", requests: 2 },
+        ],
         warnings: [{ key: strikesKey, replacement: 4, stored: kind }],
       }),
     )
@@ -134,8 +156,11 @@ describe("GitHub client stored strike counts that cannot be read", () => {
 
     const result = await fetchesAt(httpClient(answered), storage, [0])
 
-    expect(Exit.map(result, (fetched: Fetched) => fetched.warnings)).toEqual(
-      Exit.succeed([{ key: strikesKey, replacement: 4, stored: "null" }]),
+    expect(Exit.map(result, requestsAndWarnings)).toEqual(
+      Exit.succeed({
+        fetches: [{ outcome: "Answered", requests: 1 }],
+        warnings: [{ key: strikesKey, replacement: 4, stored: "null" }],
+      }),
     )
     expect(storage.values.get(strikesKey)).toBe(0)
   })
@@ -150,9 +175,12 @@ describe("GitHub client logs about stored state", () => {
 
     const logged = Exit.map(result, (fetched: Fetched) => ({
       leaked: fetched.lines.some((line: Logged) => JSON.stringify(line).includes(secret)),
+      outcomes: fetched.fetches.map((fetch: Fetch) => fetch.outcome),
       warnings: fetched.warnings.length,
     }))
 
-    expect(logged).toEqual(Exit.succeed({ leaked: false, warnings: 2 }))
+    expect(logged).toEqual(
+      Exit.succeed({ leaked: false, outcomes: ["RateLimited", "RateLimited"], warnings: 2 }),
+    )
   })
 })

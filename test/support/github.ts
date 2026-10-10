@@ -16,7 +16,13 @@ import { layer as rateLimitLayer } from "../../src/adapters/github/RateLimit.ts"
 import { Token } from "../../src/adapters/github/Token.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
 import type { ReviewMode } from "../../src/domain/Review.ts"
-import { GitHub, type GitHubApi, type ItemResult } from "../../src/ports/GitHub.ts"
+import type { Diagnostic } from "../../src/domain/Snapshot.ts"
+import {
+  GitHub,
+  type GitHubApi,
+  type GitHubFailure,
+  type ItemResult,
+} from "../../src/ports/GitHub.ts"
 import { memoryStorage, type StorageFake } from "./application.ts"
 import { fixedCommands, type CommandsFake } from "./commands.ts"
 import { Exchange, exchangeKey, queryDigest, Variables } from "./exchange.ts"
@@ -138,16 +144,32 @@ export const tracker127: PullRequestRef = trackerRef(127)
 
 export const fetchOne = (
   github: GitHubApi,
-): Effect.Effect<ReadonlyMap<string, ItemResult>, unknown> => github.fetch([acmeRef(1)])
+): Effect.Effect<ReadonlyMap<string, ItemResult>, GitHubFailure> => github.fetch([acmeRef(1)])
 
-/** Fetches at each time on a test clock, returning how many requests had been sent after each. */
+/** How a fetch ended: answered, or failed with a diagnostic. */
+export type Outcome = "Answered" | Diagnostic
+
+/** One fetch: how it ended, and how many requests had been sent after it. */
+export interface Fetch {
+  readonly outcome: Outcome
+  readonly requests: number
+}
+
+/**
+ * Fetches at each time on a test clock. A fetch that fails with a diagnostic is reported in its
+ * outcome, and any other failure fails the whole run.
+ */
 export const requestsAt =
   (http: HttpFake, times: readonly number[]) =>
-  (github: GitHubApi): Effect.Effect<readonly number[]> =>
+  (github: GitHubApi): Effect.Effect<readonly Fetch[]> =>
     Effect.forEach(times, (time: number) =>
       TestClock.setTime(time).pipe(
-        Effect.andThen(Effect.exit(fetchOne(github))),
-        Effect.andThen(Effect.sync(() => http.requests.length)),
+        Effect.andThen(fetchOne(github)),
+        Effect.match({
+          onFailure: (failure: GitHubFailure): Outcome => failure.diagnostic,
+          onSuccess: (): Outcome => "Answered",
+        }),
+        Effect.map((outcome: Outcome): Fetch => ({ outcome, requests: http.requests.length })),
       ),
     ).pipe(Effect.provide(TestClock.layer()))
 

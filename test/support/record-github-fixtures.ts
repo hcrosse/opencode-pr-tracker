@@ -6,7 +6,13 @@
 import path from "node:path"
 
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
-import { Effect, FileSystem, Option, Result, Schema } from "effect"
+import { DateTime, Effect, FileSystem, Option, Result, Schema } from "effect"
+import {
+  FetchHttpClient,
+  HttpClient,
+  HttpClientRequest,
+  HttpClientResponse,
+} from "effect/unstable/http"
 
 import { CommandRunner, layer as commandLayer } from "../../src/adapters/Command.ts"
 import type { Variables } from "../../src/adapters/github/Post.ts"
@@ -19,64 +25,29 @@ import {
 } from "../../src/adapters/github/Query.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
 import { queryDigest } from "./exchange.ts"
+import { nextCursor } from "./fixturePages.ts"
 
-const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Json))
-
-const PageInfo = Schema.Struct({
-  endCursor: Schema.NullOr(Schema.String),
-  hasNextPage: Schema.Boolean,
-})
-
-const ContextPages = Schema.Struct({
-  data: Schema.Record(
-    Schema.String,
-    Schema.NullOr(
-      Schema.Struct({
-        pullRequest: Schema.NullOr(
-          Schema.Struct({
-            statusCheckRollup: Schema.NullOr(
-              Schema.Struct({ contexts: Schema.Struct({ pageInfo: PageInfo }) }),
-            ),
-          }),
-        ),
-      }),
-    ),
-  ),
-})
+const endpoint = "https://api.github.com/graphql"
 
 /**
  * Posts straight to GitHub rather than through `gh api graphql`, which fails without printing the
- * response when it carries GraphQL errors, as it does for a missing pull request.
+ * response when it carries GraphQL errors, as it does for a missing pull request. A non-2xx
+ * answer fails.
  */
 const post = Effect.fn("GitHubFixtures.post")(function* (query: string, variables: Variables) {
   const runner = yield* CommandRunner
+  const http = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
   const token = (yield* runner.run("gh", ["auth", "token"], process.cwd())).trim()
 
-  const output = yield* Effect.tryPromise(async () => {
-    const response = await fetch("https://api.github.com/graphql", {
-      body: JSON.stringify({ query, variables }),
-      headers: { authorization: `Bearer ${token}` },
-      method: "POST",
-    })
-
-    if (!response.ok) throw new Error(`GitHub answered ${String(response.status)}`)
-
-    return response.text()
-  })
-
-  return yield* decodeJson(output)
-})
-
-/** The cursor for the next page of check contexts under `key`, if there is one. */
-function nextCursor(response: Schema.Json, key: string): Option.Option<string> {
-  return Schema.decodeUnknownOption(ContextPages)(response).pipe(
-    Option.flatMap(({ data }) => Option.fromNullishOr(data[key])),
-    Option.flatMap((repository) => Option.fromNullishOr(repository.pullRequest)),
-    Option.flatMap((node) => Option.fromNullishOr(node.statusCheckRollup)),
-    Option.filter((rollup) => rollup.contexts.pageInfo.hasNextPage),
-    Option.flatMap((rollup) => Option.fromNullishOr(rollup.contexts.pageInfo.endCursor)),
+  const request = HttpClientRequest.post(endpoint).pipe(
+    HttpClientRequest.bearerToken(token),
+    HttpClientRequest.bodyJsonUnsafe({ query, variables }),
   )
-}
+
+  const response = yield* http.execute(request)
+
+  return yield* HttpClientResponse.schemaBodyJson(Schema.Json)(response)
+})
 
 interface Pending {
   readonly ref: PullRequestRef
@@ -90,14 +61,17 @@ const pages = Effect.fn("GitHubFixtures.pages")(function* (
 ) {
   const query = continuation(pageSize)
   const exchanges: { queryDigest: string; variables: Variables; response: Schema.Json }[] = []
-  let cursor = nextCursor(first, key)
+  const followed = new Set<string>()
+  let cursor = yield* nextCursor(first, key, followed)
 
   while (Option.isSome(cursor)) {
+    followed.add(cursor.value)
+
     const variables = continuationVariables(ref, cursor.value)
     const response = yield* post(query, variables)
 
     exchanges.push({ queryDigest: queryDigest(query), response, variables })
-    cursor = nextCursor(response, "repository")
+    cursor = yield* nextCursor(response, "repository", followed)
   }
 
   return exchanges
@@ -124,7 +98,8 @@ const record = Effect.fn("GitHubFixtures.record")(function* (
   ]
 
   const file = path.join(import.meta.dir, "..", "fixtures", "github", `${name}.json`)
-  const recorded = { exchanges, pageSize, recordedAt: new Date().toISOString() }
+  const recordedAt = DateTime.formatIso(yield* DateTime.now)
+  const recorded = { exchanges, pageSize, recordedAt }
 
   yield* fs.writeFileString(file, `${JSON.stringify(recorded, null, 2)}\n`)
 })
@@ -151,4 +126,6 @@ const program = Effect.gen(function* () {
   yield* record("paginated", [`${kubernetes}/142865`, `${repository}/127`], 5)
 })
 
-NodeRuntime.runMain(program.pipe(Effect.provide([NodeServices.layer, commandLayer])))
+NodeRuntime.runMain(
+  program.pipe(Effect.provide([NodeServices.layer, commandLayer, FetchHttpClient.layer])),
+)

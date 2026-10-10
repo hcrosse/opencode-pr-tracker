@@ -1,4 +1,4 @@
-import { Exit, Option, type Schema } from "effect"
+import { Cause, Exit, Option, type Schema } from "effect"
 
 import type { Review, ReviewMode } from "../../src/domain/Review.ts"
 import { PullRequestState } from "../../src/domain/Snapshot.ts"
@@ -20,35 +20,39 @@ export interface ReviewFields {
 export interface Fetched {
   /** The query the client sent. */
   readonly query: string
-  readonly result: Option.Option<ItemResult>
+  readonly result: ItemResult
 }
 
-/** What the client reports for #127 when GitHub answers with the recorded node and `fields`. */
+/**
+ * What the client reports for #127 when GitHub answers with the recorded node and `fields`. Throws
+ * when the fetch fails or has no result for #127.
+ */
 export async function fetch127(fields: ReviewFields, reviews: ReviewMode): Promise<Fetched> {
   const node = Object.assign({}, recordedNode("standalone", "pr0"), { headRefOid: head }, fields)
   const http = httpClient(() => Response.json({ data: { pr0: found(node) } }))
   const exit = await runClient({ http, reviews }, (github) => github.fetch([tracker127]))
 
-  return {
-    query: http.requests.map((request) => request.query).join("\n"),
-    result: Option.flatMap(Exit.getSuccess(exit), (results) =>
-      Option.fromNullishOr(results.get(tracker127.url)),
-    ),
-  }
+  if (Exit.isFailure(exit)) throw new Error(`Fetching #127 failed: ${Cause.pretty(exit.cause)}`)
+
+  const result = Option.getOrThrowWith(
+    Option.fromNullishOr(exit.value.get(tracker127.url)),
+    () => new Error("Fetching #127 returned no result for it"),
+  )
+
+  return { query: http.requests.map((request) => request.query).join("\n"), result }
 }
 
-export const reviewOfResult = (result: Option.Option<ItemResult>): Option.Option<Review> =>
-  Option.flatMap(result, (item) => {
-    if (!ItemResult.$is("Reported")(item)) return Option.none()
+export const reviewOfResult = (item: ItemResult): Option.Option<Review> => {
+  if (!ItemResult.$is("Reported")(item)) return Option.none()
 
-    const { state } = item.report.snapshot
+  const { state } = item.report.snapshot
 
-    return PullRequestState.match(state, {
-      Open: ({ review }) => Option.some(review),
-      Merged: () => Option.none(),
-      Closed: () => Option.none(),
-    })
+  return PullRequestState.match(state, {
+    Open: ({ review }) => Option.some(review),
+    Merged: () => Option.none(),
+    Closed: () => Option.none(),
   })
+}
 
 /** The review state the client reports for #127 with review state on. */
 export async function reviewFrom(fields: ReviewFields): Promise<Option.Option<Review>> {
