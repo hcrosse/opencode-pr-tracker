@@ -39,8 +39,8 @@ export type Change = (sessionID: string, target: string) => Effect.Effect<Change
 
 export interface Requests {
   /**
-   * Attaches `target`, with its Stack, then publishes the session's view. Only Stack members not yet
-   * known are fetched; `target` itself was fetched while attaching.
+   * Attaches `target`, with its Stack's open members, then publishes the session's view. Only Stack
+   * members not yet known are fetched, since `target` itself was fetched while attaching.
    */
   readonly attach: Change
   /** Detaches `target`, then publishes the session's view, fetching only statuses not yet known. */

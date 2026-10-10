@@ -12,6 +12,7 @@ import {
 } from "../../src/ports/TrackingRepository.ts"
 import { memoryStorage, type StorageFake } from "../support/application.ts"
 import { pullRequestRefs } from "../support/generators.ts"
+import { whole } from "../support/stacks.ts"
 
 async function run<A, E>(
   fake: StorageFake,
@@ -30,7 +31,7 @@ const trackings = gs.composite((tc): Tracking => {
   for (const [time, ref] of tc
     .draw(gs.arrays(pullRequestRefs, { maxSize: maximumAttachments }))
     .entries()) {
-    const next = attach(tracking, [ref], time * 1000)
+    const next = attach(tracking, whole([ref]), time * 1000)
 
     if (Result.isSuccess(next)) tracking = next.success.tracking
   }

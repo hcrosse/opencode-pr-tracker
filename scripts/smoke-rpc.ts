@@ -168,6 +168,32 @@ const removeSession = Effect.fn("removeSession")(function* (
   )
 })
 
+/** Attaches the merged Stack one member at a time, since attaching a merged member leaves out the rest. */
+const attachStack = Effect.fn("attachStack")(function* (
+  { location, tracker }: Harness,
+  watched: Watched,
+) {
+  const bottom = yield* expectUpdate(
+    watched,
+    stack.slice(0, 1),
+    tracker.attach({ sessionID: watched.sessionID, target: stack[0] ?? "" }, location),
+  )
+
+  yield* expectEqual(
+    "attaching a merged Stack member leaves out the other merged members",
+    urlsOf(bottom.view),
+    stack.slice(0, 1),
+  )
+
+  const both = yield* expectUpdate(
+    watched,
+    stack,
+    tracker.attach({ sessionID: watched.sessionID, target: stack[1] ?? "" }, location),
+  )
+
+  yield* expectEqual("a merged Stack member is attached when named", urlsOf(both.view), stack)
+})
+
 const withGitHub = Effect.fn("withGitHub")(function* (harness: Harness) {
   const { client, location, tracker } = harness
   const session = yield* client.session.create(location)
@@ -175,16 +201,7 @@ const withGitHub = Effect.fn("withGitHub")(function* (harness: Harness) {
 
   const watched: Watched = { client, sessionID }
 
-  const attached = yield* expectUpdate(
-    watched,
-    stack,
-    tracker.attach(
-      { sessionID, target: "github.com/hcrosse/opencode-pr-tracker/pull/78" },
-      location,
-    ),
-  )
-
-  yield* expectEqual("attaching a Stack member attaches the Stack", urlsOf(attached.view), stack)
+  yield* attachStack(harness, watched)
 
   const detached = yield* expectUpdate(
     watched,

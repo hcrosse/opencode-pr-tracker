@@ -1,13 +1,19 @@
 import { Array as Arr, Context, Effect, Layer, Option, Schema } from "effect"
 
-import type { PullRequestInput, PullRequestRef } from "../domain/PullRequest.ts"
+import {
+  samePullRequest,
+  type PullRequestInput,
+  type PullRequestRef,
+} from "../domain/PullRequest.ts"
 import { Diagnostic } from "../domain/Snapshot.ts"
+import type { Membership } from "../domain/StackLayout.ts"
 import {
   attach,
   detach,
   detachNumber,
   group,
   type AmbiguousPullRequestNumber,
+  type Attaching,
   type AttachmentLimitReached,
   type Removal,
   type Tracking,
@@ -34,7 +40,7 @@ export class PullRequestUnavailable extends Schema.TaggedError<PullRequestUnavai
   { diagnostic: Diagnostic, url: Schema.String },
 ) {}
 
-/** GitHub reported only part of the pull request's Stack, so attaching all of it is impossible. */
+/** GitHub reported only part of the pull request's Stack, so which members to attach is unknown. */
 export class StackIncomplete extends Schema.TaggedError<StackIncomplete>()("StackIncomplete", {
   url: Schema.String,
 }) {}
@@ -55,12 +61,17 @@ export interface Attached {
   readonly changed: boolean
   /** How many pull requests the named one's Stack has, itself included. */
   readonly stackSize: number
+  /** How many of the Stack's pull requests are attached afterwards, the named one included. */
+  readonly attachedMembers: number
   readonly tracking: Tracking
 }
 
 export interface TrackerApi {
   readonly list: (sessionID: string) => Effect.Effect<Tracking, StoredStateInvalid>
-  /** Attaches a pull request, with its whole Stack. A bare number is resolved in `directory`. */
+  /**
+   * Attaches a pull request with its Stack's open members. Merged or closed members are left out
+   * unless named. A bare number is resolved in `directory`.
+   */
   readonly attach: (
     sessionID: string,
     input: PullRequestInput,
@@ -86,10 +97,32 @@ export class Tracker extends Context.Service<Tracker, TrackerApi>()(
   "opencode-pr-tracker/Tracker",
 ) {}
 
-interface Discovered {
+interface Discovered extends Attaching {
   readonly report: Report
-  /** The pull request's Stack, bottom first; just the pull request when it has none. */
-  readonly stack: Arr.NonEmptyReadonlyArray<PullRequestRef>
+}
+
+/**
+ * The pull request's Stack, bottom first, with the members to attach: the pull request itself and
+ * the Stack's open members. A pull request GitHub does not list among its Stack's members is
+ * treated as standalone.
+ */
+function attaching(
+  ref: PullRequestRef,
+  membership: Membership,
+  nonOpen: readonly string[],
+): Attaching {
+  const standalone = { adding: [ref], stack: Arr.of(ref) }
+
+  if (membership._tag === "Standalone") return standalone
+
+  const { members } = membership
+
+  if (!members.some((member) => member.url === ref.url)) return standalone
+
+  return {
+    adding: members.filter((member) => member.url === ref.url || !nonOpen.includes(member.url)),
+    stack: members,
+  }
 }
 
 function discovered(
@@ -103,11 +136,11 @@ function discovered(
 
   return Option.match(report.membership, {
     onNone: () => Effect.fail(new StackIncomplete({ url: ref.url })),
-    onSome: (membership) =>
-      Effect.succeed({
-        report,
-        stack: membership._tag === "Stack" ? membership.members : Arr.of(ref),
-      }),
+    onSome: (membership) => {
+      const { adding, stack } = attaching(ref, membership, report.nonOpenMembers)
+
+      return Effect.succeed({ adding, report, stack })
+    },
   })
 }
 
@@ -134,13 +167,19 @@ const attachTo = Effect.fn("Tracker.attach")(function* (
   const ref = yield* resolve(services, target.input, target.directory)
   const reports = yield* services.github.fetch([ref])
   const missing: ItemResult = { _tag: "Failed", charged: false, diagnostic: "NotFound" }
-  const { report, stack } = yield* discovered(ref, reports.get(ref.url) ?? missing)
+  const { adding, report, stack } = yield* discovered(ref, reports.get(ref.url) ?? missing)
   const current = yield* services.repository.load(sessionID)
-  const change = yield* Effect.fromResult(attach(current, stack, yield* currentMillis))
+  const now = yield* currentMillis
+  const change = yield* Effect.fromResult(attach(current, { adding, stack }, now))
 
   if (change.changed) yield* services.repository.save(sessionID, change.tracking)
 
+  const attached = stack.filter((member) =>
+    change.tracking.some((attachment) => samePullRequest(attachment.ref, member)),
+  )
+
   return {
+    attachedMembers: attached.length,
     changed: change.changed,
     ref,
     report,
