@@ -37,14 +37,17 @@ const resubscriptions = Schedule.exponential("1 second").pipe(
   ),
 )
 
-/** Logs why a background task stopped, unless it was interrupted, and keeps the failure. */
+/**
+ * Logs why a background task stopped and keeps the failure. An interrupted task is not logged and
+ * stops with just its interruptions.
+ */
 const logStop =
   (message: string) =>
   <A, E, R>(task: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-    Effect.tapCauseIf(
-      task,
-      (cause: Cause.Cause<E>) => !Cause.hasInterrupts(cause),
-      (cause: Cause.Cause<E>) => Effect.logError(message, cause),
+    Effect.catchCause(task, (cause: Cause.Cause<E>) =>
+      Cause.hasInterrupts(cause)
+        ? Effect.failCause(interruptionsOf(cause))
+        : Effect.andThen(Effect.logError(message, cause), Effect.failCause(cause)),
     )
 
 /** Logs a failure or defect that is not an interruption at error level, and carries on. */

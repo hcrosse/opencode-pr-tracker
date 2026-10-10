@@ -83,6 +83,24 @@ describe("update events interrupted", () => {
     expect(sent).toEqual([])
     expect(lines).toEqual([])
   })
+
+  test("stops with only the interruption when the updates die as they are interrupted", async () => {
+    const logs = captureLogs()
+    const changes = Stream.failCause(Cause.combine(Cause.die("broken"), Cause.interrupt()))
+
+    const exit = await Effect.runPromise(
+      Effect.exit(
+        sendUpdates(
+          changes,
+          (view) => Effect.succeed(view),
+          () => Effect.void,
+        ),
+      ).pipe(Effect.provide(logs.layer)),
+    )
+
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true)
+    expect(logs.lines()).toEqual([])
+  })
 })
 
 describe("update events that cannot be encoded", () => {

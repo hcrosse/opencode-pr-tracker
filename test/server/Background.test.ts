@@ -157,7 +157,7 @@ describe("session deletion cleanup", () => {
 })
 
 describe("session deletion cleanup giving up", () => {
-  test("logs an error and stops after nine failures in a row", async () => {
+  test("logs an error and stops on the tenth failure in a row, after nine retries", async () => {
     const source = subscriptions(() => lost)
 
     const { exit, lines } = await cleanup(source.events, { advance: "1 hour", interrupt: false })
