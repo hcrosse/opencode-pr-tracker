@@ -31,7 +31,7 @@ Each item names the V2 module that owns it.
 ## Status (`domain/Snapshot`, `adapters/github`)
 
 - States: open, merged, closed. An open pull request has CI (passed, pending, failed, none, unknown), draft, mergeability (mergeable, conflicting, unknown) and behind (yes, no, unknown).
-- An enumeration value GitHub adds later reads as unknown: a check run status or conclusion, a status context state, or a merge state status. A completed check run without a conclusion is unknown too. Unknown CI beats pending and passed; failed beats unknown. Each such value is logged with the value GitHub sent, once per plugin instance, for up to 20 values per field.
+- An enumeration value GitHub adds later reads as unknown: a check run status or conclusion, a status context state, or a merge state status. A completed check run without a conclusion is unknown too. An unrecognized status or conclusion makes a check run unknown whatever its other field says. Unknown CI beats pending and passed; failed beats unknown. Unknown CI refreshes every 15 seconds, like pending CI, since a check in a new status may still be running. Each such value is logged with the value GitHub sent, once per plugin instance, for up to 20 values per field.
 - A terminal from an earlier plugin version, reading a newer server, shows unknown CI as pending, an unknown merge state as not behind and an unknown decision as none, and leaves unknown threads out of its counts, as it did before unknown states existed.
 - CI uses only the newest check runs per check identity and the newest status context per context name.
   - A workflow's jobs share one identity: app, workflow and event. The newest run and attempt replaces every job of older runs, including jobs it no longer has.

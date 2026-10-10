@@ -160,13 +160,16 @@ const conclusionOutcomes: Readonly<Record<KnownConclusion, CheckOutcome>> = {
   TIMED_OUT: "failed",
 }
 
-/** A run GitHub reports as completed without a conclusion has an unknown outcome. */
+/**
+ * A run with a status or conclusion this version does not recognize has an unknown outcome,
+ * whatever its other field says; so does a run GitHub reports as completed without a conclusion.
+ */
 function checkRunOutcome({ conclusion, status }: CheckRunNode): CheckOutcome {
-  if (status instanceof Unrecognized) return "unknown"
+  if (status instanceof Unrecognized || conclusion instanceof Unrecognized) return "unknown"
 
   if (status !== "COMPLETED") return "pending"
 
-  if (conclusion === null || conclusion instanceof Unrecognized) return "unknown"
+  if (conclusion === null) return "unknown"
 
   return conclusionOutcomes[conclusion]
 }

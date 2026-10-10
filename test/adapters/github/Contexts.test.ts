@@ -26,6 +26,8 @@ describe("check states GitHub added later", () => {
   test.each<readonly [string, () => ContextNode]>([
     ["a completed run with a new conclusion", run("COMPLETED", "SUCCESS_WITH_NOTES")],
     ["a run with a new status", run("PAUSED", null)],
+    ["a running run with a new conclusion", run("IN_PROGRESS", "SUCCESS_WITH_NOTES")],
+    ["a new status with a known conclusion", run("PAUSED", "SUCCESS")],
     ["a completed run without a conclusion", run("COMPLETED", null)],
     ["a status context with a new state", status("CANCELLED")],
   ])("read %s as unknown, not passed, pending or ignored", (_name, node) => {

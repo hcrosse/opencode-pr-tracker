@@ -24,6 +24,7 @@ const openWith = (ci: Ci, mergeability: Mergeability): Status =>
 describe("nextRefresh", () => {
   test.each([
     ["an open pull request with checks running", openWith("pending", "mergeable")],
+    ["an open pull request with a check in an unknown state", openWith("unknown", "mergeable")],
     ["an open pull request whose mergeability GitHub is computing", openWith("passed", "unknown")],
     ["a pull request that has not loaded", { _tag: "Pending" } satisfies Status],
     [
