@@ -44,7 +44,7 @@ const line = "•  acme/api#13 pending · changes · 2 unreplied · 1 replied"
 
 describe("Sidebar review state layout", () => {
   test("follows the status in both layouts", async () => {
-    const full = await show(changes, "default")
+    const full = await show(changes, "full")
     const compact = await show(changes, "compact")
 
     expect(full.lines()).toEqual(["Pull requests", "", line, "   Migrate sessions table"])
@@ -71,7 +71,7 @@ describe("Sidebar review state layout", () => {
 
 describe("Sidebar review state colors", () => {
   test("colors each part by its tone, with muted separators, leaving the status color alone", async () => {
-    const { style } = await show(changes, "default")
+    const { style } = await show(changes, "full")
 
     expect(style(" pending")).toEqual(Option.some(styled(palette.tones.yellow)))
     expect(style(" · ")).toEqual(Option.some(styled(palette.muted)))

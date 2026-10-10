@@ -9,7 +9,7 @@ import { PullRequestRef } from "./domain/PullRequest.ts"
 import { Status } from "./domain/Snapshot.ts"
 import { Membership } from "./domain/StackLayout.ts"
 
-export const Layout = Schema.Literals(["default", "compact"])
+export const Layout = Schema.Literals(["full", "compact"])
 
 export type Layout = typeof Layout.Type
 

@@ -16,12 +16,12 @@ const decodeReviews = Schema.decodeUnknownOption(Schema.Struct({ reviews: Review
 
 /**
  * Each option is read on its own, so an invalid one takes its default without resetting the others.
- * The layout is "default" unless it is "compact", and review state is "off" unless it is "all".
+ * The layout is "compact" unless it is "full", and review state is "off" unless it is "all".
  */
 export function settingsOf(options: Plugin.Context["options"]): PluginSettings {
   return {
     layout: Option.match(decodeLayout(options), {
-      onNone: (): Layout => "default",
+      onNone: (): Layout => "compact",
       onSome: ({ layout }) => layout,
     }),
     reviews: Option.match(decodeReviews(options), {

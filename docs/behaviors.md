@@ -86,7 +86,7 @@ Each item names the V2 module that owns it.
   - A single attached member of a larger Stack uses an incomplete marker.
   - Separate Stacks, including Stacks in one repository, stay separate. Where two Stacks touch, an edge that would otherwise look like it continues into the other Stack closes with `╭─` or `╰─`, or `╶─` for a Stack's only attached member.
   - Standalone pull requests, and members whose membership is unknown, use `•`.
-- Compact layout shows one row per pull request, plus internal gaps, without titles.
+- The default compact layout shows one row per pull request, plus internal gaps, without titles. The `full` layout adds each title.
 - With more than two pull requests, the heading collapses and expands the list. Refreshes continue while it's collapsed.
 - Clicking a row opens the pull request on macOS and Linux. Gap rows aren't clickable. Unsupported platforms and browser failures produce messages.
 - Wrapped titles keep their Stack connectors and alignment.
