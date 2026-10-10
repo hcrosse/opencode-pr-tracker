@@ -5,16 +5,8 @@ import { Effect, Exit } from "effect"
 import type { PullRequestRef } from "../../../src/domain/PullRequest.ts"
 import type { GitHubApi } from "../../../src/ports/GitHub.ts"
 import { memoryStorage } from "../../support/application.ts"
-import {
-  exitWith,
-  fixedCommands,
-  fixedToken,
-  httpClient,
-  output,
-  runClient,
-  acmeRef,
-  fetchOne,
-} from "../../support/github.ts"
+import { exitWith, fixedCommands, output } from "../../support/commands.ts"
+import { fixedToken, httpClient, runClient, acmeRef, fetchOne } from "../../support/github.ts"
 import { requested } from "../../support/lookup.ts"
 
 const nulls = (keys: readonly string[]): Record<string, null> =>

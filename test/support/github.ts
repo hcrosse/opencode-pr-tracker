@@ -10,7 +10,6 @@ import {
   type HttpClientRequest,
 } from "effect/unstable/http"
 
-import { CommandFailed, CommandMissing, CommandRunner } from "../../src/adapters/Command.ts"
 import { layer as clientLayer } from "../../src/adapters/github/Client.ts"
 import { layer as rateLimitLayer } from "../../src/adapters/github/RateLimit.ts"
 import { Token } from "../../src/adapters/github/Token.ts"
@@ -18,6 +17,7 @@ import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullR
 import type { ReviewMode } from "../../src/domain/Review.ts"
 import { GitHub, type GitHubApi, type ItemResult } from "../../src/ports/GitHub.ts"
 import { memoryStorage, type StorageFake } from "./application.ts"
+import { fixedCommands, type CommandsFake } from "./commands.ts"
 import { Exchange, exchangeKey, queryDigest, Variables } from "./exchange.ts"
 import { answeredNode } from "./lookup.ts"
 
@@ -122,60 +122,6 @@ export function fixedToken(): TokenFake {
   )
 
   return { invalidations: () => invalidations, layer }
-}
-
-/** How a fixed command finishes. */
-export type FixedOutcome =
-  | { readonly _tag: "Output"; readonly stdout: string }
-  | { readonly _tag: "Exit"; readonly exitCode: number; readonly stderr: string }
-
-export const output = (stdout: string): FixedOutcome => ({ _tag: "Output", stdout })
-
-export const exitWith = (exitCode: number, stderr: string): FixedOutcome => ({
-  _tag: "Exit",
-  exitCode,
-  stderr,
-})
-
-function outcomeEffect(
-  command: string,
-  outcome: FixedOutcome,
-): Effect.Effect<string, CommandFailed> {
-  return outcome._tag === "Output"
-    ? Effect.succeed(outcome.stdout)
-    : Effect.fail(
-        new CommandFailed({ command, exitCode: outcome.exitCode, stderr: outcome.stderr }),
-      )
-}
-
-export interface CommandsFake {
-  readonly layer: Layer.Layer<CommandRunner>
-  /** Every command line run, in order. */
-  readonly calls: readonly string[]
-}
-
-/** Runs commands from a fixed table keyed by `command args`; anything else is missing. */
-export function fixedCommands(outcomes: Readonly<Record<string, FixedOutcome>>): CommandsFake {
-  const calls: string[] = []
-
-  const layer = Layer.succeed(
-    CommandRunner,
-    CommandRunner.of({
-      run: (command: string, args: readonly string[]) =>
-        Effect.gen(function* () {
-          const line = [command, ...args].join(" ")
-
-          calls.push(line)
-
-          return yield* Option.match(Option.fromNullishOr(outcomes[line]), {
-            onNone: () => Effect.fail(new CommandMissing({ command })),
-            onSome: (outcome: FixedOutcome) => outcomeEffect(command, outcome),
-          })
-        }),
-    }),
-  )
-
-  return { calls, layer }
 }
 
 export const acmeRef = (number: number): PullRequestRef =>
