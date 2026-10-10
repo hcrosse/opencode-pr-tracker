@@ -1,7 +1,6 @@
-import { describe, expect, test } from "bun:test"
-
 import * as hegel from "@hegeldev/hegel"
 import { Option, Schema } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { threadsOf, Threads } from "../../src/domain/Review.ts"
 import { reviews } from "../support/generators.ts"

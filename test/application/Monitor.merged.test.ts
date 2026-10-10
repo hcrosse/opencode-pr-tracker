@@ -1,7 +1,6 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Exit, Option } from "effect"
 import { TestClock } from "effect/testing"
+import { describe, expect, test } from "vitest"
 
 import { PullRequestState } from "../../src/domain/Snapshot.ts"
 import { agreedStacks, type Membership } from "../../src/domain/StackLayout.ts"

@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Exit } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { ItemResult, maximumBatch, type GitHubApi } from "../../../src/ports/GitHub.ts"
 import {

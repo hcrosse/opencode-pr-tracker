@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Exit } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { httpClient, requestsAt, runClient, type RequestBody } from "../../support/github.ts"
 

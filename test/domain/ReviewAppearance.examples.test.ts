@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Option } from "effect"
+import { describe, expect, test } from "vitest"
 
 import type { Tone } from "../../src/domain/Appearance.ts"
 import type { Review } from "../../src/domain/Review.ts"

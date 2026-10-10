@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Exit, Fiber, Option, Result } from "effect"
+import { describe, expect, test } from "vitest"
 
 import {
   PullRequestUnavailable,

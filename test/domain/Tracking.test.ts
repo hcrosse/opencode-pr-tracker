@@ -1,9 +1,9 @@
 // oxlint-disable max-lines -- attach and group share the placement check, so their tests stay together.
-import { describe, expect, test } from "bun:test"
 
 import * as hegel from "@hegeldev/hegel"
 import * as gs from "@hegeldev/hegel/generators"
 import { Array as Arr, Option, Result } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
 import {

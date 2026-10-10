@@ -23,7 +23,7 @@ jobs:
           - name: Format
             command: bun run format:check && git diff --check
           - name: Test
-            command: bun test
+            command: bun run test
           - name: Build
             command: bun run build
           - name: Typecheck

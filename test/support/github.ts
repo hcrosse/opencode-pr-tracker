@@ -37,7 +37,7 @@ const RequestBody = Schema.fromJsonString(
 export interface RequestBody extends Schema.Schema.Type<typeof RequestBody> {}
 
 export function fixture(name: string): readonly Exchange[] {
-  const file = path.join(import.meta.dir, "..", "fixtures", "github", `${name}.json`)
+  const file = path.join(import.meta.dirname, "..", "fixtures", "github", `${name}.json`)
 
   return Schema.decodeUnknownSync(Fixture)(readFileSync(file, "utf8")).exchanges
 }

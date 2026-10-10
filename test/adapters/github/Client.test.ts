@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Option, Result } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { defaultPageSize } from "../../../src/adapters/github/Query.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../../src/domain/PullRequest.ts"

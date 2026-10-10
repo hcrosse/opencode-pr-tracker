@@ -1,9 +1,9 @@
-import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
 import { Cause, Effect, Fiber, Option, Schedule } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { CommandFailed, CommandMissing, CommandRunner, layer } from "../../src/adapters/Command.ts"
 

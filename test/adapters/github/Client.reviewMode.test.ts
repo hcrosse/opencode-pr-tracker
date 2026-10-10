@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Option } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { batch } from "../../../src/adapters/github/Query.ts"
 import { noReview } from "../../../src/domain/Review.ts"

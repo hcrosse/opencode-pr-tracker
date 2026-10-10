@@ -1,8 +1,7 @@
-import { describe, expect, test } from "bun:test"
-
 import type { StorageDomain } from "@opencode/plugin/effect/storage"
 import { Effect, Exit, Logger, Option, type Schema } from "effect"
 import { TestClock } from "effect/testing"
+import { describe, expect, test } from "vitest"
 
 import { layer, RateLimit, type RateLimitApi } from "../../../src/adapters/github/RateLimit.ts"
 import { memoryStorage } from "../../support/application.ts"

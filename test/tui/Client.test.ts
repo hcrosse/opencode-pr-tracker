@@ -1,7 +1,6 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Option, Result, Schema } from "effect"
 import { constVoid } from "effect/Function"
+import { describe, expect, test } from "vitest"
 
 import { Status } from "../../src/domain/Snapshot.ts"
 import { View, type ViewData } from "../../src/rpc.ts"

@@ -38,4 +38,4 @@ hoist = false
 saveTextLockfile = true
 
 [test]
-preload = ["@opentui/solid/preload"]
+preload = ["./test/support/bun-test-guard.ts"]

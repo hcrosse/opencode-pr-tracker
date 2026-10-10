@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Exit, Fiber, Option } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { PullRequestInput } from "../../src/domain/PullRequest.ts"
 import { PullRequestState, Status } from "../../src/domain/Snapshot.ts"

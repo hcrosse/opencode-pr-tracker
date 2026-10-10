@@ -1,7 +1,6 @@
-import { describe, expect, test } from "bun:test"
-
 import { Effect, Exit, Logger, Schema } from "effect"
 import { TestClock } from "effect/testing"
+import { describe, expect, test } from "vitest"
 
 import type { GitHubApi } from "../../../src/ports/GitHub.ts"
 import { memoryStorage } from "../../support/application.ts"

@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Option } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { afterRefresh, unknown, type Known } from "../../src/application/Known.ts"
 import { ItemResult } from "../../src/ports/GitHub.ts"

@@ -1,7 +1,6 @@
-import { describe, expect, test } from "bun:test"
-
 import { Cause, type Duration, Effect, Exit, Fiber } from "effect"
 import { TestClock } from "effect/testing"
+import { describe, expect, test } from "vitest"
 
 import { pollRepeatedly } from "../../src/server/Background.ts"
 import { captureLogs, type Logged } from "../support/logs.ts"

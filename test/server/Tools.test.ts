@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Result, Schema } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { parsePullRequestInput } from "../../src/domain/PullRequest.ts"
 import { PullRequestArgument, targetOf } from "../../src/server/Tools.ts"

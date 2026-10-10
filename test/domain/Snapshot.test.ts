@@ -1,8 +1,7 @@
-import { describe, expect, test } from "bun:test"
-
 import * as hegel from "@hegeldev/hegel"
 import * as gs from "@hegeldev/hegel/generators"
 import { Array as Arr, Option, Schema } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { noReview } from "../../src/domain/Review.ts"
 import {

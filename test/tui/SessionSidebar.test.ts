@@ -1,8 +1,7 @@
-import { describe, expect, test } from "bun:test"
-
 import { Array as Arr, Deferred, Effect, Option } from "effect"
 import { constVoid } from "effect/Function"
 import { createRoot, createSignal } from "solid-js"
+import { describe, expect, test } from "vitest"
 
 import { Status } from "../../src/domain/Snapshot.ts"
 import type { View } from "../../src/rpc.ts"

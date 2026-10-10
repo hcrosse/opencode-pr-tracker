@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
+
+import { describe, expect, test } from "vitest"
 
 import {
   authorizeIssueCommand,
@@ -210,8 +211,8 @@ describe("authorizeIssueCommand", () => {
       },
     }
 
-    expect(await authorizeIssueCommand({ github, context })).toBeFalse()
-    expect(marked).toBeFalse()
+    expect(await authorizeIssueCommand({ github, context })).toBe(false)
+    expect(marked).toBe(false)
   })
 
   test("marks an eligible claim as authorized", async () => {
@@ -235,7 +236,7 @@ describe("authorizeIssueCommand", () => {
       },
     }
 
-    expect(await authorizeIssueCommand({ github, context })).toBeTrue()
+    expect(await authorizeIssueCommand({ github, context })).toBe(true)
     expect(markers).toEqual(["<!-- issue-claim:authorized:1 -->"])
   })
 
@@ -262,9 +263,9 @@ describe("authorizeIssueCommand", () => {
       },
     }
 
-    expect(await authorizeIssueCommand({ github, context })).toBeFalse()
+    expect(await authorizeIssueCommand({ github, context })).toBe(false)
     permission = "write"
-    expect(await authorizeIssueCommand({ github, context })).toBeTrue()
+    expect(await authorizeIssueCommand({ github, context })).toBe(true)
     expect(markers).toEqual(["<!-- issue-claim:authorized:1 -->"])
   })
 })
@@ -446,7 +447,7 @@ describe("reconcileIssueClaim", () => {
 
     await reconcileIssueClaim({ github, context })
 
-    expect(requested).toBeFalse()
+    expect(requested).toBe(false)
   })
 })
 

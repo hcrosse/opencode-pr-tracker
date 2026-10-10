@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Schema } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { InvalidPullRequestInput } from "../../src/domain/PullRequest.ts"
 import { GitHubFailure } from "../../src/ports/GitHub.ts"

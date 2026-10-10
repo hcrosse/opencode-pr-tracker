@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test"
-
 import { Config, ConfigProvider, Effect, Option, Redacted } from "effect"
+import { describe, expect, test } from "vitest"
 
 import { smokeConfig } from "../../scripts/smoke-config.ts"
 

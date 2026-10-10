@@ -1,6 +1,5 @@
-import { describe, expect, jest, test } from "bun:test"
-
 import { Option } from "effect"
+import { describe, expect, test, vi } from "vitest"
 
 import { Update } from "../../src/tui/Client.ts"
 import { scripted, showing, viewTitled } from "../support/sessionView.ts"
@@ -77,7 +76,7 @@ describe("sidebar view after listing again fails", () => {
       script.holdLists()
       script.publish(Update.Unreadable({ sessionID: Option.some("a") }))
       script.settle({ failure: "The pull request tracker failed." })
-      jest.advanceTimersByTime(15_000)
+      vi.advanceTimersByTime(15_000)
       seen.push(shown())
       script.settle({ title: "relisted" })
       seen.push(shown())
@@ -99,7 +98,7 @@ describe("sidebar view of an unreadable update while stale", () => {
       }
 
       script.renewals("fail")
-      jest.advanceTimersByTime(45_000)
+      vi.advanceTimersByTime(45_000)
       script.holdLists()
       look()
       script.publish(Update.Unreadable({ sessionID: Option.some("a") }))
@@ -123,7 +122,7 @@ describe("sidebar view of an update published while stale", () => {
 
     showing(script, (shown) => {
       script.renewals("fail")
-      jest.advanceTimersByTime(45_000)
+      vi.advanceTimersByTime(45_000)
       script.publish(Update.Published({ view: viewTitled("published") }))
       seen.push(shown())
     })
@@ -139,16 +138,16 @@ describe("sidebar view of updates published while listing again", () => {
 
     showing(script, (shown) => {
       script.holdLists()
-      jest.advanceTimersByTime(1000)
+      vi.advanceTimersByTime(1000)
       script.publish(Update.Unreadable({ sessionID: Option.some("a") }))
 
       // Each listing again takes 2 seconds, and a publication arrives 1 second into it.
       for (let cycle = 1; cycle <= 4; cycle += 1) {
-        jest.advanceTimersByTime(1000)
+        vi.advanceTimersByTime(1000)
         script.publish(Update.Published({ view: viewTitled(`published ${String(cycle)}`) }))
-        jest.advanceTimersByTime(1000)
+        vi.advanceTimersByTime(1000)
         script.settle({ title: "relisted" })
-        jest.advanceTimersByTime(12_998)
+        vi.advanceTimersByTime(12_998)
         seen.push(shown())
       }
     })

@@ -1,7 +1,5 @@
-/** @jsxImportSource @opentui/solid */
-import { afterEach, describe, expect, test } from "bun:test"
-
 import { Option } from "effect"
+import { afterEach, describe, expect, test } from "vitest"
 
 import type { FailureReason } from "../../src/tui/Client.ts"
 import { Liveness, SidebarState } from "../../src/ui/Sidebar.tsx"
