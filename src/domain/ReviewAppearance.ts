@@ -2,7 +2,7 @@ import { Option } from "effect"
 
 import type { Tone } from "./Appearance.ts"
 import type { Decision, Review, Threads } from "./Review.ts"
-import type { Status } from "./Snapshot.ts"
+import { PullRequestState, Status } from "./Snapshot.ts"
 
 /** One part of the review state as the sidebar shows it. */
 export interface ReviewPart {
@@ -54,11 +54,20 @@ const decisionOf = (review: Review): Option.Option<DecisionWords> =>
 
 /** The review state of an open pull request GitHub has reported, current or stale. */
 export function reviewOfStatus(status: Status): Option.Option<Review> {
-  if (status._tag !== "Fresh" && status._tag !== "Stale") return Option.none()
+  const snapshot = Status.match(status, {
+    Fresh: ({ snapshot: fresh }) => Option.some(fresh),
+    Pending: () => Option.none(),
+    Stale: ({ snapshot: stale }) => Option.some(stale),
+    Unavailable: () => Option.none(),
+  })
 
-  const { state } = status.snapshot
-
-  return state._tag === "Open" ? Option.some(state.review) : Option.none()
+  return Option.flatMap(snapshot, ({ state }) =>
+    PullRequestState.match(state, {
+      Open: ({ review }) => Option.some(review),
+      Merged: () => Option.none(),
+      Closed: () => Option.none(),
+    }),
+  )
 }
 
 /** The sidebar's words: a short decision, then unreplied and replied thread counts. */

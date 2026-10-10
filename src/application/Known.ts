@@ -4,8 +4,8 @@ import { Duration, Option } from "effect"
 import type { PullRequestRef } from "../domain/PullRequest.ts"
 import { nextRefresh } from "../domain/RefreshPolicy.ts"
 import { failed, pending, succeeded, type Status } from "../domain/Snapshot.ts"
-import type { Membership } from "../domain/StackLayout.ts"
-import type { GitHubFailure, ItemResult } from "../ports/GitHub.ts"
+import { Membership } from "../domain/StackLayout.ts"
+import { ItemResult, type GitHubFailure } from "../ports/GitHub.ts"
 
 export interface Known {
   readonly status: Status
@@ -23,22 +23,26 @@ export const unknown: Known = {
   status: pending,
 }
 
-function failuresAfter(previous: Known, result: ItemResult): number {
-  if (result._tag === "Reported") return 0
-
-  return result.charged ? previous.failures + 1 : previous.failures
-}
-
 export function afterRefresh(previous: Known, result: ItemResult, now: number): Known {
-  const status =
-    result._tag === "Reported"
-      ? succeeded(result.report.snapshot)
-      : failed(previous.status, result.diagnostic, now)
+  const { backoff, failures, membership, status } = ItemResult.$match(result, {
+    Reported: ({ report }) => ({
+      backoff: 0,
+      failures: 0,
+      membership: report.membership,
+      status: succeeded(report.snapshot),
+    }),
+    Failed: ({ charged, diagnostic }) => {
+      const nextFailures = charged ? previous.failures + 1 : previous.failures
 
-  const membership = result._tag === "Reported" ? result.report.membership : previous.membership
-  const failures = failuresAfter(previous, result)
-  // An uncharged failure retries soon; the count it keeps applies once a charged failure follows.
-  const backoff = result._tag === "Failed" && !result.charged ? 0 : failures
+      return {
+        // An uncharged failure retries soon; its count applies after a charged failure.
+        backoff: charged ? nextFailures : 0,
+        failures: nextFailures,
+        membership: previous.membership,
+        status: failed(previous.status, diagnostic, now),
+      }
+    },
+  })
 
   return {
     dueAt: Option.map(nextRefresh(status, backoff), (delay) => now + Duration.toMillis(delay)),
@@ -51,7 +55,11 @@ export function afterRefresh(previous: Known, result: ItemResult, now: number): 
 const membersOf = (membership: Option.Option<Membership>): readonly PullRequestRef[] =>
   Option.match(membership, {
     onNone: () => [],
-    onSome: (known) => (known._tag === "Stack" ? known.members : []),
+    onSome: (known) =>
+      Membership.match(known, {
+        Stack: ({ members }) => members,
+        Standalone: (): readonly PullRequestRef[] => [],
+      }),
   })
 
 /** Membership as a comparable string: none, standalone, or the Stack with its members in order. */
@@ -59,9 +67,10 @@ const keyOf = (membership: Option.Option<Membership>): string =>
   Option.match(membership, {
     onNone: () => "",
     onSome: (known) =>
-      known._tag === "Stack"
-        ? [known.id, ...known.members.map((member) => member.url)].join("\n")
-        : "standalone",
+      Membership.match(known, {
+        Stack: ({ id, members }) => [id, ...members.map((member) => member.url)].join("\n"),
+        Standalone: () => "standalone",
+      }),
   })
 
 const sameMembership = (
@@ -89,7 +98,7 @@ function contradicted(
   const urls = new Set<string>()
 
   for (const [url, result] of results) {
-    if (result._tag !== "Reported") continue
+    if (!ItemResult.$is("Reported")(result)) continue
 
     const reported = result.report.membership
     const previous = (current.get(url) ?? unknown).membership
@@ -111,7 +120,7 @@ export const failedEach = (
   refs: readonly PullRequestRef[],
   { diagnostic }: GitHubFailure,
 ): ReadonlyMap<string, ItemResult> =>
-  new Map(refs.map((ref) => [ref.url, { _tag: "Failed", charged: false, diagnostic }] as const))
+  new Map(refs.map((ref) => [ref.url, ItemResult.Failed({ charged: false, diagnostic })] as const))
 
 /** `current` with GitHub's `results` recorded as of `now`. */
 export function recorded(

@@ -6,13 +6,13 @@ import { Option } from "effect"
 import { constVoid } from "effect/Function"
 
 import type { PullRequestRef } from "../../src/domain/PullRequest.ts"
-import type { PullRequestState, Status } from "../../src/domain/Snapshot.ts"
-import type { Membership } from "../../src/domain/StackLayout.ts"
+import { Status, type PullRequestState } from "../../src/domain/Snapshot.ts"
+import { Membership } from "../../src/domain/StackLayout.ts"
 import type { EntryView, Layout, View } from "../../src/rpc.ts"
 import type { Palette } from "../../src/ui/Palette.ts"
 import { Liveness, Sidebar, SidebarState } from "../../src/ui/Sidebar.tsx"
 import { openState } from "./application.ts"
-import { ref, stack } from "./stacks.ts"
+import { ref } from "./stacks.ts"
 
 /** Distinct colors, so frames can be checked for which tone a span uses. */
 export const palette: Palette = {
@@ -31,10 +31,7 @@ export const fresh = (
   pullRequest: PullRequestRef,
   title: string,
   state: PullRequestState = openState,
-): Status => ({
-  _tag: "Fresh",
-  snapshot: { ref: pullRequest, state, title },
-})
+): Status => Status.cases.Fresh.make({ snapshot: { ref: pullRequest, state, title } })
 
 export const entryOf = (
   pullRequest: PullRequestRef,
@@ -76,7 +73,7 @@ const top = ref("acme/api", 4)
 
 export const standalone = ref("acme/web", 9)
 
-const fourStack = stack("s", [bottom, second, third, top])
+const fourStack = Membership.cases.Stack.make({ id: "s", members: [bottom, second, third, top] })
 
 /** A standalone pull request, then the bottom and third members of a four-member Stack. */
 export const mixed = [

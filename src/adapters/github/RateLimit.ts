@@ -1,6 +1,6 @@
 /** GitHub rate limits: recognizing a limited response, and a wait every plugin instance honors. */
 import type { StorageDomain } from "@opencode/plugin/effect/storage"
-import { Clock, Context, Duration, Effect, Layer, Option } from "effect"
+import { Clock, Context, Data, Duration, Effect, Layer, Option } from "effect"
 
 import { GitHubFailure } from "../../ports/GitHub.ts"
 import { makeStoredNumber, readStored, type StoredNumber } from "./StoredNumber.ts"
@@ -14,10 +14,13 @@ export interface Evidence {
   readonly errorTypes: readonly string[]
 }
 
-export type Verdict =
-  | { readonly _tag: "Allowed" }
+export type Verdict = Data.TaggedEnum<{
+  Allowed: Readonly<Record<never, never>>
   /** `until` is the epoch millisecond GitHub said to wait until, if it said. */
-  | { readonly _tag: "Limited"; readonly until: Option.Option<number> }
+  Limited: { readonly until: Option.Option<number> }
+}>
+
+export const Verdict = Data.taggedEnum<Verdict>()
 
 /** A header of whole seconds. Anything else, such as an HTTP date, is unusable. */
 const secondsHeader = (evidence: Evidence, name: string): Option.Option<number> =>
@@ -63,7 +66,7 @@ export function verdictOf(evidence: Evidence, now: number): Verdict {
         spent(evidence) ||
         /rate limit/iu.test(evidence.body)))
 
-  return limited ? { _tag: "Limited", until: hintedUntil(evidence, now) } : { _tag: "Allowed" }
+  return limited ? Verdict.Limited({ until: hintedUntil(evidence, now) }) : Verdict.Allowed()
 }
 
 /** Consecutive limits without a wait from GitHub. Each doubles the next wait. */

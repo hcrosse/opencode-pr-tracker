@@ -1,7 +1,8 @@
 /** @jsxImportSource @opentui/solid */
 import { afterEach, describe, expect, test } from "bun:test"
 
-import { ref, stack } from "../support/stacks.ts"
+import { Membership } from "../../src/domain/StackLayout.ts"
+import { ref } from "../support/stacks.ts"
 import {
   destroyMounted,
   mixed,
@@ -46,17 +47,34 @@ describe("Sidebar layouts", () => {
   })
 })
 
+const lower = [ref("acme/api", 1), ref("acme/api", 2), ref("acme/api", 3)] as const
+
+const upper = [ref("acme/web", 1), ref("acme/web", 2), ref("acme/web", 3)] as const
+
+const touching = [
+  entryOf(
+    lower[0],
+    fresh(lower[0], "Base A"),
+    Membership.cases.Stack.make({ id: "a", members: lower }),
+  ),
+  entryOf(
+    lower[1],
+    fresh(lower[1], "Middle A"),
+    Membership.cases.Stack.make({ id: "a", members: lower }),
+  ),
+  entryOf(
+    upper[1],
+    fresh(upper[1], "Middle B"),
+    Membership.cases.Stack.make({ id: "b", members: upper }),
+  ),
+  entryOf(
+    upper[2],
+    fresh(upper[2], "Head B"),
+    Membership.cases.Stack.make({ id: "b", members: upper }),
+  ),
+]
+
 describe("Sidebar Stack boundaries", () => {
-  const lower = [ref("acme/api", 1), ref("acme/api", 2), ref("acme/api", 3)] as const
-  const upper = [ref("acme/web", 1), ref("acme/web", 2), ref("acme/web", 3)] as const
-
-  const touching = [
-    entryOf(lower[0], fresh(lower[0], "Base A"), stack("a", lower)),
-    entryOf(lower[1], fresh(lower[1], "Middle A"), stack("a", lower)),
-    entryOf(upper[1], fresh(upper[1], "Middle B"), stack("b", upper)),
-    entryOf(upper[2], fresh(upper[2], "Head B"), stack("b", upper)),
-  ]
-
   test("closes partial Stacks where they touch, without adding rows", async () => {
     const { lines } = await showSidebar(ready(viewOf(touching, "compact")), { width: 36 })
 
@@ -87,7 +105,11 @@ describe("Sidebar Stack boundaries", () => {
 describe("Sidebar wrapping", () => {
   test("a wrapped status line continues its Stack line", async () => {
     const [first, last] = [ref("acme/platform", 1), ref("acme/platform", 3)]
-    const members = stack("p", [first, ref("acme/platform", 2), last])
+
+    const members = Membership.cases.Stack.make({
+      id: "p",
+      members: [first, ref("acme/platform", 2), last],
+    })
 
     const view = viewOf(
       [entryOf(first, fresh(first, "First"), members), entryOf(last, fresh(last, "Last"), members)],

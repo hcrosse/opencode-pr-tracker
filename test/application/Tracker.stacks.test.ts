@@ -3,13 +3,14 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Exit, Option } from "effect"
 
 import type { Attached, TrackerApi } from "../../src/application/Tracker.ts"
-import type { PullRequestRef } from "../../src/domain/PullRequest.ts"
-import type { PullRequestState } from "../../src/domain/Snapshot.ts"
-import type { Membership } from "../../src/domain/StackLayout.ts"
+import { PullRequestInput, type PullRequestRef } from "../../src/domain/PullRequest.ts"
+import { PullRequestState } from "../../src/domain/Snapshot.ts"
+import { Membership } from "../../src/domain/StackLayout.ts"
 import { maximumAttachments } from "../../src/domain/Tracking.ts"
 import { attachedMessage } from "../../src/messages.ts"
+import { ItemResult } from "../../src/ports/GitHub.ts"
 import { openState, reported, standalone } from "../support/application.ts"
-import { byUrl, numbers, ref, refs, run, world, type World } from "../support/tracker.ts"
+import { numbers, ref, refs, run, world, type World } from "../support/tracker.ts"
 
 interface Outcome {
   readonly message: string
@@ -28,24 +29,26 @@ function scriptStack(
   ended: Readonly<{ merged: readonly number[]; closed: readonly number[] }>,
 ): void {
   const [bottom = 1, ...rest] = members
-  const stack: Membership = { _tag: "Stack", id: "s", members: [ref(bottom), ...refs(rest)] }
+  const stack = Membership.cases.Stack.make({ id: "s", members: [ref(bottom), ...refs(rest)] })
   const nonOpen = refs([...ended.merged, ...ended.closed])
 
   const stateOf = (member: PullRequestRef): PullRequestState => {
-    if (ended.merged.includes(member.number)) return { _tag: "Merged" }
+    if (ended.merged.includes(member.number)) return PullRequestState.cases.Merged.make({})
 
-    return ended.closed.includes(member.number) ? { _tag: "Closed" } : openState
+    return ended.closed.includes(member.number) ? PullRequestState.cases.Closed.make({}) : openState
   }
 
   for (const member of refs(members)) {
-    setup.github.script(member, {
-      _tag: "Reported",
-      report: {
-        membership: Option.some(stack),
-        nonOpenMembers: nonOpen.map((found: PullRequestRef) => found.url),
-        snapshot: { ref: member, state: stateOf(member), title: member.label },
-      },
-    })
+    setup.github.script(
+      member,
+      ItemResult.Reported({
+        report: {
+          membership: Option.some(stack),
+          nonOpenMembers: nonOpen.map((found: PullRequestRef) => found.url),
+          snapshot: { ref: member, state: stateOf(member), title: member.label },
+        },
+      }),
+    )
   }
 }
 
@@ -54,7 +57,10 @@ const attachEach = (
   attaching: readonly number[],
 ): Effect.Effect<readonly Outcome[], unknown> =>
   Effect.forEach(refs(attaching), (member: PullRequestRef) =>
-    Effect.map(tracker.attach("session", byUrl(member), "/work"), outcome),
+    Effect.map(
+      tracker.attach("session", PullRequestInput.Reference({ ref: member }), "/work"),
+      outcome,
+    ),
   )
 
 /** A Stack of 1 to 6 where 1 and 5 are merged and 3 is closed. */
@@ -159,7 +165,7 @@ describe("Tracker attach messages for Stacks", () => {
 describe("Tracker attach with inconsistent or large Stacks", () => {
   test("attaches a pull request alone when its Stack does not list it", async () => {
     const setup = world()
-    const stack: Membership = { _tag: "Stack", id: "s", members: [ref(1), ref(2)] }
+    const stack = Membership.cases.Stack.make({ id: "s", members: [ref(1), ref(2)] })
 
     setup.github.script(ref(3), reported(ref(3), openState, stack))
 

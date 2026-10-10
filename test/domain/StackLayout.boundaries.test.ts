@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import * as hegel from "@hegeldev/hegel"
 import { Array as Arr } from "effect"
 
-import { layout, type Entry } from "../../src/domain/StackLayout.ts"
+import { layout, Row, type Entry } from "../../src/domain/StackLayout.ts"
 import { consistentEntries, rendered, worlds } from "../support/stacks.ts"
 
 describe("layout of touching Stacks", () => {
@@ -18,7 +18,7 @@ describe("layout of touching Stacks", () => {
       tc.note(rendered(rows).join(", "))
 
       for (const [before, after] of Arr.zip(rows, rows.slice(1))) {
-        if (before._tag !== "PullRequest" || after._tag !== "PullRequest") continue
+        if (!Row.$is("PullRequest")(before) || !Row.$is("PullRequest")(after)) continue
 
         const touching =
           before.marker !== "bullet" &&

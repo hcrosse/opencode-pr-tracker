@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import { Option } from "effect"
 
-import { failed, type Status } from "../../src/domain/Snapshot.ts"
+import { failed, PullRequestState, type Status } from "../../src/domain/Snapshot.ts"
 import type { Layout } from "../../src/rpc.ts"
 import { reviewWith } from "../support/reviews.ts"
 import { ref } from "../support/stacks.ts"
@@ -23,14 +23,17 @@ afterEach(destroyMounted)
 
 const pullRequest = ref("acme/api", 13)
 
-const changes = fresh(pullRequest, "Migrate sessions table", {
-  _tag: "Open",
-  behind: false,
-  ci: "pending",
-  draft: false,
-  mergeability: "mergeable",
-  review: reviewWith("changesRequested", [2, 1]),
-})
+const changes = fresh(
+  pullRequest,
+  "Migrate sessions table",
+  PullRequestState.cases.Open.make({
+    behind: false,
+    ci: "pending",
+    draft: false,
+    mergeability: "mergeable",
+    review: reviewWith("changesRequested", [2, 1]),
+  }),
+)
 
 async function show(status: Status, layout: Layout, width = 70): Promise<Rendered> {
   const rendered = await showSidebar(ready(viewOf([entryOf(pullRequest, status)], layout)), {
@@ -81,14 +84,17 @@ describe("Sidebar review state colors", () => {
   })
 
   test("shows an approval in green on a failing pull request, which stays red", async () => {
-    const failing = fresh(pullRequest, "Client wiring", {
-      _tag: "Open",
-      behind: false,
-      ci: "failed",
-      draft: false,
-      mergeability: "mergeable",
-      review: reviewWith("approved", [3, 0]),
-    })
+    const failing = fresh(
+      pullRequest,
+      "Client wiring",
+      PullRequestState.cases.Open.make({
+        behind: false,
+        ci: "failed",
+        draft: false,
+        mergeability: "mergeable",
+        review: reviewWith("approved", [3, 0]),
+      }),
+    )
 
     const { lines, style } = await show(failing, "compact")
 

@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Exit, Option, Result, type Schema } from "effect"
 
 import { parsePullRequestUrl, type PullRequestRef } from "../../../src/domain/PullRequest.ts"
-import type { GitHubApi, ItemResult } from "../../../src/ports/GitHub.ts"
+import { ItemResult, type GitHubApi } from "../../../src/ports/GitHub.ts"
 import {
   acmeRef,
   httpClient,
@@ -18,7 +18,7 @@ const oversized: PullRequestRef = Result.getOrThrow(
   parsePullRequestUrl("https://github.com/acme/api/pull/2147483648"),
 )
 
-const notFound: ItemResult = { _tag: "Failed", charged: false, diagnostic: "NotFound" }
+const notFound = ItemResult.Failed({ charged: false, diagnostic: "NotFound" })
 
 const tagOf = (item: ItemResult | undefined): string =>
   Option.match(Option.fromNullishOr(item), { onNone: () => "missing", onSome: (some) => some._tag })
@@ -93,7 +93,7 @@ describe("GitHub client lookup of a pull request GitHub does not find", () => {
     const result = await besideFound({ errors: [], pr0: {}, ref: acmeRef(1) })
 
     expect(Exit.map(result, (results) => results[0])).toEqual(
-      Exit.succeed({ _tag: "Failed", charged: false, diagnostic: "InvalidResponse" }),
+      Exit.succeed(ItemResult.Failed({ charged: false, diagnostic: "InvalidResponse" })),
     )
   })
 })

@@ -5,12 +5,11 @@ import { ConfigProvider, Effect, Exit, Fiber, Latch, Layer, Option, Redacted } f
 import { CommandFailed } from "../../../src/adapters/Command.ts"
 import { layer as tokenLayer, Token, type TokenApi } from "../../../src/adapters/github/Token.ts"
 import {
-  exitWith,
+  FixedOutcome,
   fixedCommands,
-  output,
   scriptedCommands,
   type CommandsFake,
-  type FixedOutcome,
+  type FixedOutcome as FixedOutcomeType,
 } from "../../support/commands.ts"
 
 const authToken = "gh auth token"
@@ -41,7 +40,7 @@ async function run<A, E>(
 const value = (token: TokenApi): Effect.Effect<string, unknown> =>
   Effect.map(token.get, Redacted.value)
 
-const withGh = (outcome: FixedOutcome): CommandsFake => fixedCommands({ [authToken]: outcome })
+const withGh = (outcome: FixedOutcomeType): CommandsFake => fixedCommands({ [authToken]: outcome })
 
 /** `gh auth token` answering its nth run with `answers[n]`; runs past the end find no `gh`. */
 const scriptedGh = (answers: readonly Effect.Effect<string, CommandFailed>[]): CommandsFake =>
@@ -123,13 +122,16 @@ describe("Token source order", () => {
     ["gh when the variables are empty", { GH_TOKEN: " ", GITHUB_TOKEN: "" }, "from-gh"],
     ["gh when the variables are unset", {}, "from-gh"],
   ] as const)("prefers %s", async (_name, environment, expected) => {
-    const result = await run({ commands: withGh(output("from-gh\n")), environment }, value)
+    const result = await run(
+      { commands: withGh(FixedOutcome.Output({ stdout: "from-gh\n" })), environment },
+      value,
+    )
 
     expect(result).toEqual(Exit.succeed(expected))
   })
 
   test("asks gh once, then again only after the token is invalidated", async () => {
-    const commands = withGh(output("from-gh\n"))
+    const commands = withGh(FixedOutcome.Output({ stdout: "from-gh\n" }))
 
     const result = await run({ commands }, (token: TokenApi) =>
       Effect.all([value(token), value(token), Effect.andThen(token.invalidate, value(token))]),
@@ -175,8 +177,12 @@ describe("Token loading", () => {
 describe("Token source failures", () => {
   test.each([
     ["gh is missing", fixedCommands({}), "GitHubCliMissing"],
-    ["gh is not logged in", withGh(exitWith(1, "not logged in")), "AuthenticationRequired"],
-    ["gh prints no token", withGh(output("\n")), "AuthenticationRequired"],
+    [
+      "gh is not logged in",
+      withGh(FixedOutcome.Exit({ exitCode: 1, stderr: "not logged in" })),
+      "AuthenticationRequired",
+    ],
+    ["gh prints no token", withGh(FixedOutcome.Output({ stdout: "\n" })), "AuthenticationRequired"],
   ] as const)("reports when %s", async (_name, commands, diagnostic) => {
     const result = await run({ commands }, value)
 
@@ -188,7 +194,10 @@ describe("Token source failures", () => {
       Effect.fail(new ConfigProvider.SourceError({ message: "unreadable" })),
     )
 
-    const result = await run({ commands: withGh(output("from-gh\n")), config: unreadable }, value)
+    const result = await run(
+      { commands: withGh(FixedOutcome.Output({ stdout: "from-gh\n" })), config: unreadable },
+      value,
+    )
 
     expect(Exit.hasDies(result)).toBe(true)
   })

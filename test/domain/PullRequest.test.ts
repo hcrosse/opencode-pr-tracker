@@ -7,6 +7,7 @@ import { Result } from "effect"
 import {
   parsePullRequestInput,
   parsePullRequestUrl,
+  PullRequestInput,
   samePullRequest,
 } from "../../src/domain/PullRequest.ts"
 import { pullRequestRefs, spellings, urlParts, type UrlParts } from "../support/generators.ts"
@@ -123,10 +124,9 @@ describe("parsePullRequestInput", () => {
     hegel.test((tc) => {
       const number = tc.draw(gs.integers({ maxValue: Number.MAX_SAFE_INTEGER, minValue: 1 }))
 
-      expect(Result.getOrThrow(parsePullRequestInput(String(number)))).toEqual({
-        _tag: "Number",
-        number,
-      })
+      expect(Result.getOrThrow(parsePullRequestInput(String(number)))).toEqual(
+        PullRequestInput.Number({ number }),
+      )
     })
   })
 
@@ -135,7 +135,7 @@ describe("parsePullRequestInput", () => {
       const ref = tc.draw(pullRequestRefs)
       const input = Result.getOrThrow(parsePullRequestInput(ref.url))
 
-      expect(input._tag === "Reference" && samePullRequest(input.ref, ref)).toBe(true)
+      expect(PullRequestInput.$is("Reference")(input) && samePullRequest(input.ref, ref)).toBe(true)
     })
   })
 

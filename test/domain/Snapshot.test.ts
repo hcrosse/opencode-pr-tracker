@@ -12,13 +12,29 @@ import {
   PullRequestState,
   pending,
   succeeded,
+  Status,
   type Diagnostic,
   type Snapshot,
-  type Status,
 } from "../../src/domain/Snapshot.ts"
 import { diagnostics, reviews, snapshots } from "../support/generators.ts"
 
 const fiveMinutes = 5 * 60 * 1000
+
+const latestEpochMillis = 4_102_444_800_000
+
+const openWithoutJson =
+  '{"_tag":"Open","behind":false,"ci":"passed","draft":false,"mergeability":"mergeable"}'
+
+const openWithout: unknown = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(
+  openWithoutJson,
+)
+
+const previousPullRequestState = Schema.TaggedStruct("Open", {
+  behind: Schema.Boolean,
+  ci: Ci,
+  draft: Schema.Boolean,
+  mergeability: Mergeability,
+})
 
 interface Success {
   readonly kind: "success"
@@ -37,7 +53,7 @@ type Event = Success | Failure
 const isSuccess = (event: Event): event is Success => event.kind === "success"
 
 const events = gs.composite((tc): Event[] => {
-  let at = tc.draw(gs.integers({ minValue: 0 }))
+  let at = tc.draw(gs.integers({ maxValue: latestEpochMillis, minValue: 0 }))
 
   return tc
     .draw(
@@ -53,7 +69,7 @@ const events = gs.composite((tc): Event[] => {
 })
 
 function expectedAfterFailure(log: readonly Event[], last: Failure): Status {
-  const unavailable: Status = { _tag: "Unavailable", diagnostic: last.diagnostic }
+  const unavailable = Status.cases.Unavailable.make({ diagnostic: last.diagnostic })
 
   const lastSuccess = Option.all({
     index: Arr.findLastIndex(log, isSuccess),
@@ -80,7 +96,11 @@ function expectedAfterFailure(log: readonly Event[], last: Failure): Status {
 
       return withdrawn
         ? unavailable
-        : { _tag: "Stale", diagnostic: last.diagnostic, failingSince, snapshot: success.snapshot }
+        : Status.cases.Stale.make({
+            diagnostic: last.diagnostic,
+            failingSince,
+            snapshot: success.snapshot,
+          })
     },
   })
 }
@@ -91,7 +111,7 @@ function expectedStatus(log: readonly Event[]): Status {
     onNone: () => pending,
     onSome: (last) =>
       isSuccess(last)
-        ? { _tag: "Fresh", snapshot: last.snapshot }
+        ? Status.cases.Fresh.make({ snapshot: last.snapshot })
         : expectedAfterFailure(log, last),
   })
 }
@@ -125,16 +145,16 @@ describe("refresh status", () => {
       const snapshot = tc.draw(snapshots)
       const stale = failed(succeeded(snapshot), "GitHubUnavailable", 0)
 
-      expect(failed(stale, "GitHubUnavailable", fiveMinutes - 1)).toEqual({
-        _tag: "Stale",
-        diagnostic: "GitHubUnavailable",
-        failingSince: 0,
-        snapshot,
-      })
-      expect(failed(stale, "GitHubUnavailable", fiveMinutes)).toEqual({
-        _tag: "Unavailable",
-        diagnostic: "GitHubUnavailable",
-      })
+      expect(failed(stale, "GitHubUnavailable", fiveMinutes - 1)).toEqual(
+        Status.cases.Stale.make({
+          diagnostic: "GitHubUnavailable",
+          failingSince: 0,
+          snapshot,
+        }),
+      )
+      expect(failed(stale, "GitHubUnavailable", fiveMinutes)).toEqual(
+        Status.cases.Unavailable.make({ diagnostic: "GitHubUnavailable" }),
+      )
     })
   })
 })
@@ -143,47 +163,66 @@ describe("refresh status while rate limited", () => {
   test("keeps the last snapshot, marked stale, however long GitHub rate limits", () => {
     hegel.test((tc) => {
       const snapshot = tc.draw(snapshots)
-      const later = tc.draw(gs.integers({ minValue: fiveMinutes }))
+      const later = tc.draw(gs.integers({ maxValue: latestEpochMillis, minValue: fiveMinutes }))
       const stale = failed(succeeded(snapshot), "RateLimited", 0)
 
-      expect(failed(stale, "RateLimited", later)).toEqual({
-        _tag: "Stale",
-        diagnostic: "RateLimited",
-        failingSince: 0,
-        snapshot,
-      })
+      expect(failed(stale, "RateLimited", later)).toEqual(
+        Status.cases.Stale.make({
+          diagnostic: "RateLimited",
+          failingSince: 0,
+          snapshot,
+        }),
+      )
     })
   })
 })
 
-const openWithout = {
-  _tag: "Open",
-  behind: false,
-  ci: "passed",
-  draft: false,
-  mergeability: "mergeable",
-} as const
-
 describe("snapshot compatibility across versions", () => {
   test("reads an open state from a server without review state as having none", () => {
     expect(Schema.decodeUnknownSync(PullRequestState)(openWithout)).toEqual(
-      Object.assign({ review: noReview }, openWithout),
+      PullRequestState.cases.Open.make({
+        behind: false,
+        ci: "passed",
+        draft: false,
+        mergeability: "mergeable",
+        review: noReview,
+      }),
     )
   })
 
   test("sends review state that a client without it ignores", () => {
-    const previous = Schema.TaggedStruct("Open", {
-      behind: Schema.Boolean,
-      ci: Ci,
-      draft: Schema.Boolean,
-      mergeability: Mergeability,
-    })
-
     hegel.test((tc) => {
       const review = tc.draw(reviews)
-      const encoded = Schema.encodeSync(PullRequestState)(Object.assign({ review }, openWithout))
 
-      expect(Schema.decodeUnknownSync(previous)(encoded)).toEqual(openWithout)
+      const encoded = Schema.encodeSync(PullRequestState)(
+        PullRequestState.cases.Open.make({
+          behind: false,
+          ci: "passed",
+          draft: false,
+          mergeability: "mergeable",
+          review,
+        }),
+      )
+
+      expect(Schema.decodeUnknownSync(previousPullRequestState)(encoded)).toEqual(
+        previousPullRequestState.make({
+          behind: false,
+          ci: "passed",
+          draft: false,
+          mergeability: "mergeable",
+        }),
+      )
     })
+  })
+})
+
+describe("tagged schema encoding", () => {
+  test("keeps the existing tags in status and pull request state JSON", () => {
+    expect(
+      JSON.stringify(Schema.encodeSync(PullRequestState)(PullRequestState.cases.Merged.make({}))),
+    ).toBe('{"_tag":"Merged"}')
+    expect(JSON.stringify(Schema.encodeSync(Status)(Status.cases.Pending.make({})))).toBe(
+      '{"_tag":"Pending"}',
+    )
   })
 })

@@ -5,7 +5,7 @@ import { FetchHttpClient, type HttpClient } from "effect/unstable/http"
 import type { PullRequestRef } from "../../domain/PullRequest.ts"
 import type { ReviewMode } from "../../domain/Review.ts"
 import type { Diagnostic } from "../../domain/Snapshot.ts"
-import { charged, failed, GitHub, GitHubFailure, type ItemResult } from "../../ports/GitHub.ts"
+import { charged, failed, GitHub, GitHubFailure, ItemResult } from "../../ports/GitHub.ts"
 import { CommandRunner, layer as commandLayer } from "../Command.ts"
 import { pullRequestAnswer, type Answer } from "./Answer.ts"
 import { allContexts, type Asking, type ContextNode } from "./Contexts.ts"
@@ -42,12 +42,9 @@ const itemResult = Effect.fn("itemResult")(function* (
   if (Result.isFailure(raw)) return failed(raw.failure)
 
   const node = Schema.decodeUnknownOption(PullRequestNode)(raw.success)
-
-  if (Option.isNone(node)) return failed("InvalidResponse")
-
   const review = Schema.decodeUnknownOption(reviewStates[request.reviews])(raw.success)
 
-  if (Option.isNone(review)) return failed("InvalidResponse")
+  if (Option.isNone(node) || Option.isNone(review)) return failed("InvalidResponse")
 
   return yield* allContexts(request, ref, node.value.statusCheckRollup).pipe(
     Effect.tap((contexts: readonly ContextNode[]) =>
@@ -56,10 +53,11 @@ const itemResult = Effect.fn("itemResult")(function* (
         ...review.value.unrecognized,
       ]),
     ),
-    Effect.map((contexts: readonly ContextNode[]): ItemResult => ({
-      _tag: "Reported",
-      report: toReport(ref, node.value, { contexts, review: review.value.review }),
-    })),
+    Effect.map((contexts: readonly ContextNode[]): ItemResult =>
+      ItemResult.Reported({
+        report: toReport(ref, node.value, { contexts, review: review.value.review }),
+      }),
+    ),
     Effect.catchTags({
       RequestCharged: ({ charge }: { readonly charge: Charge }) =>
         Effect.sync(() => {

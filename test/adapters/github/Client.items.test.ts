@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Exit, Schema } from "effect"
 
 import type { Diagnostic } from "../../../src/domain/Snapshot.ts"
-import type { GitHubApi, ItemResult } from "../../../src/ports/GitHub.ts"
+import { ItemResult, type GitHubApi } from "../../../src/ports/GitHub.ts"
 import {
   httpClient,
   recordedNode,
@@ -32,7 +32,7 @@ describe("GitHub client failures of one pull request", () => {
     const results = Exit.isSuccess(result) ? [...result.value.values()] : []
 
     expect(results.map((item: ItemResult) => item._tag)).toEqual(["Reported", "Failed"])
-    expect(results[1]).toEqual({ _tag: "Failed", charged: false, diagnostic: "NotFound" })
+    expect(results[1]).toEqual(ItemResult.Failed({ charged: false, diagnostic: "NotFound" }))
   })
 
   test.each([
@@ -48,7 +48,7 @@ describe("GitHub client failures of one pull request", () => {
       const result = await runClient({ http }, (github: GitHubApi) => github.fetch([tracker127]))
 
       expect(Exit.map(result, (results) => [...results.values()])).toEqual(
-        Exit.succeed([{ _tag: "Failed", charged: false, diagnostic: "InvalidResponse" }]),
+        Exit.succeed([ItemResult.Failed({ charged: false, diagnostic: "InvalidResponse" })]),
       )
     },
   )
@@ -67,7 +67,7 @@ describe("GitHub client failures in a pull request's data", () => {
     const result = await runClient({ http }, (github: GitHubApi) => github.fetch([tracker127]))
 
     expect(Exit.map(result, (results) => results.get(tracker127.url))).toEqual(
-      Exit.succeed({ _tag: "Failed", charged: false, diagnostic: "InvalidResponse" }),
+      Exit.succeed(ItemResult.Failed({ charged: false, diagnostic: "InvalidResponse" })),
     )
     expect(http.requests).toHaveLength(2)
   })
@@ -78,7 +78,7 @@ describe("GitHub client failures in a pull request's data", () => {
     const result = await runClient({ http }, fetchOne)
 
     expect(Exit.map(result, (results) => results.get(acmeRef(1).url))).toEqual(
-      Exit.succeed({ _tag: "Failed", charged: false, diagnostic: "InvalidResponse" }),
+      Exit.succeed(ItemResult.Failed({ charged: false, diagnostic: "InvalidResponse" })),
     )
   })
 })
@@ -150,7 +150,7 @@ const badGateway = (): Response => new Response("bad gateway", { status: 502 })
 describe("GitHub client on a later page of checks that fails", () => {
   test("fails the pull request, keeping the page's diagnostic", async () => {
     expect(await resultFor(withNextPage("c1"), badGateway)).toEqual(
-      Exit.succeed({ _tag: "Failed", charged: true, diagnostic: "GitHubUnavailable" }),
+      Exit.succeed(ItemResult.Failed({ charged: true, diagnostic: "GitHubUnavailable" })),
     )
   })
 })
@@ -184,7 +184,7 @@ describe("GitHub client on further pages of checks", () => {
     ],
   ])("fails the pull request on %s", async (_name, { diagnostic, first, later }: PageCase) => {
     expect(await resultFor(first, later)).toEqual(
-      Exit.succeed({ _tag: "Failed", charged: false, diagnostic }),
+      Exit.succeed(ItemResult.Failed({ charged: false, diagnostic })),
     )
   })
 })

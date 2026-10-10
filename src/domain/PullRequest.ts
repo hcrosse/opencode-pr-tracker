@@ -1,4 +1,4 @@
-import { Option, Result, Schema } from "effect"
+import { Data, Option, Result, Schema } from "effect"
 
 const canonicalSegment = /^(?!\.{1,2}$)[a-z0-9._-]+$/u
 
@@ -42,9 +42,12 @@ export class InvalidPullRequestInput extends Schema.TaggedError<InvalidPullReque
 ) {}
 
 /** A pull request named by URL, or by number within a repository resolved later. */
-export type PullRequestInput =
-  | { readonly _tag: "Reference"; readonly ref: PullRequestRef }
-  | { readonly _tag: "Number"; readonly number: number }
+export type PullRequestInput = Data.TaggedEnum<{
+  Reference: { readonly ref: PullRequestRef }
+  Number: { readonly number: number }
+}>
+
+export const PullRequestInput = Data.taggedEnum<PullRequestInput>()
 
 const decodeRef = Schema.decodeUnknownOption(PullRequestRef)
 
@@ -75,11 +78,11 @@ export function parsePullRequestInput(
   const reference = parsePullRequestUrl(input)
 
   if (Result.isSuccess(reference))
-    return Result.succeed({ _tag: "Reference", ref: reference.success })
+    return Result.succeed(PullRequestInput.Reference({ ref: reference.success }))
 
   const number = decimal.test(input) ? decodeNumber(Number(input)) : Option.none()
 
   return Result.fromOption(number, () => new InvalidPullRequestInput({ input })).pipe(
-    Result.map((value) => ({ _tag: "Number", number: value })),
+    Result.map((value) => PullRequestInput.Number({ number: value })),
   )
 }

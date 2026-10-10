@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { Array as Arr, Effect, Option } from "effect"
 
+import { Status } from "../../src/domain/Snapshot.ts"
 import { actions, type Actions, type Services } from "../../src/tui/Actions.ts"
 import { OpenFailed } from "../../src/tui/Browser.ts"
 import {
@@ -204,7 +205,7 @@ describe("sync command", () => {
     setup.tracker.show(
       viewOf([
         entryOf(bottom, fresh(bottom, "Bottom")),
-        entryOf(second, { _tag: "Unavailable", diagnostic: "GitHubUnavailable" }),
+        entryOf(second, Status.cases.Unavailable.make({ diagnostic: "GitHubUnavailable" })),
       ]),
     )
     await setup.run((commands) => commands.sync)

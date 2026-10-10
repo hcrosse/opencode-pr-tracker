@@ -8,9 +8,10 @@ import {
   Tracker,
   layer as trackerLayer,
 } from "../../src/application/Tracker.ts"
+import { PullRequestInput } from "../../src/domain/PullRequest.ts"
 import { GitHub, GitHubFailure } from "../../src/ports/GitHub.ts"
 import { memoryStorage } from "../support/application.ts"
-import { byUrl, ref } from "../support/tracker.ts"
+import { ref } from "../support/tracker.ts"
 
 /** A GitHub port whose fetch answers for none of the pull requests it is asked about. */
 const silentGitHub = Layer.succeed(
@@ -29,9 +30,9 @@ describe("Tracker attach with an incomplete answer", () => {
 
     const result = await Effect.runPromise(
       Effect.exit(
-        Tracker.use((tracker) => tracker.attach("session", byUrl(ref(1)), "/work")).pipe(
-          Effect.provide(layer),
-        ),
+        Tracker.use((tracker) =>
+          tracker.attach("session", PullRequestInput.Reference({ ref: ref(1) }), "/work"),
+        ).pipe(Effect.provide(layer)),
       ),
     )
 

@@ -6,21 +6,21 @@ import { Result } from "effect"
 import { appearance } from "../../src/domain/Appearance.ts"
 import { parsePullRequestUrl } from "../../src/domain/PullRequest.ts"
 import { noReview } from "../../src/domain/Review.ts"
-import { failed, succeeded, type PullRequestState } from "../../src/domain/Snapshot.ts"
+import { failed, PullRequestState, Status, succeeded } from "../../src/domain/Snapshot.ts"
 import { diagnostics, snapshots } from "../support/generators.ts"
 
 const ref = Result.getOrThrow(parsePullRequestUrl("github.com/acme/api/pull/1"))
 
 const open = (
   fields: Partial<Omit<Extract<PullRequestState, { _tag: "Open" }>, "_tag">>,
-): PullRequestState => ({
-  _tag: "Open",
-  behind: fields.behind ?? false,
-  ci: fields.ci ?? "passed",
-  draft: fields.draft ?? false,
-  mergeability: fields.mergeability ?? "mergeable",
-  review: noReview,
-})
+): PullRequestState =>
+  PullRequestState.cases.Open.make({
+    behind: fields.behind ?? false,
+    ci: fields.ci ?? "passed",
+    draft: fields.draft ?? false,
+    mergeability: fields.mergeability ?? "mergeable",
+    review: noReview,
+  })
 
 const shown = (state: PullRequestState): readonly [string, string, boolean] => {
   const { label, strikethrough, tone } = appearance(succeeded({ ref, state, title: "Title" }))
@@ -31,8 +31,8 @@ const shown = (state: PullRequestState): readonly [string, string, boolean] => {
 describe("appearance precedence", () => {
   // The precedence table from docs/behaviors.md.
   test.each([
-    ["merged", { _tag: "Merged" }, ["purple", "merged", true]],
-    ["closed", { _tag: "Closed" }, ["red", "closed", true]],
+    ["merged", PullRequestState.cases.Merged.make({}), ["purple", "merged", true]],
+    ["closed", PullRequestState.cases.Closed.make({}), ["red", "closed", true]],
     [
       "conflict over failed CI and draft",
       open({ ci: "failed", draft: true, mergeability: "conflicting" }),
@@ -87,7 +87,7 @@ describe("appearance of unloaded, unavailable and stale statuses", () => {
     ["NotFound", "inaccessible"],
     ["InvalidResponse", "invalid response"],
   ] as const)("labels an unavailable %s status %s", (diagnostic, label) => {
-    expect(appearance({ _tag: "Unavailable", diagnostic })).toEqual({
+    expect(appearance(Status.cases.Unavailable.make({ diagnostic }))).toEqual({
       label,
       stale: false,
       strikethrough: false,
@@ -96,7 +96,7 @@ describe("appearance of unloaded, unavailable and stale statuses", () => {
   })
 
   test("shows a pull request that has not loaded yet as loading", () => {
-    expect(appearance({ _tag: "Pending" }).label).toBe("loading")
+    expect(appearance(Status.cases.Pending.make({})).label).toBe("loading")
   })
 
   test("shows a stale status like its last snapshot, marked stale", () => {

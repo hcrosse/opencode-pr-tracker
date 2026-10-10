@@ -5,6 +5,7 @@ import { Effect, Exit, Layer, Logger, Option, Redacted, Result, Schema } from "e
 import { TestClock } from "effect/testing"
 import {
   HttpClient,
+  HttpBody,
   HttpClientError,
   HttpClientResponse,
   type HttpClientRequest,
@@ -43,7 +44,7 @@ export const recordedNode = (name: string, alias: string): Schema.Json =>
   })
 
 function bodyOf(request: HttpClientRequest.HttpClientRequest): RequestBody {
-  const bytes = request.body._tag === "Uint8Array" ? request.body.body : new Uint8Array()
+  const bytes = request.body instanceof HttpBody.Uint8Array ? request.body.body : new Uint8Array()
 
   return Schema.decodeUnknownSync(RequestBody)(new TextDecoder().decode(bytes))
 }

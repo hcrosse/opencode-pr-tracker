@@ -4,7 +4,7 @@ import type { PullRequestRef } from "../domain/PullRequest.ts"
 import type { Status } from "../domain/Snapshot.ts"
 import { agreedStacks, type Membership } from "../domain/StackLayout.ts"
 import { group, type Attachment, type Tracking } from "../domain/Tracking.ts"
-import { GitHub, type GitHubApi, type ItemResult, type Report } from "../ports/GitHub.ts"
+import { GitHub, ItemResult, type GitHubApi, type Report } from "../ports/GitHub.ts"
 import type { StoredStateInvalid } from "../ports/TrackingRepository.ts"
 import { continueAfter, logBySeverity } from "./Causes.ts"
 import { FetchQueue } from "./FetchQueue.ts"
@@ -237,7 +237,7 @@ export const layer = Layer.effect(
       poll: poll(state),
       attached: (sessionID, ref, report) =>
         Effect.andThen(
-          remember(cache, new Map([[ref.url, { _tag: "Reported", report }]])),
+          remember(cache, new Map([[ref.url, ItemResult.Reported({ report })]])),
           fetchAndShow(state, sessionID, notYetKnown),
         ),
       refresh: (sessionID) =>

@@ -1,4 +1,4 @@
-import { Context, Option, Schema, type Effect } from "effect"
+import { Context, Data, Option, Schema, type Effect } from "effect"
 
 import type { PullRequestRef } from "../domain/PullRequest.ts"
 import { Diagnostic, type Snapshot } from "../domain/Snapshot.ts"
@@ -25,26 +25,40 @@ export class RepositoryUnavailable extends Schema.TaggedError<RepositoryUnavaila
 ) {}
 
 export type ItemResult =
-  | { readonly _tag: "Reported"; readonly report: Report }
-  | { readonly _tag: "Failed"; readonly diagnostic: Diagnostic; readonly charged: false }
-  /**
-   * A failure that cost GitHub work: a query it could not finish in time, another server error, or
-   * a pull request left unsent because an earlier query timed out. Repeating such a query soon is
-   * likely to fail the same way.
-   */
-  | { readonly _tag: "Failed"; readonly diagnostic: "GitHubUnavailable"; readonly charged: true }
+  | Data.TaggedEnum<{
+      Reported: { readonly report: Report }
+      Failed: { readonly diagnostic: Diagnostic; readonly charged: false }
+    }>
+  | Data.TaggedEnum<{
+      Failed: { readonly diagnostic: "GitHubUnavailable"; readonly charged: true }
+    }>
 
-export const failed = (diagnostic: Diagnostic): ItemResult => ({
-  _tag: "Failed",
-  charged: false,
-  diagnostic,
-})
+type ItemResultConstructors = Omit<Data.TaggedEnum.Constructor<ItemResult>, "Failed"> & {
+  readonly Failed: (fields: FailedFields) => FailedItemResult
+}
 
-export const charged: ItemResult = {
-  _tag: "Failed",
+type FailedItemResult = Extract<ItemResult, { readonly _tag: "Failed" }>
+
+type FailedFields<Value = FailedItemResult> = Value extends { readonly _tag: "Failed" }
+  ? Omit<Value, "_tag">
+  : never
+
+const itemResult = Data.taggedEnum<ItemResult>()
+
+export const ItemResult: ItemResultConstructors = {
+  Reported: (fields) => itemResult.Reported(fields),
+  Failed: (fields) => itemResult.Failed(fields),
+  $is: itemResult.$is,
+  $match: itemResult.$match,
+}
+
+export const failed = (diagnostic: Diagnostic): ItemResult =>
+  ItemResult.Failed({ charged: false, diagnostic })
+
+export const charged: ItemResult = ItemResult.Failed({
   charged: true,
   diagnostic: "GitHubUnavailable",
-}
+})
 
 export interface GitHubApi {
   /**

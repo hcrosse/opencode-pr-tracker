@@ -3,13 +3,14 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Exit } from "effect"
 
 import type { TrackerApi } from "../../src/application/Tracker.ts"
-import type { PullRequestRef } from "../../src/domain/PullRequest.ts"
-import { byUrl, numbers, ref, refs, run, world } from "../support/tracker.ts"
+import { PullRequestInput, type PullRequestRef } from "../../src/domain/PullRequest.ts"
+import { numbers, ref, refs, run, world } from "../support/tracker.ts"
 
 const attachAll = (tracker: TrackerApi, values: readonly number[]): Effect.Effect<void, unknown> =>
   Effect.forEach(
     refs(values),
-    (pullRequest: PullRequestRef) => tracker.attach("session", byUrl(pullRequest), "/work"),
+    (pullRequest: PullRequestRef) =>
+      tracker.attach("session", PullRequestInput.Reference({ ref: pullRequest }), "/work"),
     { discard: true },
   )
 
@@ -46,7 +47,10 @@ describe("Tracker regroup concurrency", () => {
         yield* attachAll(tracker, [5, 8, 6])
 
         yield* Effect.all(
-          [tracker.regroup("session", [refs([5, 6])]), tracker.detach("session", byUrl(ref(8)))],
+          [
+            tracker.regroup("session", [refs([5, 6])]),
+            tracker.detach("session", PullRequestInput.Reference({ ref: ref(8) })),
+          ],
           { concurrency: "unbounded" },
         )
 

@@ -5,7 +5,7 @@ import path from "node:path"
 
 import { Effect, Fiber } from "effect"
 
-import { CommandRunner, layer } from "../../src/adapters/Command.ts"
+import { CommandFailed, CommandMissing, CommandRunner, layer } from "../../src/adapters/Command.ts"
 
 const run = async <A, E>(program: Effect.Effect<A, E, CommandRunner>): Promise<A> => {
   const result = await Effect.runPromise(program.pipe(Effect.provide(layer)))
@@ -30,7 +30,9 @@ describe("CommandRunner", () => {
       ),
     )
 
-    expect(failure).toMatchObject({ _tag: "CommandFailed", exitCode: 3, stderr: "oops\n" })
+    expect(failure).toMatchObject(
+      new CommandFailed({ command: "sh", exitCode: 3, stderr: "oops\n" }),
+    )
   })
 
   test("reports a missing executable", async () => {
@@ -40,10 +42,7 @@ describe("CommandRunner", () => {
       ),
     )
 
-    expect(failure).toMatchObject({
-      _tag: "CommandMissing",
-      command: "definitely-not-a-command-xyz",
-    })
+    expect(failure).toMatchObject(new CommandMissing({ command: "definitely-not-a-command-xyz" }))
   })
 })
 

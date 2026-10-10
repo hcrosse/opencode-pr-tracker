@@ -18,6 +18,7 @@ Lint uses a strict oxlint profile (`.oxlintrc.jsonc`) with every correctness, pe
 - Passing a function reference directly to `map` or `filter` is rejected. Use an arrow function.
 - Parameters must be readonly types, and statements need blank lines between logical groups.
 - Test functions count toward the 40-line function limit.
+- Use `Schema.TaggedUnion` for wire unions and namespaced `Data.taggedEnum` for owned unions. Branch with `match`, `$match`, or `$is`; do not use `Predicate.isTagged` with string literals or `.guards` on typed values.
 
 Run `bun run lint` on a new module as soon as it compiles, not only at the end.
 

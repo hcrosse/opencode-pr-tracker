@@ -2,7 +2,6 @@ import { Effect, Exit, Layer } from "effect"
 
 import { layer as storageLayer } from "../../src/adapters/Storage.ts"
 import { layer as trackerLayer, Tracker, type TrackerApi } from "../../src/application/Tracker.ts"
-import type { PullRequestInput, PullRequestRef } from "../../src/domain/PullRequest.ts"
 import { maximumAttachments, type Tracking } from "../../src/domain/Tracking.ts"
 import {
   memoryStorage,
@@ -16,11 +15,6 @@ import {
 import { ref, refs } from "./monitor.ts"
 
 export { ref, refs }
-
-export const byUrl = (pullRequest: PullRequestRef): PullRequestInput => ({
-  _tag: "Reference",
-  ref: pullRequest,
-})
 
 export const numbers = (tracking: Tracking): number[] =>
   tracking.map((attachment) => attachment.ref.number)

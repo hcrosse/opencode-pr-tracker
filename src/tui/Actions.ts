@@ -1,7 +1,8 @@
 /** What the slash commands do, over a small port to the terminal and the tracker client. */
-import { Effect, Option } from "effect"
+import { Effect, Option, Result } from "effect"
 
 import type { PullRequestRef } from "../domain/PullRequest.ts"
+import { Status } from "../domain/Snapshot.ts"
 import type { View } from "../rpc.ts"
 import type { OpenFailed } from "./Browser.ts"
 import type { RequestFailed, TrackerClientApi } from "./Client.ts"
@@ -67,7 +68,7 @@ function report<A>(
   notice: (value: A) => Option.Option<Notice>,
 ): Effect.Effect<void> {
   return Effect.map(Effect.result(effect), (result) => {
-    if (result._tag === "Failure") {
+    if (Result.isFailure(result)) {
       terminal.notify("error", result.failure.message)
 
       return
@@ -87,7 +88,7 @@ function pick(
 ): Effect.Effect<Option.Option<PullRequestRef>> {
   return Effect.result(tracker.list(sessionID)).pipe(
     Effect.flatMap((result) => {
-      if (result._tag === "Failure") {
+      if (Result.isFailure(result)) {
         terminal.notify("error", result.failure.message)
 
         return Effect.succeedNone
@@ -118,8 +119,13 @@ const changed = (outcome: { readonly message: string }): Option.Option<Notice> =
 function syncedNotice(view: View): Option.Option<Notice> {
   const count = view.entries.length
 
-  const failed = view.entries.filter(
-    (entry) => entry.status._tag === "Stale" || entry.status._tag === "Unavailable",
+  const failed = view.entries.filter((entry) =>
+    Status.match(entry.status, {
+      Fresh: () => false,
+      Pending: () => false,
+      Stale: () => true,
+      Unavailable: () => true,
+    }),
   ).length
 
   if (count === 0) return Option.some(["info", "No pull requests are attached."])

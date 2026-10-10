@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import { Option } from "effect"
 
-import type { Status } from "../../src/domain/Snapshot.ts"
+import { PullRequestState, Status } from "../../src/domain/Snapshot.ts"
 import {
   bottom,
   destroyMounted,
@@ -21,14 +21,13 @@ import {
 afterEach(destroyMounted)
 
 describe("Sidebar failed refreshes", () => {
-  const stale: Status = {
-    _tag: "Stale",
+  const stale: Status = Status.cases.Stale.make({
     diagnostic: "GitHubUnavailable",
     failingSince: 0,
-    snapshot: { ref: bottom, state: { _tag: "Merged" }, title: "Old title" },
-  }
+    snapshot: { ref: bottom, state: PullRequestState.cases.Merged.make({}), title: "Old title" },
+  })
 
-  const unavailable: Status = { _tag: "Unavailable", diagnostic: "AuthenticationRequired" }
+  const unavailable = Status.cases.Unavailable.make({ diagnostic: "AuthenticationRequired" })
 
   test("keeps a stale status, and replaces an unavailable one with its diagnostic", async () => {
     const { lines } = await showSidebar(
@@ -52,7 +51,9 @@ describe("Sidebar failed refreshes", () => {
   })
 
   test("shows a pull request that has not been fetched yet as loading", async () => {
-    const { lines } = await showSidebar(ready(viewOf([entryOf(bottom, { _tag: "Pending" })])))
+    const { lines } = await showSidebar(
+      ready(viewOf([entryOf(bottom, Status.cases.Pending.make({}))])),
+    )
 
     expect(lines()).toEqual(["Pull requests", "", "•  acme/api#1 loading", "   Loading title"])
   })
@@ -60,7 +61,10 @@ describe("Sidebar failed refreshes", () => {
 
 describe("Sidebar status colors", () => {
   test("strikes through a merged pull request in purple, with a struck muted title", async () => {
-    const view = viewOf([entryOf(bottom, fresh(bottom, "Landed", { _tag: "Merged" }))])
+    const view = viewOf([
+      entryOf(bottom, fresh(bottom, "Landed", PullRequestState.cases.Merged.make({}))),
+    ])
+
     const { style } = await showSidebar(ready(view))
 
     expect(style("acme/api#1")).toEqual(

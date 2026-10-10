@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
-import { agreedStacks, layout, type Entry } from "../../src/domain/StackLayout.ts"
-import { entry, ref, rendered, stack, type Stack } from "../support/stacks.ts"
+import { agreedStacks, layout, Membership, type Entry } from "../../src/domain/StackLayout.ts"
+import { entry, ref, rendered, type Stack } from "../support/stacks.ts"
 
 const members: Stack = [
   ref("acme/api", 1),
@@ -12,7 +12,9 @@ const members: Stack = [
 ]
 
 const attachedAt = (positions: readonly number[]): Entry[] =>
-  positions.map((position) => entry(members[position] ?? members[0], stack("s", members)))
+  positions.map((position) =>
+    entry(members[position] ?? members[0], Membership.cases.Stack.make({ id: "s", members })),
+  )
 
 describe("layout of a partly attached Stack", () => {
   test.each<readonly [string, readonly number[], readonly string[]]>([
@@ -37,7 +39,9 @@ describe("layout of several Stacks", () => {
 
     const entries = [
       ...attachedAt([0, 1]),
-      ...second.map((member) => entry(member, stack("t", second))),
+      ...second.map((member) =>
+        entry(member, Membership.cases.Stack.make({ id: "t", members: second })),
+      ),
     ]
 
     expect(rendered(layout(entries))).toEqual([
@@ -55,8 +59,10 @@ describe("layout of several Stacks", () => {
     const second: Stack = [moved, ref("acme/api", 4)]
 
     const entries = [
-      ...first.slice(0, 2).map((member) => entry(member, stack("s", first))),
-      entry(ref("acme/api", 4), stack("t", second)),
+      ...first
+        .slice(0, 2)
+        .map((member) => entry(member, Membership.cases.Stack.make({ id: "s", members: first }))),
+      entry(ref("acme/api", 4), Membership.cases.Stack.make({ id: "t", members: second })),
     ]
 
     expect(rendered(layout(entries))).toEqual(["bullet/none", "bullet/none", "bullet/none"])
@@ -66,7 +72,9 @@ describe("layout of several Stacks", () => {
 const other: Stack = [ref("acme/web", 1), ref("acme/web", 2), ref("acme/web", 3)]
 
 const otherAt = (positions: readonly number[]): Entry[] =>
-  positions.map((position) => entry(other[position] ?? other[0], stack("t", other)))
+  positions.map((position) =>
+    entry(other[position] ?? other[0], Membership.cases.Stack.make({ id: "t", members: other })),
+  )
 
 describe("layout of touching Stacks", () => {
   test.each<readonly [string, readonly Entry[], readonly string[]]>([
@@ -91,7 +99,10 @@ describe("layout of touching Stacks", () => {
   })
 
   test("keeps open edges that only touch a standalone pull request", () => {
-    const entries = [...attachedAt([0, 1]), entry(ref("acme/web", 9), { _tag: "Standalone" })]
+    const entries = [
+      ...attachedAt([0, 1]),
+      entry(ref("acme/web", 9), Membership.cases.Standalone.make({})),
+    ]
 
     expect(rendered(layout(entries))).toEqual(["first/continues", "middle/open", "bullet/none"])
   })
@@ -101,11 +112,15 @@ describe("layout of inconsistent membership", () => {
   test.each([
     [
       "a member reports standalone",
-      [...attachedAt([0, 1]), entry(ref("acme/api", 3), { _tag: "Standalone" })],
+      [...attachedAt([0, 1]), entry(ref("acme/api", 3), Membership.cases.Standalone.make({}))],
     ],
     [
       "a standalone pull request splits the Stack",
-      [...attachedAt([0]), entry(ref("acme/web", 1), { _tag: "Standalone" }), ...attachedAt([1])],
+      [
+        ...attachedAt([0]),
+        entry(ref("acme/web", 1), Membership.cases.Standalone.make({})),
+        ...attachedAt([1]),
+      ],
     ],
     ["members are attached in reverse order", attachedAt([1, 0])],
   ])("falls back to bullets when %s", (_name: string, entries: readonly Entry[]) => {
@@ -120,9 +135,9 @@ describe("agreed Stacks with a reporter it does not list", () => {
     const outsider = ref("acme/api", 9)
 
     const entries = [
-      entry(first, stack("s", reportedStack)),
-      entry(outsider, stack("s", reportedStack)),
-      entry(second ?? first, { _tag: "Standalone" }),
+      entry(first, Membership.cases.Stack.make({ id: "s", members: reportedStack })),
+      entry(outsider, Membership.cases.Stack.make({ id: "s", members: reportedStack })),
+      entry(second ?? first, Membership.cases.Standalone.make({})),
     ]
 
     expect(agreedStacks(entries)).toEqual([])

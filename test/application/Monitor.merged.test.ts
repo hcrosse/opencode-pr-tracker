@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Exit, Option } from "effect"
 import { TestClock } from "effect/testing"
 
+import { PullRequestState } from "../../src/domain/Snapshot.ts"
 import { agreedStacks, type Membership } from "../../src/domain/StackLayout.ts"
 import { reported, ScriptedGitHub, standalone, type GitHubScript } from "../support/application.ts"
 import {
@@ -22,7 +23,7 @@ function mergedBottom(): ScriptedGitHub {
   const github = new ScriptedGitHub()
   const stack = stackOf("s", [5, 6, 7])
 
-  github.script(ref(5), reported(ref(5), { _tag: "Merged" }, stack))
+  github.script(ref(5), reported(ref(5), PullRequestState.cases.Merged.make({}), stack))
   scriptAll(github, [6, 7], stack)
   scriptAll(github, [8, 10], standalone)
 
@@ -32,7 +33,7 @@ function mergedBottom(): ScriptedGitHub {
 /** Links #10 onto the Stack; `mergedReport` is what GitHub then says about merged #5. */
 function linkTen(github: Readonly<GitHubScript>, mergedReport: Membership): void {
   scriptAll(github, [6, 7, 10], stackOf("s", [5, 6, 7, 10]))
-  github.script(ref(5), reported(ref(5), { _tag: "Merged" }, mergedReport))
+  github.script(ref(5), reported(ref(5), PullRequestState.cases.Merged.make({}), mergedReport))
 }
 
 /** Takes #7 out of the Stack; merged #5 then reports the Stack without it. */
@@ -41,7 +42,7 @@ function unlinkSeven(github: Readonly<GitHubScript>): void {
 
   scriptAll(github, [6], remaining)
   scriptAll(github, [7], standalone)
-  github.script(ref(5), reported(ref(5), { _tag: "Merged" }, remaining))
+  github.script(ref(5), reported(ref(5), PullRequestState.cases.Merged.make({}), remaining))
 }
 
 /** Polls once open pull requests are due again, with session "a" still watched. */

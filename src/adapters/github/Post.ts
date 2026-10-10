@@ -4,7 +4,7 @@ import { HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/u
 
 import { Diagnostic } from "../../domain/Snapshot.ts"
 import type { GitHubFailure } from "../../ports/GitHub.ts"
-import { RateLimit, verdictOf, type Evidence, type RateLimitApi } from "./RateLimit.ts"
+import { RateLimit, Verdict, verdictOf, type Evidence, type RateLimitApi } from "./RateLimit.ts"
 import { Token, type TokenApi } from "./Token.ts"
 
 const endpoint = "https://api.github.com/graphql"
@@ -148,7 +148,7 @@ const unanswered = Effect.fn("unanswered")(function* (
 
   const verdict = verdictOf(evidence, yield* millis)
 
-  if (verdict._tag === "Allowed") return yield* unavailable(evidence, unusable === "CutOff")
+  if (Verdict.$is("Allowed")(verdict)) return yield* unavailable(evidence, unusable === "CutOff")
 
   yield* rateLimit.limited(verdict.until)
 

@@ -7,11 +7,11 @@ import { nextRefresh } from "../../src/domain/RefreshPolicy.ts"
 import { noReview } from "../../src/domain/Review.ts"
 import {
   failed,
+  PullRequestState,
+  Status,
   succeeded,
   type Ci,
   type Mergeability,
-  type PullRequestState,
-  type Status,
 } from "../../src/domain/Snapshot.ts"
 
 const ref = Result.getOrThrow(parsePullRequestUrl("github.com/acme/api/pull/1"))
@@ -19,21 +19,29 @@ const ref = Result.getOrThrow(parsePullRequestUrl("github.com/acme/api/pull/1"))
 const fresh = (state: PullRequestState): Status => succeeded({ ref, state, title: "Title" })
 
 const openWith = (ci: Ci, mergeability: Mergeability): Status =>
-  fresh({ _tag: "Open", behind: false, ci, draft: false, mergeability, review: noReview })
+  fresh(
+    PullRequestState.cases.Open.make({
+      behind: false,
+      ci,
+      draft: false,
+      mergeability,
+      review: noReview,
+    }),
+  )
 
 describe("nextRefresh", () => {
   test.each([
     ["an open pull request with checks running", openWith("pending", "mergeable")],
     ["an open pull request with a check in an unknown state", openWith("unknown", "mergeable")],
     ["an open pull request whose mergeability GitHub is computing", openWith("passed", "unknown")],
-    ["a pull request that has not loaded", { _tag: "Pending" } satisfies Status],
+    ["a pull request that has not loaded", Status.cases.Pending.make({})],
     [
       "an unavailable pull request",
-      { _tag: "Unavailable", diagnostic: "GitHubUnavailable" } satisfies Status,
+      Status.cases.Unavailable.make({ diagnostic: "GitHubUnavailable" }),
     ],
     [
       "a merged pull request whose last refresh failed",
-      failed(fresh({ _tag: "Merged" }), "GitHubUnavailable", 0),
+      failed(fresh(PullRequestState.cases.Merged.make({})), "GitHubUnavailable", 0),
     ],
   ])("refreshes %s every 15 seconds", (_name, status) => {
     expect(nextRefresh(status, 0)).toEqual(Option.some(Duration.seconds(15)))
@@ -48,11 +56,13 @@ describe("nextRefresh", () => {
   })
 
   test("refreshes a closed pull request, which may be reopened, every 5 minutes", () => {
-    expect(nextRefresh(fresh({ _tag: "Closed" }), 0)).toEqual(Option.some(Duration.minutes(5)))
+    expect(nextRefresh(fresh(PullRequestState.cases.Closed.make({})), 0)).toEqual(
+      Option.some(Duration.minutes(5)),
+    )
   })
 
   test("stops refreshing a merged pull request", () => {
-    expect(nextRefresh(fresh({ _tag: "Merged" }), 0)).toEqual(Option.none())
+    expect(nextRefresh(fresh(PullRequestState.cases.Merged.make({})), 0)).toEqual(Option.none())
   })
 })
 
@@ -65,7 +75,7 @@ describe("nextRefresh after charged failures", () => {
     [7, 900],
     [40, 900],
   ])("after %i charged failures, retries in %i seconds", (failures, seconds) => {
-    const status = failed(fresh({ _tag: "Closed" }), "GitHubUnavailable", 0)
+    const status = failed(fresh(PullRequestState.cases.Closed.make({})), "GitHubUnavailable", 0)
 
     expect(nextRefresh(status, failures)).toEqual(Option.some(Duration.seconds(seconds)))
   })

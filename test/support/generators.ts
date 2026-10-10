@@ -7,7 +7,7 @@ import {
   Ci,
   Diagnostic,
   Mergeability,
-  type PullRequestState,
+  PullRequestState,
   type Snapshot,
 } from "../../src/domain/Snapshot.ts"
 
@@ -72,16 +72,19 @@ export const reviews: gs.Generator<Review> = gs.composite((tc) => {
 })
 
 export const pullRequestStates: gs.Generator<PullRequestState> = gs.oneOf<PullRequestState>(
-  gs.record({
-    _tag: gs.just("Open" as const),
-    behind: gs.oneOf<boolean | "unknown">(gs.booleans(), gs.just("unknown" as const)),
-    ci,
-    draft: gs.booleans(),
-    mergeability,
-    review: reviews,
-  }),
-  gs.just({ _tag: "Merged" }),
-  gs.just({ _tag: "Closed" }),
+  gs
+    .record({
+      behind: gs.oneOf<boolean | "unknown">(gs.booleans(), gs.just("unknown" as const)),
+      ci,
+      draft: gs.booleans(),
+      mergeability,
+      review: reviews,
+    })
+    .map((fields: Parameters<typeof PullRequestState.cases.Open.make>[0]) =>
+      PullRequestState.cases.Open.make(fields),
+    ),
+  gs.just(PullRequestState.cases.Merged.make({})),
+  gs.just(PullRequestState.cases.Closed.make({})),
 )
 
 export const snapshots: gs.Generator<Snapshot> = gs.record({

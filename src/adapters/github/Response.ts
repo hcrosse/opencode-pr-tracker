@@ -3,7 +3,7 @@ import { Array as Arr, Option, Result, Schema } from "effect"
 import { classifyCi } from "../../domain/Checks.ts"
 import type { PullRequestRef } from "../../domain/PullRequest.ts"
 import type { Review } from "../../domain/Review.ts"
-import type { Diagnostic, Mergeability, PullRequestState } from "../../domain/Snapshot.ts"
+import { PullRequestState, type Diagnostic, type Mergeability } from "../../domain/Snapshot.ts"
 import type { ItemResult, Report } from "../../ports/GitHub.ts"
 import { Contexts, toCheck, type ContextNode } from "./Contexts.ts"
 import { enumeration, Unrecognized, unrecognizedAmong } from "./Enumeration.ts"
@@ -61,12 +61,11 @@ export interface Details {
 }
 
 function toState(node: PullRequestNode, { contexts, review }: Details): PullRequestState {
-  if (node.state === "MERGED") return { _tag: "Merged" }
+  if (node.state === "MERGED") return PullRequestState.cases.Merged.make({})
 
-  if (node.state === "CLOSED") return { _tag: "Closed" }
+  if (node.state === "CLOSED") return PullRequestState.cases.Closed.make({})
 
-  return {
-    _tag: "Open",
+  return PullRequestState.cases.Open.make({
     behind:
       node.mergeStateStatus instanceof Unrecognized
         ? "unknown"
@@ -75,7 +74,7 @@ function toState(node: PullRequestNode, { contexts, review }: Details): PullRequ
     draft: node.isDraft,
     mergeability: mergeabilities[node.mergeable],
     review,
-  }
+  })
 }
 
 export function toReport(ref: PullRequestRef, node: PullRequestNode, details: Details): Report {

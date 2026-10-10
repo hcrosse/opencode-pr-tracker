@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test"
 
 import { Effect, Exit, Logger, Option, Schema } from "effect"
 
-import type { PullRequestState } from "../../../src/domain/Snapshot.ts"
-import type { GitHubApi, ItemResult } from "../../../src/ports/GitHub.ts"
+import { PullRequestState } from "../../../src/domain/Snapshot.ts"
+import { ItemResult, type GitHubApi } from "../../../src/ports/GitHub.ts"
 import { httpClient, recordedPullRequest, runClient, tracker127 } from "../../support/github.ts"
 import { found } from "../../support/lookup.ts"
 
@@ -70,7 +70,7 @@ const fetchLogged = (github: GitHubApi): Effect.Effect<Fetched, unknown> =>
 
 const stateOf = (result: Option.Option<ItemResult>): Option.Option<PullRequestState> =>
   Option.flatMap(result, (item: ItemResult) =>
-    item._tag === "Reported" ? Option.some(item.report.snapshot.state) : Option.none(),
+    ItemResult.$is("Reported")(item) ? Option.some(item.report.snapshot.state) : Option.none(),
   )
 
 describe("GitHub values the client does not know", () => {
@@ -79,14 +79,18 @@ describe("GitHub values the client does not know", () => {
     const result = await runClient({ http }, fetchLogged)
     const fetched = Exit.isSuccess(result) ? result.value : { result: Option.none(), warnings: [] }
 
-    expect(stateOf(fetched.result)).toMatchObject(
-      Option.some({
-        _tag: "Open",
-        behind: "unknown",
-        ci: "unknown",
-        review: { decision: "unknown" },
-      }),
-    )
+    const hasUnknownOpenState = Option.match(stateOf(fetched.result), {
+      onNone: () => false,
+      onSome: (state) =>
+        PullRequestState.match(state, {
+          Closed: () => false,
+          Merged: () => false,
+          Open: ({ behind, ci, review }) =>
+            behind === "unknown" && ci === "unknown" && review.decision === "unknown",
+        }),
+    })
+
+    expect(hasUnknownOpenState).toBe(true)
 
     const pullRequest = tracker127.url
 

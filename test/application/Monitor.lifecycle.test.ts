@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Exit, Option } from "effect"
 import { TestClock } from "effect/testing"
 
+import { PullRequestInput } from "../../src/domain/PullRequest.ts"
 import {
   fetchedSince,
   merged,
@@ -74,7 +75,7 @@ describe("Monitor sessions in use", () => {
     const result = await run(github, (app: App) =>
       Effect.gen(function* () {
         for (const pullRequest of [checking, merged]) {
-          yield* app.tracker.attach("a", { _tag: "Reference", ref: pullRequest }, "/work")
+          yield* app.tracker.attach("a", PullRequestInput.Reference({ ref: pullRequest }), "/work")
         }
 
         yield* app.monitor.refresh("a")
@@ -105,7 +106,7 @@ describe("Monitor forgetting", () => {
         yield* TestClock.adjust("5 minutes")
         yield* app.monitor.watch("a")
         yield* app.monitor.watch("b")
-        yield* app.tracker.detach("a", { _tag: "Reference", ref: closed })
+        yield* app.tracker.detach("a", PullRequestInput.Reference({ ref: closed }))
         yield* app.monitor.forget("b")
 
         const before = github.fetches.length

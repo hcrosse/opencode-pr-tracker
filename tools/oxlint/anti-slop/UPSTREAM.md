@@ -7,13 +7,14 @@ This snapshot follows v0.1.2 (`e8c4880471b23ab7f216fba7b27d173a6ef07d4c`). Upstr
 ## Included files
 
 - `src/index.ts`, `src/rules/*.ts` excluding tests, and `src/shared/*.ts`, copied verbatim with `src/` removed.
+- `src/effect/index.ts`, `src/effect/rules/*.ts` excluding tests, and `src/effect/shared/*.ts`, copied verbatim with `src/` removed.
 - `src/vendor/eslint-stylistic/`, including its license and upstream adaptation record, copied verbatim.
 - Root `LICENSE`, copied verbatim.
 
-The framework-neutral template includes only the generic plugin. Effect-specific source, upstream tests, installer skills, and upstream development configuration are omitted. Test references and commands in the bundled Stylistic record refer to the anti-slop source repository.
+This project enables both the generic and the Effect plugin. Upstream tests, installer skills, and upstream development configuration are omitted. Test references and commands in the bundled Stylistic record refer to the anti-slop source repository.
 
 ## Local policy and updates
 
-There are no local changes to the copied source. The template owns rule enablement in `.oxlintrc.jsonc` and excludes the plugin from project formatting and linting. Oxlint and `@oxlint/plugins` remain pinned together in `package.json`.
+Local change: `tools/oxlint/anti-slop/effect/rules/no-manual-tag-comparison.ts` directs its comparison and switch diagnostics to type-checked union helpers and Effect guards instead of `Predicate.isTagged` with a literal. TypeScript cannot check that predicate's literal against the union. Future upstream updates must preserve or re-apply this change. The project owns rule enablement in `.oxlintrc.jsonc` and excludes the plugin from project formatting and linting. Oxlint and `@oxlint/plugins` remain pinned together in `package.json`.
 
 For a future update, compare local source against this commit before incorporating the incoming revision. Preserve local customizations, review added rules, and update this record. Keep both licenses. Verify this project's lint, formatting, tests, and build, including rule rejection and spacing autofix behavior.

@@ -1,4 +1,4 @@
-import { Duration, Effect, Match, Schema, SchemaGetter } from "effect"
+import { Duration, Effect, Schema, SchemaGetter } from "effect"
 
 import { PullRequestRef } from "./PullRequest.ts"
 import { amongFetched, Decision, noReview, Review, Threads } from "./Review.ts"
@@ -111,7 +111,7 @@ export const PullRequestState = Schema.Union([
   ),
   Schema.TaggedStruct("Merged", {}),
   Schema.TaggedStruct("Closed", {}),
-])
+]).pipe(Schema.toTaggedUnion("_tag"))
 
 export type PullRequestState = typeof PullRequestState.Type
 
@@ -136,26 +136,26 @@ export const Diagnostic = Schema.Literals([
 
 export type Diagnostic = typeof Diagnostic.Type
 
-export const Status = Schema.Union([
-  Schema.TaggedStruct("Pending", {}),
-  Schema.TaggedStruct("Fresh", { snapshot: Snapshot }),
-  Schema.TaggedStruct("Stale", {
+export const Status = Schema.TaggedUnion({
+  Pending: {},
+  Fresh: { snapshot: Snapshot },
+  Stale: {
     diagnostic: Diagnostic,
     failingSince: Schema.Int,
     snapshot: Snapshot,
-  }),
-  Schema.TaggedStruct("Unavailable", { diagnostic: Diagnostic }),
-])
+  },
+  Unavailable: { diagnostic: Diagnostic },
+})
 
 export type Status = typeof Status.Type
 
 /** How long a pull request may keep failing before its last good snapshot is withdrawn. */
 export const staleLimit = Duration.minutes(5)
 
-export const pending: Status = { _tag: "Pending" }
+export const pending: Status = Status.cases.Pending.make({})
 
 export function succeeded(snapshot: Snapshot): Status {
-  return { _tag: "Fresh", snapshot }
+  return Status.cases.Fresh.make({ snapshot })
 }
 
 /**
@@ -163,13 +163,13 @@ export function succeeded(snapshot: Snapshot): Status {
  * the last snapshot for as long as the limit lasts.
  */
 export function failed(status: Status, diagnostic: Diagnostic, now: number): Status {
-  return Match.valueTags(status, {
-    Fresh: ({ snapshot }): Status => ({ _tag: "Stale", diagnostic, failingSince: now, snapshot }),
-    Pending: (): Status => ({ _tag: "Unavailable", diagnostic }),
-    Stale: ({ failingSince, snapshot }): Status =>
+  return Status.match(status, {
+    Fresh: ({ snapshot }) => Status.cases.Stale.make({ diagnostic, failingSince: now, snapshot }),
+    Pending: () => Status.cases.Unavailable.make({ diagnostic }),
+    Stale: ({ failingSince, snapshot }) =>
       diagnostic !== "RateLimited" && now - failingSince >= Duration.toMillis(staleLimit)
-        ? { _tag: "Unavailable", diagnostic }
-        : { _tag: "Stale", diagnostic, failingSince, snapshot },
-    Unavailable: (): Status => ({ _tag: "Unavailable", diagnostic }),
+        ? Status.cases.Unavailable.make({ diagnostic })
+        : Status.cases.Stale.make({ diagnostic, failingSince, snapshot }),
+    Unavailable: () => Status.cases.Unavailable.make({ diagnostic }),
   })
 }

@@ -1,7 +1,7 @@
 import { Array as Arr, Option } from "effect"
 
 import type { PullRequestRef } from "../../domain/PullRequest.ts"
-import { maximumBatch } from "../../ports/GitHub.ts"
+import { ItemResult, maximumBatch } from "../../ports/GitHub.ts"
 import type { Entry } from "./Response.ts"
 
 /**
@@ -40,6 +40,6 @@ export class Suspects {
   /** Clears the pull requests of an answered request whose result cost GitHub nothing. */
   public recorded(entries: readonly Entry[]): void {
     for (const [url, result] of entries)
-      if (result._tag === "Reported" || !result.charged) this.urls.delete(url)
+      if (ItemResult.$is("Reported")(result) || !result.charged) this.urls.delete(url)
   }
 }

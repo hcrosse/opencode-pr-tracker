@@ -1,6 +1,4 @@
-import { Match } from "effect"
-
-import type { Diagnostic, PullRequestState, Status } from "./Snapshot.ts"
+import { PullRequestState, Status, type Diagnostic } from "./Snapshot.ts"
 
 export type Tone = "green" | "yellow" | "red" | "purple" | "gray"
 
@@ -55,7 +53,7 @@ function openAppearance(open: Open): Appearance {
 }
 
 function stateAppearance(state: PullRequestState): Appearance {
-  return Match.valueTags(state, {
+  return PullRequestState.match(state, {
     Closed: () => shown("red", "closed", true),
     Merged: () => shown("purple", "merged", true),
     Open: openAppearance,
@@ -67,7 +65,7 @@ function markStale(fresh: Appearance): Appearance {
 }
 
 export function appearance(status: Status): Appearance {
-  return Match.valueTags(status, {
+  return Status.match(status, {
     Fresh: ({ snapshot }) => stateAppearance(snapshot.state),
     Pending: () => shown("gray", "loading"),
     Stale: ({ snapshot }) => markStale(stateAppearance(snapshot.state)),
