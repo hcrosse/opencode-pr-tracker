@@ -4,6 +4,7 @@ import { Option } from "effect"
 
 import { batch } from "../../../src/adapters/github/Query.ts"
 import { noReview } from "../../../src/domain/Review.ts"
+import { ItemResult } from "../../../src/ports/GitHub.ts"
 import { fetch127, reviewOfResult } from "../../support/reviewResponses.ts"
 
 const reviewFields = [
@@ -58,7 +59,7 @@ describe("review state on", () => {
     const { result } = await fetch127({ reviewThreads: null }, "all")
 
     expect(result).toEqual(
-      Option.some({ _tag: "Failed", charged: false, diagnostic: "InvalidResponse" }),
+      Option.some(ItemResult.Failed({ charged: false, diagnostic: "InvalidResponse" })),
     )
   })
 })

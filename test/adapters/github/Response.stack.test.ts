@@ -6,6 +6,7 @@ import { toReport, type PullRequestNode } from "../../../src/adapters/github/Res
 import { toMembership } from "../../../src/adapters/github/Stacks.ts"
 import { parsePullRequestUrl } from "../../../src/domain/PullRequest.ts"
 import { noReview } from "../../../src/domain/Review.ts"
+import { Membership } from "../../../src/domain/StackLayout.ts"
 
 interface StackEntry {
   readonly position: number
@@ -59,7 +60,10 @@ describe("Stack membership", () => {
     const membership = toMembership(withStack(stackOf(2, false, [second, first])))
 
     const numbers = Option.map(membership, (found) =>
-      found._tag === "Stack" ? found.members.map((member) => member.number) : [],
+      Membership.match(found, {
+        Stack: ({ members }) => members.map((member) => member.number),
+        Standalone: () => [],
+      }),
     )
 
     expect(numbers).toEqual(Option.some([1, 2]))
@@ -70,7 +74,10 @@ describe("Stack membership", () => {
     const membership = toMembership(withStack(stackOf(2, false, [first, mixed])))
 
     const urls = Option.map(membership, (found) =>
-      found._tag === "Stack" ? found.members.map((member) => member.url) : [],
+      Membership.match(found, {
+        Stack: ({ members }) => members.map((member) => member.url),
+        Standalone: () => [],
+      }),
     )
 
     expect(urls).toEqual(Option.some([first.url, second.url]))

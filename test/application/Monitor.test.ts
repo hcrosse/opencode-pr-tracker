@@ -4,6 +4,7 @@ import { Effect, Exit, Fiber, Option, Stream } from "effect"
 import { TestClock } from "effect/testing"
 
 import type { SessionView } from "../../src/application/Monitor.ts"
+import { Membership } from "../../src/domain/StackLayout.ts"
 import { openState, reported } from "../support/application.ts"
 import {
   checking,
@@ -94,7 +95,7 @@ describe("Monitor views", () => {
   // The sidebar draws Stacks from the membership each refresh reports.
   test("shows the Stack membership GitHub last reported", async () => {
     const github = scripted()
-    const stack = { _tag: "Stack", id: "s", members: [open, other] } as const
+    const stack = Membership.cases.Stack.make({ id: "s", members: [open, other] })
 
     github.script(open, reported(open, openState, stack))
     github.script(other, reported(other, openState, stack))

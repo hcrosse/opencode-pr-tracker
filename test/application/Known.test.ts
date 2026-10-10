@@ -3,13 +3,16 @@ import { describe, expect, test } from "bun:test"
 import { Option } from "effect"
 
 import { afterRefresh, unknown, type Known } from "../../src/application/Known.ts"
-import type { ItemResult } from "../../src/ports/GitHub.ts"
+import { ItemResult } from "../../src/ports/GitHub.ts"
 import { openState, reported, standalone } from "../support/application.ts"
 import { ref } from "../support/monitor.ts"
 
-const timedOut: ItemResult = { _tag: "Failed", charged: true, diagnostic: "GitHubUnavailable" }
+const timedOut: ItemResult = ItemResult.Failed({
+  charged: true,
+  diagnostic: "GitHubUnavailable",
+})
 
-const limited: ItemResult = { _tag: "Failed", charged: false, diagnostic: "RateLimited" }
+const limited: ItemResult = ItemResult.Failed({ charged: false, diagnostic: "RateLimited" })
 
 const open = reported(ref(1), openState, standalone)
 

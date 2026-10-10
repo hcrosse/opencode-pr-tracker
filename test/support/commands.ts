@@ -1,29 +1,27 @@
-import { Effect, Layer, Option } from "effect"
+import { Data, Effect, Layer, Option } from "effect"
 
 import { CommandFailed, CommandMissing, CommandRunner } from "../../src/adapters/Command.ts"
 
 /** How a fixed command finishes. */
-export type FixedOutcome =
-  | { readonly _tag: "Output"; readonly stdout: string }
-  | { readonly _tag: "Exit"; readonly exitCode: number; readonly stderr: string }
+export type FixedOutcome = Data.TaggedEnum<{
+  Output: { readonly stdout: string }
+  Exit: { readonly exitCode: number; readonly stderr: string }
+}>
 
-export const output = (stdout: string): FixedOutcome => ({ _tag: "Output", stdout })
+export const FixedOutcome = Data.taggedEnum<FixedOutcome>()
 
-export const exitWith = (exitCode: number, stderr: string): FixedOutcome => ({
-  _tag: "Exit",
-  exitCode,
-  stderr,
-})
+export const output = FixedOutcome.Output
+
+export const exitWith = FixedOutcome.Exit
 
 function outcomeEffect(
   command: string,
   outcome: FixedOutcome,
 ): Effect.Effect<string, CommandFailed> {
-  return outcome._tag === "Output"
-    ? Effect.succeed(outcome.stdout)
-    : Effect.fail(
-        new CommandFailed({ command, exitCode: outcome.exitCode, stderr: outcome.stderr }),
-      )
+  return FixedOutcome.$match(outcome, {
+    Exit: ({ exitCode, stderr }) => Effect.fail(new CommandFailed({ command, exitCode, stderr })),
+    Output: ({ stdout }) => Effect.succeed(stdout),
+  })
 }
 
 export interface CommandsFake {

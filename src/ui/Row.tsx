@@ -1,14 +1,14 @@
 /** @jsxImportSource @opentui/solid */
 import type { RGBA } from "@opentui/core"
 import type { JSX } from "@opentui/solid"
-import { Match, Option } from "effect"
+import { Option } from "effect"
 import { createSignal, For, Show } from "solid-js"
 
 import { appearance, type Appearance } from "../domain/Appearance.ts"
 import type { PullRequestRef } from "../domain/PullRequest.ts"
 import { reviewOfStatus, reviewParts, type ReviewPart } from "../domain/ReviewAppearance.ts"
-import type { Status } from "../domain/Snapshot.ts"
-import type { Connector, Entry, Marker, Row } from "../domain/StackLayout.ts"
+import { Status } from "../domain/Snapshot.ts"
+import { Row, type Connector, type Entry, type Marker } from "../domain/StackLayout.ts"
 import type { Palette } from "./Palette.ts"
 
 export interface SidebarEntry extends Entry {
@@ -105,7 +105,7 @@ function Marked(props: {
 }
 
 const titleOf = (status: Status): string =>
-  Match.valueTags(status, {
+  Status.match(status, {
     Fresh: ({ snapshot }) => snapshot.title,
     Pending: () => "Loading title",
     Stale: ({ snapshot }) => snapshot.title,
@@ -186,7 +186,7 @@ export function SidebarRow(props: {
   readonly palette: Palette
   readonly onOpen: (ref: PullRequestRef) => void
 }): JSX.Element {
-  return Match.valueTags(props.row, {
+  return Row.$match(props.row, {
     Gap: ({ count }) => <GapRow count={count} palette={props.palette} />,
     PullRequest: ({ connector, entry, marker }) => (
       <PullRequestRow

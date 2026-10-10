@@ -3,7 +3,7 @@ import * as gs from "@hegeldev/hegel/generators"
 import { Array as Arr, Option, Result } from "effect"
 
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
-import type { Entry, Membership, Row } from "../../src/domain/StackLayout.ts"
+import { Membership, Row, type Entry } from "../../src/domain/StackLayout.ts"
 import { attach, detach, type Attaching, type Tracking } from "../../src/domain/Tracking.ts"
 
 export type Stack = readonly [PullRequestRef, ...PullRequestRef[]]
@@ -21,8 +21,6 @@ export const pooledRefs = gs.composite((tc) =>
   ),
 )
 
-export const stack = (id: string, members: Stack): Membership => ({ _tag: "Stack", id, members })
-
 export const entry = (member: PullRequestRef, membership: Membership): Entry => ({
   membership: Option.some(membership),
   ref: member,
@@ -31,7 +29,10 @@ export const entry = (member: PullRequestRef, membership: Membership): Entry => 
 /** Each row as `marker/connector`, or `gap N`. */
 export const rendered = (rows: readonly Row<Entry>[]): string[] =>
   rows.map((row) =>
-    row._tag === "Gap" ? `gap ${String(row.count)}` : `${row.marker}/${row.connector}`,
+    Row.$match(row, {
+      Gap: ({ count }) => `gap ${String(count)}`,
+      PullRequest: ({ connector, marker }) => `${marker}/${connector}`,
+    }),
   )
 
 /** Distinct pull requests split into Stacks and standalone pull requests. */
@@ -70,9 +71,11 @@ export const worlds = gs.composite((tc): World => {
 
   const membership = (member: PullRequestRef): Membership =>
     Arr.matchLeft(stackOf(member), {
-      onEmpty: (): Membership => ({ _tag: "Standalone" }),
+      onEmpty: (): Membership => Membership.cases.Standalone.make({}),
       onNonEmpty: (head: PullRequestRef, tail: readonly PullRequestRef[]): Membership =>
-        tail.length === 0 ? { _tag: "Standalone" } : stack(head.url, [head, ...tail]),
+        tail.length === 0
+          ? Membership.cases.Standalone.make({})
+          : Membership.cases.Stack.make({ id: head.url, members: [head, ...tail] }),
     })
 
   return { membership, primary, stackOf }

@@ -7,23 +7,23 @@ import type { Review } from "../../src/domain/Review.ts"
 import { reviewOfStatus, reviewParts } from "../../src/domain/ReviewAppearance.ts"
 import {
   failed,
+  PullRequestState,
   succeeded,
   type Ci,
-  type PullRequestState,
   type Status,
 } from "../../src/domain/Snapshot.ts"
 import { listLine } from "../../src/server/Tools.ts"
 import { acmeRef } from "../support/github.ts"
 import { reviewWith } from "../support/reviews.ts"
 
-const open = (ci: Ci, review: Review, draft = false): PullRequestState => ({
-  _tag: "Open",
-  behind: false,
-  ci,
-  draft,
-  mergeability: "mergeable",
-  review,
-})
+const open = (ci: Ci, review: Review, draft = false): PullRequestState =>
+  PullRequestState.cases.Open.make({
+    behind: false,
+    ci,
+    draft,
+    mergeability: "mergeable",
+    review,
+  })
 
 const fresh = (number: number, state: PullRequestState): Status =>
   succeeded({ ref: acmeRef(number), state, title: "Title" })
@@ -165,7 +165,7 @@ const examples: readonly Example[] = [
   ],
   [
     "merged",
-    [10, fresh(10, { _tag: "Merged" })],
+    [10, fresh(10, PullRequestState.cases.Merged.make({}))],
     [[], "- https://github.com/acme/api/pull/10 (merged)"],
   ],
 ]

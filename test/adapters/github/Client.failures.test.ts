@@ -3,9 +3,14 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Exit } from "effect"
 
 import type { PullRequestRef } from "../../../src/domain/PullRequest.ts"
-import type { GitHubApi } from "../../../src/ports/GitHub.ts"
+import {
+  GitHubFailure,
+  ItemResult,
+  RepositoryUnavailable,
+  type GitHubApi,
+} from "../../../src/ports/GitHub.ts"
 import { memoryStorage } from "../../support/application.ts"
-import { exitWith, fixedCommands, output } from "../../support/commands.ts"
+import { FixedOutcome, fixedCommands } from "../../support/commands.ts"
 import { fixedToken, httpClient, runClient, acmeRef, fetchOne } from "../../support/github.ts"
 import { requested } from "../../support/lookup.ts"
 
@@ -96,8 +101,8 @@ describe("GitHub client batch failures", () => {
       Exit.map(result, (results) => [results.get(acmeRef(1).url), results.get(acmeRef(21).url)]),
     ).toEqual(
       Exit.succeed([
-        { _tag: "Failed", charged: false, diagnostic: "NotFound" },
-        { _tag: "Failed", charged: true, diagnostic: "GitHubUnavailable" },
+        ItemResult.Failed({ charged: false, diagnostic: "NotFound" }),
+        ItemResult.Failed({ charged: true, diagnostic: "GitHubUnavailable" }),
       ]),
     )
   })
@@ -130,7 +135,10 @@ describe("GitHub client repository lookup", () => {
   const http = httpClient(() => Response.json({ data: {} }))
 
   test("resolves a number in the checked-out repository", async () => {
-    const commands = fixedCommands({ [view]: output('{"url":"https://github.com/Acme/API"}\n') })
+    const commands = fixedCommands({
+      [view]: FixedOutcome.Output({ stdout: '{"url":"https://github.com/Acme/API"}\n' }),
+    })
+
     const result = await runClient({ commands, http }, lookup)
 
     expect(Exit.map(result, (found) => found.url)).toEqual(
@@ -141,15 +149,15 @@ describe("GitHub client repository lookup", () => {
   test.each([
     [
       "the directory is not a GitHub repository",
-      { [view]: exitWith(1, "not a git repository") },
-      { _tag: "RepositoryUnavailable" },
+      { [view]: FixedOutcome.Exit({ exitCode: 1, stderr: "not a git repository" }) },
+      new RepositoryUnavailable({ directory: "/work" }),
     ],
     [
       "gh prints something unexpected",
-      { [view]: output("not json") },
-      { _tag: "RepositoryUnavailable" },
+      { [view]: FixedOutcome.Output({ stdout: "not json" }) },
+      new RepositoryUnavailable({ directory: "/work" }),
     ],
-    ["gh is not installed", {}, { _tag: "GitHubFailure", diagnostic: "GitHubCliMissing" }],
+    ["gh is not installed", {}, new GitHubFailure({ diagnostic: "GitHubCliMissing" })],
   ] as const)("fails when %s", async (_name, outcomes, expected) => {
     const result = await runClient({ commands: fixedCommands(outcomes), http }, lookup)
 
@@ -168,7 +176,9 @@ describe("GitHub client repository lookup during a rate limit", () => {
       () => new Response("", { headers: { "retry-after": "60" }, status: 403 }),
     )
 
-    const commands = fixedCommands({ [view]: output('{"url":"https://github.com/acme/api"}\n') })
+    const commands = fixedCommands({
+      [view]: FixedOutcome.Output({ stdout: '{"url":"https://github.com/acme/api"}\n' }),
+    })
 
     await runClient({ http: limited, storage }, fetchOne)
 

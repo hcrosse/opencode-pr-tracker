@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { Effect, Exit } from "effect"
 
-import { maximumBatch, type GitHubApi, type ItemResult } from "../../../src/ports/GitHub.ts"
+import { ItemResult, maximumBatch, type GitHubApi } from "../../../src/ports/GitHub.ts"
 import {
   acmeRef,
   httpClient,
@@ -22,15 +22,9 @@ const refs = Array.from({ length: maximumBatch + 1 }, (_, index: number) => acme
 
 const [first, last] = [acmeRef(1), acmeRef(maximumBatch + 1)]
 
-const unavailable = (charged: boolean): ItemResult => ({
-  _tag: "Failed",
-  charged,
-  diagnostic: "GitHubUnavailable",
-})
+const notFound = ItemResult.Failed({ charged: false, diagnostic: "NotFound" })
 
-const notFound: ItemResult = { _tag: "Failed", charged: false, diagnostic: "NotFound" }
-
-const invalid: ItemResult = { _tag: "Failed", charged: false, diagnostic: "InvalidResponse" }
+const invalid = ItemResult.Failed({ charged: false, diagnostic: "InvalidResponse" })
 
 /** Answers the first request with `first` and every later one as GitHub would. */
 const firstAnswer =
@@ -76,43 +70,71 @@ describe("GitHub client timeouts", () => {
     const http = httpClient(firstAnswer(timedOut))
     const result = await runClient({ http }, fetchTwice)
 
-    expect(result).toEqual(Exit.succeed([unavailable(true), unavailable(true)]))
+    expect(result).toEqual(
+      Exit.succeed([
+        ItemResult.Failed({ charged: true, diagnostic: "GitHubUnavailable" }),
+        ItemResult.Failed({ charged: true, diagnostic: "GitHubUnavailable" }),
+      ]),
+    )
     // The last pull request's batch was not sent, and nothing waits before the next fetch.
     expect(sizesOf(http.requests)).toEqual([maximumBatch, 1])
   })
 })
 
-describe("GitHub client failures that are not timeouts", () => {
-  test.each([
-    ["a 500", (): Response => new Response("", { status: 500 }), unavailable(true)],
-    ["a 503", (): Response => new Response("", { status: 503 }), unavailable(true)],
-    ["JSON that is not a GraphQL answer", (): Response => Response.json(["not", "an"]), invalid],
-    ["a JSON object without data or errors", (): Response => Response.json({}), invalid],
-    [
-      "a JSON message without data or errors",
-      (): Response => Response.json({ message: "Something went wrong" }),
-      invalid,
-    ],
-    [
-      "an HTML page with quotes and unclosed brackets",
-      (): Response =>
-        new Response('<html><body><p class="x">Proxy error: {"retry" [</p></body></html>', {
-          headers: { "content-type": "text/html" },
-          status: 200,
-        }),
-      invalid,
-    ],
-    [
-      "a GraphQL error without data",
-      (): Response => Response.json({ data: null, errors: [{ message: "Something went wrong" }] }),
-      unavailable(false),
-    ],
-    ["a request that never reached GitHub", (): "unreachable" => "unreachable", unavailable(false)],
-  ])("sends every batch after %s", async (_name, answer, expected: ItemResult) => {
-    const http = httpClient(firstAnswer(answer))
-    const result = await runClient({ http }, fetchTwice)
+type NonTimeoutFailure = readonly [
+  name: string,
+  answer: () => Response | "unreachable",
+  expected: ItemResult,
+]
 
-    expect(result).toEqual(Exit.succeed([expected, notFound]))
-    expect(sizesOf(http.requests)).toEqual([maximumBatch, 1, 1])
-  })
+const nonTimeoutFailures: readonly NonTimeoutFailure[] = [
+  [
+    "a 500",
+    (): Response => new Response("", { status: 500 }),
+    ItemResult.Failed({ charged: true, diagnostic: "GitHubUnavailable" }),
+  ],
+  [
+    "a 503",
+    (): Response => new Response("", { status: 503 }),
+    ItemResult.Failed({ charged: true, diagnostic: "GitHubUnavailable" }),
+  ],
+  ["JSON that is not a GraphQL answer", (): Response => Response.json(["not", "an"]), invalid],
+  ["a JSON object without data or errors", (): Response => Response.json({}), invalid],
+  [
+    "a JSON message without data or errors",
+    (): Response => Response.json({ message: "Something went wrong" }),
+    invalid,
+  ],
+  [
+    "an HTML page with quotes and unclosed brackets",
+    (): Response =>
+      new Response('<html><body><p class="x">Proxy error: {"retry" [</p></body></html>', {
+        headers: { "content-type": "text/html" },
+        status: 200,
+      }),
+    invalid,
+  ],
+  [
+    "a GraphQL error without data",
+    (): Response => Response.json({ data: null, errors: [{ message: "Something went wrong" }] }),
+    ItemResult.Failed({ charged: false, diagnostic: "GitHubUnavailable" }),
+  ],
+  [
+    "a request that never reached GitHub",
+    (): "unreachable" => "unreachable",
+    ItemResult.Failed({ charged: false, diagnostic: "GitHubUnavailable" }),
+  ],
+]
+
+describe("GitHub client failures that are not timeouts", () => {
+  test.each(nonTimeoutFailures)(
+    "sends every batch after %s",
+    async (_name: string, answer: () => Response | "unreachable", expected: ItemResult) => {
+      const http = httpClient(firstAnswer(answer))
+      const result = await runClient({ http }, fetchTwice)
+
+      expect(result).toEqual(Exit.succeed([expected, notFound]))
+      expect(sizesOf(http.requests)).toEqual([maximumBatch, 1, 1])
+    },
+  )
 })

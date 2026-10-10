@@ -7,6 +7,7 @@ import { Effect, Exit, Option, Result, type Schema } from "effect"
 import { layer } from "../../src/adapters/Storage.ts"
 import { attach, maximumAttachments, type Tracking } from "../../src/domain/Tracking.ts"
 import {
+  StoredStateInvalid,
   TrackingRepository,
   type TrackingRepositoryApi,
 } from "../../src/ports/TrackingRepository.ts"
@@ -90,7 +91,7 @@ describe("Stored attachments that are invalid", () => {
     )
 
     expect(Exit.findErrorOption(result)).toMatchObject(
-      Option.some({ _tag: "StoredStateInvalid", sessionID: "session" }),
+      Option.some(new StoredStateInvalid({ sessionID: "session" })),
     )
     expect(fake.values.get("session/session")).toEqual(stored)
   })

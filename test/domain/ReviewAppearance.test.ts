@@ -4,13 +4,16 @@ import * as hegel from "@hegeldev/hegel"
 import { Option } from "effect"
 
 import { reviewOfStatus, reviewParts, reviewSummary } from "../../src/domain/ReviewAppearance.ts"
+import { Status } from "../../src/domain/Snapshot.ts"
 import { reviews } from "../support/generators.ts"
 import { reviewWith } from "../support/reviews.ts"
 
 describe("review state wording", () => {
   test("shows no review state before the first fetch or after the snapshot is withdrawn", () => {
-    expect(reviewOfStatus({ _tag: "Pending" })).toEqual(Option.none())
-    expect(reviewOfStatus({ _tag: "Unavailable", diagnostic: "NotFound" })).toEqual(Option.none())
+    expect(reviewOfStatus(Status.cases.Pending.make({}))).toEqual(Option.none())
+    expect(reviewOfStatus(Status.cases.Unavailable.make({ diagnostic: "NotFound" }))).toEqual(
+      Option.none(),
+    )
   })
 
   test("calls exactly one complete thread a thread, and any bound threads", () => {

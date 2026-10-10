@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Exit } from "effect"
 import { TestClock } from "effect/testing"
 
+import { ItemResult } from "../../src/ports/GitHub.ts"
 import {
   checking,
   fetchedSince,
@@ -20,7 +21,7 @@ describe("Monitor order of due pull requests", () => {
     const result = await run(github, (app: App) =>
       Effect.gen(function* () {
         yield* watching(app, "a", [checking, other])
-        github.script(other, { _tag: "Failed", charged: true, diagnostic: "GitHubUnavailable" })
+        github.script(other, ItemResult.Failed({ charged: true, diagnostic: "GitHubUnavailable" }))
 
         const before = github.fetches.length
 
@@ -51,7 +52,7 @@ describe("Monitor backoff after charged failures", () => {
     const result = await run(github, (app: App) =>
       Effect.gen(function* () {
         yield* watching(app, "a", [other])
-        github.script(other, { _tag: "Failed", charged: true, diagnostic: "GitHubUnavailable" })
+        github.script(other, ItemResult.Failed({ charged: true, diagnostic: "GitHubUnavailable" }))
 
         const before = github.fetches.length
 

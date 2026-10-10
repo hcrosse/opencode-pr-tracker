@@ -30,8 +30,7 @@ const previous = Schema.TaggedStruct("Open", {
   }),
 })
 
-const unknownOpen: PullRequestState = {
-  _tag: "Open",
+const unknownOpen: PullRequestState = PullRequestState.cases.Open.make({
   behind: "unknown",
   ci: "unknown",
   draft: false,
@@ -40,25 +39,15 @@ const unknownOpen: PullRequestState = {
     decision: "unknown",
     threads: { complete: true, fetched: 3, replied: 1, unknown: 1, unreplied: 1 },
   },
-}
-
-const earlierThreads = { complete: true, fetched: 0, replied: 0, unreplied: 0 }
+})
 
 describe("unknown states sent to an earlier client", () => {
   test("an earlier client reads unknown parts as it did before they existed", () => {
     const encoded = Schema.encodeSync(PullRequestState)(unknownOpen)
 
-    expect(Schema.decodeUnknownSync(previous)(encoded)).toEqual({
-      _tag: "Open",
-      behind: false,
-      ci: "pending",
-      draft: false,
-      mergeability: "mergeable",
-      review: {
-        decision: "none",
-        threads: { complete: true, fetched: 3, replied: 1, unreplied: 1 },
-      },
-    })
+    expect(JSON.stringify(Schema.decodeUnknownSync(previous)(encoded))).toBe(
+      '{"_tag":"Open","behind":false,"ci":"pending","draft":false,"mergeability":"mergeable","review":{"decision":"none","threads":{"complete":true,"fetched":3,"replied":1,"unreplied":1}}}',
+    )
   })
 })
 
@@ -73,23 +62,19 @@ describe("unknown states read by a current client", () => {
   })
 
   test("a current client reads an earlier server's open state as having nothing unknown", () => {
-    const sent = {
-      _tag: "Open",
-      behind: true,
-      ci: "passed",
-      draft: false,
-      mergeability: "mergeable",
-      review: { decision: "none", threads: earlierThreads },
-    }
+    const sent = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(
+      '{"_tag":"Open","behind":true,"ci":"passed","draft":false,"mergeability":"mergeable","review":{"decision":"none","threads":{"complete":true,"fetched":0,"replied":0,"unreplied":0}}}',
+    )
 
-    expect(Schema.decodeUnknownSync(PullRequestState)(sent)).toEqual({
-      _tag: "Open",
-      behind: true,
-      ci: "passed",
-      draft: false,
-      mergeability: "mergeable",
-      review: noReview,
-    })
+    expect(Schema.decodeUnknownSync(PullRequestState)(sent)).toEqual(
+      PullRequestState.cases.Open.make({
+        behind: true,
+        ci: "passed",
+        draft: false,
+        mergeability: "mergeable",
+        review: noReview,
+      }),
+    )
   })
 })
 
@@ -105,14 +90,9 @@ describe("impossible thread counts sent to a current client", () => {
     ["more counted threads than fetched", { fetched: 2, replied: 1, unknown: 2, unreplied: 0 }],
     ["a negative unknown count", { fetched: 3, replied: 1, unknown: -1, unreplied: 0 }],
   ])("are rejected, not a defect: %s", (_name, counts) => {
-    const sent = {
-      _tag: "Open",
-      behind: false,
-      ci: "passed",
-      draft: false,
-      mergeability: "mergeable",
-      review: { decision: "none", threads: Object.assign({ complete: true }, counts) },
-    }
+    const sent = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(
+      `{"_tag":"Open","behind":false,"ci":"passed","draft":false,"mergeability":"mergeable","review":{"decision":"none","threads":{"complete":true,"fetched":${String(counts.fetched)},"replied":${String(counts.replied)},"unknown":${String(counts.unknown)},"unreplied":${String(counts.unreplied)}}}}`,
+    )
 
     expect(Schema.decodeUnknownOption(PullRequestState)(sent)).toEqual(Option.none())
   })

@@ -4,6 +4,7 @@ import type { StorageDomain } from "@opencode/plugin/effect/storage"
 import { Deferred, Effect, Exit, Fiber, Option } from "effect"
 import { TestClock } from "effect/testing"
 
+import { PullRequestInput } from "../../src/domain/PullRequest.ts"
 import { requests } from "../../src/server/Requests.ts"
 import { memoryStorage, type GitHubScript, type StorageFake } from "../support/application.ts"
 import {
@@ -63,7 +64,7 @@ describe("Monitor sessions without a lease", () => {
     const result = await run(github, (app: App) =>
       Effect.gen(function* () {
         yield* requests(app, { directory: "/work", layout: "full" }).attach("a", checking.url)
-        yield* app.tracker.attach("b", { _tag: "Reference", ref: checking }, "/work")
+        yield* app.tracker.attach("b", PullRequestInput.Reference({ ref: checking }), "/work")
         yield* app.monitor.show("b")
 
         return yield* pollAfter(github, app, "15 seconds")
@@ -78,7 +79,7 @@ describe("Monitor sessions without a lease", () => {
 
     const result = await run(github, (app: App) =>
       Effect.gen(function* () {
-        yield* app.tracker.attach("b", { _tag: "Reference", ref: checking }, "/work")
+        yield* app.tracker.attach("b", PullRequestInput.Reference({ ref: checking }), "/work")
         yield* requests(app, { directory: "/work", layout: "full" }).list("b")
 
         return [

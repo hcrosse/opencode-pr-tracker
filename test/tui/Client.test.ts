@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Option, Result, Schema } from "effect"
 import { constVoid } from "effect/Function"
 
+import { Status } from "../../src/domain/Snapshot.ts"
 import { View, type ViewData } from "../../src/rpc.ts"
 import {
   makeClient,
@@ -23,7 +24,7 @@ const malformed: ViewData = {
       attachedAt: 1.5,
       membership: null,
       ref: { number: 1, owner: "acme", repository: "api" },
-      status: { _tag: "Pending" },
+      status: Schema.encodeSync(Status)(Status.cases.Pending.make({})),
     },
   ],
   layout: "full",

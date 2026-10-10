@@ -1,7 +1,7 @@
 import { Array as Arr, Option, Result, Schema } from "effect"
 
 import { parsePullRequestUrl } from "../../domain/PullRequest.ts"
-import type { Membership } from "../../domain/StackLayout.ts"
+import { Membership } from "../../domain/StackLayout.ts"
 
 export const LifecycleState = Schema.Literals(["OPEN", "CLOSED", "MERGED"])
 
@@ -26,7 +26,7 @@ interface Stacked {
 
 /** None when GitHub returned only part of the Stack, or a member URL we cannot parse. */
 export function toMembership(node: Stacked): Option.Option<Membership> {
-  if (node.stack === null) return Option.some({ _tag: "Standalone" })
+  if (node.stack === null) return Option.some(Membership.cases.Standalone.make({}))
 
   const { entries, id, size } = node.stack
   const ordered = entries.nodes.toSorted((left, right) => left.position - right.position)
@@ -38,7 +38,7 @@ export function toMembership(node: Stacked): Option.Option<Membership> {
   const complete = !entries.pageInfo.hasNextPage && members.length === size
 
   return complete && Arr.isArrayNonEmpty(members)
-    ? Option.some({ _tag: "Stack", id, members })
+    ? Option.some(Membership.cases.Stack.make({ id, members }))
     : Option.none()
 }
 

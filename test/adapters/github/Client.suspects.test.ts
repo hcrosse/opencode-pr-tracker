@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Exit } from "effect"
 
 import type { PullRequestRef } from "../../../src/domain/PullRequest.ts"
-import { maximumBatch, type GitHubApi, type ItemResult } from "../../../src/ports/GitHub.ts"
+import { ItemResult, maximumBatch, type GitHubApi } from "../../../src/ports/GitHub.ts"
 import {
   acmeRef,
   httpClient,
@@ -44,7 +44,7 @@ const sentSince = (http: HttpFake, from: number): number[][] =>
 
 const failedOf = (results: ReadonlyMap<string, ItemResult>): number[] =>
   [...results].flatMap(([url, result]: readonly [string, ItemResult]) =>
-    result._tag === "Failed" ? [Number(url.split("/").at(-1))] : [],
+    ItemResult.$is("Failed")(result) ? [Number(url.split("/").at(-1))] : [],
   )
 
 interface Round {
@@ -131,7 +131,7 @@ describe("GitHub client on a page of checks that times out", () => {
     )
 
     expect(Exit.map(result, (results) => results.get(tracker127.url))).toEqual(
-      Exit.succeed({ _tag: "Failed", charged: true, diagnostic: "GitHubUnavailable" }),
+      Exit.succeed(ItemResult.Failed({ charged: true, diagnostic: "GitHubUnavailable" })),
     )
     // A first batch with its page of checks, then #2, then #127 alone with its page.
     expect(http.requests.map((request: RequestBody) => sent(request))).toEqual([

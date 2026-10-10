@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test"
 
-import { Effect } from "effect"
+import { Effect, Option } from "effect"
 
 import { live } from "../../../src/adapters/github/Client.ts"
-import { GitHub } from "../../../src/ports/GitHub.ts"
+import { PullRequestState } from "../../../src/domain/Snapshot.ts"
+import { GitHub, ItemResult } from "../../../src/ports/GitHub.ts"
 import { memoryStorage } from "../../support/application.ts"
 import { trackerRef } from "../../support/github.ts"
 
@@ -18,15 +19,19 @@ describe.skipIf(!enabled)("GitHub client against api.github.com", () => {
       ).pipe(Effect.provide(live(memoryStorage().storage, "all"))),
     )
 
-    expect(results.get(trackerRef(78).url)).toMatchObject({
-      _tag: "Reported",
-      report: { snapshot: { state: { _tag: "Merged" } } },
-    })
-    expect(results.get(trackerRef(999999).url)).toEqual({
-      _tag: "Failed",
-      charged: false,
-      diagnostic: "NotFound",
-    })
+    const missing = Option.fromNullishOr(results.get(trackerRef(999999).url))
+
+    const merged = Option.flatMap(Option.fromNullishOr(results.get(trackerRef(78).url)), (result) =>
+      ItemResult.$match(result, {
+        Reported: ({ report }) => Option.some(report.snapshot.state),
+        Failed: () => Option.none(),
+      }),
+    )
+
+    expect(merged).toEqual(Option.some(PullRequestState.cases.Merged.make({})))
+    expect(missing).toEqual(
+      Option.some(ItemResult.Failed({ charged: false, diagnostic: "NotFound" })),
+    )
   })
 
   test("resolves a number in this checkout's repository", async () => {

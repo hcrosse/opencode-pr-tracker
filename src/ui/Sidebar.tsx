@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 import type { RGBA } from "@opentui/core"
 import type { JSX } from "@opentui/solid"
-import { Data, Match, Option } from "effect"
+import { Data, Option } from "effect"
 import { For, Show } from "solid-js"
 
 import type { PullRequestRef } from "../domain/PullRequest.ts"
@@ -143,7 +143,7 @@ export function Sidebar(props: {
     SidebarState.$is("Ready")(props.state) && props.state.view.entries.length > collapsibleAbove
 
   const body = (): JSX.Element =>
-    Match.valueTags(props.state, {
+    SidebarState.$match(props.state, {
       Failed: ({ message }) => <text fg={props.palette.muted}>{message}</text>,
       Loading: () => null,
       Ready: ({ view }) => <Rows onOpen={props.onOpen} palette={props.palette} view={view} />,

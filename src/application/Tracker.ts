@@ -1,12 +1,8 @@
 import { Array as Arr, Context, Effect, Layer, Option, Schema } from "effect"
 
-import {
-  samePullRequest,
-  type PullRequestInput,
-  type PullRequestRef,
-} from "../domain/PullRequest.ts"
+import { samePullRequest, PullRequestInput, type PullRequestRef } from "../domain/PullRequest.ts"
 import { Diagnostic } from "../domain/Snapshot.ts"
-import type { Membership } from "../domain/StackLayout.ts"
+import { Membership } from "../domain/StackLayout.ts"
 import {
   attach,
   detach,
@@ -20,9 +16,9 @@ import {
 } from "../domain/Tracking.ts"
 import {
   GitHub,
+  ItemResult,
   type GitHubApi,
   type GitHubFailure,
-  type ItemResult,
   type Report,
   type RepositoryUnavailable,
 } from "../ports/GitHub.ts"
@@ -113,23 +109,25 @@ function attaching(
 ): Attaching {
   const standalone = { adding: [ref], stack: Arr.of(ref) }
 
-  if (membership._tag === "Standalone") return standalone
-
-  const { members } = membership
-
-  if (!members.some((member) => member.url === ref.url)) return standalone
-
-  return {
-    adding: members.filter((member) => member.url === ref.url || !nonOpen.includes(member.url)),
-    stack: members,
-  }
+  return Membership.match(membership, {
+    Standalone: () => standalone,
+    Stack: ({ members }) =>
+      members.some((member) => member.url === ref.url)
+        ? {
+            adding: members.filter(
+              (member) => member.url === ref.url || !nonOpen.includes(member.url),
+            ),
+            stack: members,
+          }
+        : standalone,
+  })
 }
 
 function discovered(
   ref: PullRequestRef,
   result: ItemResult,
 ): Effect.Effect<Discovered, PullRequestUnavailable | StackIncomplete> {
-  if (result._tag === "Failed")
+  if (ItemResult.$is("Failed")(result))
     return Effect.fail(new PullRequestUnavailable({ diagnostic: result.diagnostic, url: ref.url }))
 
   const { report } = result
@@ -154,9 +152,10 @@ function resolve(
   input: PullRequestInput,
   directory: string,
 ): Effect.Effect<PullRequestRef, GitHubFailure | RepositoryUnavailable> {
-  return input._tag === "Reference"
-    ? Effect.succeed(input.ref)
-    : github.pullRequestInRepository(directory, input.number)
+  return PullRequestInput.$match(input, {
+    Reference: ({ ref }) => Effect.succeed(ref),
+    Number: ({ number }) => github.pullRequestInRepository(directory, number),
+  })
 }
 
 const attachTo = Effect.fn("Tracker.attach")(function* (
@@ -167,7 +166,7 @@ const attachTo = Effect.fn("Tracker.attach")(function* (
   const ref = yield* resolve(services, target.input, target.directory)
   const reports = yield* services.github.fetch([ref])
   // GitHub answers for every pull request it is asked about; an answer without one is incomplete.
-  const missing: ItemResult = { _tag: "Failed", charged: false, diagnostic: "InvalidResponse" }
+  const missing = ItemResult.Failed({ charged: false, diagnostic: "InvalidResponse" })
   const { adding, report, stack } = yield* discovered(ref, reports.get(ref.url) ?? missing)
   const current = yield* services.repository.load(sessionID)
   const now = yield* currentMillis
@@ -196,10 +195,9 @@ const detachFrom = Effect.fn("Tracker.detach")(function* (
 ) {
   const current = yield* repository.load(sessionID)
 
-  const removal: Removal =
-    input._tag === "Reference"
-      ? detach(current, input.ref)
-      : yield* Effect.fromResult(detachNumber(current, input.number))
+  const removal: Removal = PullRequestInput.$is("Reference")(input)
+    ? detach(current, input.ref)
+    : yield* Effect.fromResult(detachNumber(current, input.number))
 
   if (Option.isSome(removal.removed)) yield* repository.save(sessionID, removal.tracking)
 

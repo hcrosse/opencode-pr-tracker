@@ -9,10 +9,14 @@ import {
   type SessionView,
 } from "../../src/application/Monitor.ts"
 import { layer as trackerLayer, Tracker, type TrackerApi } from "../../src/application/Tracker.ts"
-import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
+import {
+  parsePullRequestUrl,
+  PullRequestInput,
+  type PullRequestRef,
+} from "../../src/domain/PullRequest.ts"
 import { noReview } from "../../src/domain/Review.ts"
-import type { PullRequestState } from "../../src/domain/Snapshot.ts"
-import type { Membership } from "../../src/domain/StackLayout.ts"
+import { PullRequestState } from "../../src/domain/Snapshot.ts"
+import { Membership } from "../../src/domain/StackLayout.ts"
 import {
   memoryStorage,
   openState,
@@ -63,19 +67,18 @@ export function scripted(): GitHubScript {
 
   const states: readonly (readonly [PullRequestRef, PullRequestState])[] = [
     [open, openState],
-    [closed, { _tag: "Closed" }],
-    [merged, { _tag: "Merged" }],
+    [closed, PullRequestState.cases.Closed.make({})],
+    [merged, PullRequestState.cases.Merged.make({})],
     [other, openState],
     [
       checking,
-      {
-        _tag: "Open",
+      PullRequestState.cases.Open.make({
         behind: false,
         ci: "pending",
         draft: false,
         mergeability: "mergeable",
         review: noReview,
-      },
+      }),
     ],
   ]
 
@@ -94,7 +97,11 @@ export const watching = (
 ): Effect.Effect<void, unknown> =>
   Effect.gen(function* () {
     for (const pullRequest of refs) {
-      yield* app.tracker.attach(sessionID, { _tag: "Reference", ref: pullRequest }, "/work")
+      yield* app.tracker.attach(
+        sessionID,
+        PullRequestInput.Reference({ ref: pullRequest }),
+        "/work",
+      )
     }
 
     yield* app.monitor.view(sessionID)
@@ -117,11 +124,8 @@ export const refs = (numbers: readonly number[]): PullRequestRef[] =>
   numbers.map((number) => ref(number))
 
 /** Stack `id` with the pull requests `numbers`, bottom first. */
-export const stackOf = (id: string, numbers: Arr.NonEmptyReadonlyArray<number>): Membership => ({
-  _tag: "Stack",
-  id,
-  members: Arr.map(numbers, (number) => ref(number)),
-})
+export const stackOf = (id: string, numbers: Arr.NonEmptyReadonlyArray<number>): Membership =>
+  Membership.cases.Stack.make({ id, members: Arr.map(numbers, (number) => ref(number)) })
 
 /** Scripts each of `numbers` as open, with `membership`. */
 export function scriptAll(

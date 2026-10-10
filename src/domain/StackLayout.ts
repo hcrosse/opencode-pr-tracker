@@ -1,15 +1,15 @@
-import { Array as Arr, Option, Schema } from "effect"
+import { Array as Arr, Data, Option, Schema } from "effect"
 
 import { PullRequestRef } from "./PullRequest.ts"
 
 /** GitHub Stack membership. Members are listed bottom to top. */
-export const Membership = Schema.Union([
-  Schema.TaggedStruct("Standalone", {}),
-  Schema.TaggedStruct("Stack", {
+export const Membership = Schema.TaggedUnion({
+  Standalone: {},
+  Stack: {
     id: Schema.String,
     members: Schema.NonEmptyArray(PullRequestRef),
-  }),
-])
+  },
+})
 
 export type Membership = typeof Membership.Type
 
@@ -30,20 +30,18 @@ export type Marker = "bullet" | "first" | "middle" | "last" | "openFirst" | "ope
 /** How the line under a row continues: to the next attached member, to unattached members, or not. */
 export type Connector = "continues" | "open" | "none"
 
-export type Row<E extends Entry> =
-  | {
-      readonly _tag: "PullRequest"
-      readonly entry: E
-      readonly marker: Marker
-      readonly connector: Connector
-    }
-  | { readonly _tag: "Gap"; readonly count: number }
+export type Row<E extends Entry> = Data.TaggedEnum<{
+  PullRequest: { readonly entry: E; readonly marker: Marker; readonly connector: Connector }
+  Gap: { readonly count: number }
+}>
 
-interface Placed {
-  readonly index: number
-  readonly position: number
-  readonly size: number
+interface RowDef extends Data.TaggedEnum.WithGenerics<1> {
+  readonly taggedEnum: Row<this["A"] & Entry>
 }
+
+export const Row = Data.taggedEnum<RowDef>()
+
+type Placed = Readonly<{ index: number; position: number; size: number }>
 
 /** Where one entry sits within its Stack's attached members. */
 interface Place {
@@ -61,7 +59,10 @@ interface Reported {
 }
 
 const stackOf = (entry: Entry): Option.Option<StackMembership> =>
-  Option.filter(entry.membership, (membership) => membership._tag === "Stack")
+  Option.flatMap(
+    entry.membership,
+    Membership.match({ Stack: Option.some, Standalone: Option.none }),
+  )
 
 const urlsOf = (stack: StackMembership): string[] => stack.members.map((member) => member.url)
 
@@ -217,25 +218,22 @@ function stackRows<E extends Entry>(entry: E, place: Place, neighbors: Neighbors
     onSome: (before) => place.current.position - before.position - 1,
   })
 
-  const row: Row<E> = {
-    _tag: "PullRequest",
+  const row: Row<E> = Row.PullRequest<E>({
     connector: connector(place),
     entry,
     marker: marker(place, neighbors),
-  }
+  })
 
-  return skipped > 0 ? [{ _tag: "Gap", count: skipped }, row] : [row]
+  return skipped > 0 ? [Row.Gap<E>({ count: skipped }), row] : [row]
 }
 
 /** A Stack's members sit together, so a drawn row beside its edge belongs to another Stack. */
-const neighborsOf = (
-  places: ReadonlyMap<number, Place>,
-  index: number,
-  place: Place,
-): Neighbors => ({
-  after: place.last && places.has(index + 1),
-  before: place.first && places.has(index - 1),
-})
+function neighborsOf(places: ReadonlyMap<number, Place>, index: number, place: Place): Neighbors {
+  return {
+    after: place.last && places.has(index + 1),
+    before: place.first && places.has(index - 1),
+  }
+}
 
 /** Sidebar rows in attachment order, with Stack markers and gaps where membership is consistent. */
 export function layout<E extends Entry>(entries: readonly E[]): Row<E>[] {
@@ -243,7 +241,7 @@ export function layout<E extends Entry>(entries: readonly E[]): Row<E>[] {
 
   return entries.flatMap((entry, index) =>
     Option.match(Option.fromNullishOr(places.get(index)), {
-      onNone: (): Row<E>[] => [{ _tag: "PullRequest", connector: "none", entry, marker: "bullet" }],
+      onNone: (): Row<E>[] => [Row.PullRequest<E>({ connector: "none", entry, marker: "bullet" })],
       onSome: (place) => stackRows(entry, place, neighborsOf(places, index, place)),
     }),
   )

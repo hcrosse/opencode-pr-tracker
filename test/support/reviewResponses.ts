@@ -1,7 +1,8 @@
 import { Exit, Option, type Schema } from "effect"
 
 import type { Review, ReviewMode } from "../../src/domain/Review.ts"
-import type { ItemResult } from "../../src/ports/GitHub.ts"
+import { PullRequestState } from "../../src/domain/Snapshot.ts"
+import { ItemResult } from "../../src/ports/GitHub.ts"
 import { httpClient, recordedNode, runClient, tracker127 } from "./github.ts"
 import { found } from "./lookup.ts"
 
@@ -38,11 +39,15 @@ export async function fetch127(fields: ReviewFields, reviews: ReviewMode): Promi
 
 export const reviewOfResult = (result: Option.Option<ItemResult>): Option.Option<Review> =>
   Option.flatMap(result, (item) => {
-    if (item._tag !== "Reported") return Option.none()
+    if (!ItemResult.$is("Reported")(item)) return Option.none()
 
     const { state } = item.report.snapshot
 
-    return state._tag === "Open" ? Option.some(state.review) : Option.none()
+    return PullRequestState.match(state, {
+      Open: ({ review }) => Option.some(review),
+      Merged: () => Option.none(),
+      Closed: () => Option.none(),
+    })
   })
 
 /** The review state the client reports for #127 with review state on. */

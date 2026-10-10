@@ -4,13 +4,13 @@ import { Deferred, Effect, Layer, Option, Predicate, Result, type Schema } from 
 
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
 import { noReview } from "../../src/domain/Review.ts"
-import type { Diagnostic, PullRequestState } from "../../src/domain/Snapshot.ts"
-import type { Membership } from "../../src/domain/StackLayout.ts"
+import { PullRequestState, type Diagnostic } from "../../src/domain/Snapshot.ts"
+import { Membership } from "../../src/domain/StackLayout.ts"
 import {
   GitHub,
   GitHubFailure,
+  ItemResult,
   RepositoryUnavailable,
-  type ItemResult,
   type Report,
 } from "../../src/ports/GitHub.ts"
 
@@ -81,7 +81,7 @@ export function memoryStorage(): StorageFake {
   return { storage, values, writes: () => writes }
 }
 
-export const standalone: Membership = { _tag: "Standalone" }
+export const standalone: Membership = Membership.cases.Standalone.make({})
 
 /** What GitHub reports for a pull request, with `membership` unknown unless given and every Stack member open. */
 export const reportOf = (
@@ -98,16 +98,15 @@ export const reported = (
   ref: PullRequestRef,
   state: PullRequestState,
   membership: Membership,
-): ItemResult => ({ _tag: "Reported", report: reportOf(ref, state, Option.some(membership)) })
+): ItemResult => ItemResult.Reported({ report: reportOf(ref, state, Option.some(membership)) })
 
-export const openState: PullRequestState = {
-  _tag: "Open",
+export const openState: PullRequestState = PullRequestState.cases.Open.make({
   behind: false,
   ci: "passed",
   draft: false,
   mergeability: "mergeable",
   review: noReview,
-}
+})
 
 interface Hold {
   readonly gate: Deferred.Deferred<boolean>
@@ -193,7 +192,10 @@ export class ScriptedGitHub implements GitHubScript {
       Option.toArray(Option.fromNullishOr(this.held.get(ref.url))),
     )
 
-    const missing: ItemResult = { _tag: "Failed", charged: false, diagnostic: "NotFound" }
+    const missing: ItemResult = ItemResult.Failed({
+      charged: false,
+      diagnostic: "NotFound",
+    })
 
     const waitForRelease = Effect.forEach(
       holds,

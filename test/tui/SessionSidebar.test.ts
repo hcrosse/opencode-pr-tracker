@@ -4,6 +4,7 @@ import { Array as Arr, Deferred, Effect, Option } from "effect"
 import { constVoid } from "effect/Function"
 import { createRoot, createSignal } from "solid-js"
 
+import { Status } from "../../src/domain/Snapshot.ts"
 import type { View } from "../../src/rpc.ts"
 import { background } from "../../src/tui/Background.ts"
 import { RequestFailed, Update, type TrackerClientApi } from "../../src/tui/Client.ts"
@@ -67,7 +68,12 @@ function titleOf(state: SidebarState): string {
       Option.match(Arr.head(view.entries), {
         onNone: () => "empty",
         onSome: (entry) =>
-          entry.status._tag === "Fresh" ? entry.status.snapshot.title : entry.status._tag,
+          Status.match(entry.status, {
+            Fresh: ({ snapshot }) => snapshot.title,
+            Pending: () => "Pending",
+            Stale: () => "Stale",
+            Unavailable: () => "Unavailable",
+          }),
       }),
   })
 }

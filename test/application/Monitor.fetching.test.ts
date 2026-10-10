@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 
 import { Effect, Exit, Fiber, Option } from "effect"
 
+import { PullRequestInput } from "../../src/domain/PullRequest.ts"
+import { PullRequestState, Status } from "../../src/domain/Snapshot.ts"
 import { openState, reportOf, standalone } from "../support/application.ts"
 import {
   closed,
@@ -14,6 +16,14 @@ import {
   watching,
   type App,
 } from "../support/monitor.ts"
+
+const isFresh = (status: Status): boolean =>
+  Status.match(status, {
+    Fresh: () => true,
+    Pending: () => false,
+    Stale: () => false,
+    Unavailable: () => false,
+  })
 
 describe("Monitor fetching", () => {
   test("merges refreshes requested during a fetch into one following fetch of all their pull requests", async () => {
@@ -109,7 +119,7 @@ describe("Monitor polling alongside attaching", () => {
         Effect.gen(function* () {
           yield* watching(app, "a", [open])
           yield* app.monitor.refresh("a")
-          yield* app.tracker.attach(session, { _tag: "Reference", ref: closed }, "/work")
+          yield* app.tracker.attach(session, PullRequestInput.Reference({ ref: closed }), "/work")
 
           const before = github.fetches.length
           const polling = yield* Effect.forkChild(app.monitor.poll)
@@ -118,7 +128,7 @@ describe("Monitor polling alongside attaching", () => {
           yield* app.monitor.attached(
             session,
             closed,
-            reportOf(closed, { _tag: "Closed" }, Option.some(standalone)),
+            reportOf(closed, PullRequestState.cases.Closed.make({}), Option.some(standalone)),
           )
           yield* Fiber.join(polling)
 
@@ -126,7 +136,7 @@ describe("Monitor polling alongside attaching", () => {
 
           return [
             fetchedSince(github, before),
-            view.entries.every((entry) => entry.status._tag === "Fresh"),
+            view.entries.every((entry) => isFresh(entry.status)),
           ]
         }),
       )
