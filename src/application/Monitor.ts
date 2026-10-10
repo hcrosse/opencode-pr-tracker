@@ -6,6 +6,7 @@ import { agreedStacks, type Membership } from "../domain/StackLayout.ts"
 import { group, type Attachment, type Tracking } from "../domain/Tracking.ts"
 import { GitHub, type GitHubApi, type ItemResult, type Report } from "../ports/GitHub.ts"
 import type { StoredStateInvalid } from "../ports/TrackingRepository.ts"
+import { continueAfter, logBySeverity } from "./Causes.ts"
 import { FetchQueue } from "./FetchQueue.ts"
 import { InvalidSessions, orWarned } from "./InvalidState.ts"
 import {
@@ -134,12 +135,12 @@ function viewOf(state: State, sessionID: string): Effect.Effect<SessionView, Sto
   })
 }
 
-function publish(state: State, sessionID: string): Effect.Effect<void> {
-  return viewOf(state, sessionID).pipe(
+const publish = (state: State, sessionID: string): Effect.Effect<void> =>
+  viewOf(state, sessionID).pipe(
     Effect.flatMap((view: SessionView) => PubSub.publish(state.published, view)),
-    Effect.ignore,
+    continueAfter(logBySeverity("Session view was not published after a refresh")),
+    Effect.annotateLogs({ sessionID }),
   )
-}
 
 function poll(state: State): Effect.Effect<void> {
   return Effect.gen(function* () {

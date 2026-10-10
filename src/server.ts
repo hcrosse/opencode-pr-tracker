@@ -1,31 +1,18 @@
 import { Plugin } from "@opencode/plugin/effect"
-import { Context, Effect, Layer, Schedule, Stream } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 
 import { live as githubLive } from "./adapters/github/Client.ts"
 import { layer as storageLayer } from "./adapters/Storage.ts"
 import { Monitor, layer as monitorLayer } from "./application/Monitor.ts"
 import { Tracker, layer as trackerLayer } from "./application/Tracker.ts"
-import { PullRequestTracker } from "./rpc.ts"
+import { PullRequestTracker, View } from "./rpc.ts"
+import { forgetDeletedSessions, pollRepeatedly, sendUpdates } from "./server/Background.ts"
 import { settingsOf } from "./server/Options.ts"
 import { toView, type Services, type Settings } from "./server/Requests.ts"
-import { handlers, publishView } from "./server/Rpc.ts"
+import { handlers } from "./server/Rpc.ts"
 import { registerTools } from "./server/Tools.ts"
 
 const pollInterval = "1 second"
-
-/** Forgets a session everywhere once OpenCode deletes it. Every plugin instance sees the event. */
-const forgetDeletedSessions = (ctx: Plugin.Context, services: Services): Effect.Effect<void> =>
-  ctx.event.subscribe().pipe(
-    Stream.runForEach((event) =>
-      event.type === "session.deleted"
-        ? Effect.andThen(
-            services.tracker.forget(event.data.sessionID),
-            services.monitor.forget(event.data.sessionID),
-          )
-        : Effect.void,
-    ),
-    Effect.ignore,
-  )
 
 export default Plugin.define({
   effect: (ctx) =>
@@ -56,16 +43,14 @@ export default Plugin.define({
         .pipe(Effect.orDie)
 
       yield* registerTools(ctx.tool, services, settings)
-      yield* Effect.forkScoped(forgetDeletedSessions(ctx, services))
-      yield* Effect.forkScoped(Effect.repeat(services.monitor.poll, Schedule.spaced(pollInterval)))
-      yield* services.monitor.changes.pipe(
-        Stream.runForEach((view) =>
-          publishView(
-            (data) => registration.events.emit("updated", data),
-            toView(view, settings.layout),
-          ),
+      yield* Effect.forkScoped(forgetDeletedSessions(ctx.event.subscribe(), services))
+      yield* Effect.forkScoped(pollRepeatedly(services.monitor.poll, pollInterval))
+      yield* Effect.forkScoped(
+        sendUpdates(
+          services.monitor.changes,
+          (view) => Schema.encodeEffect(View)(toView(view, settings.layout)),
+          (data) => registration.events.emit("updated", data),
         ),
-        Effect.forkScoped,
       )
     }),
   id: "opencode-pr-tracker",
