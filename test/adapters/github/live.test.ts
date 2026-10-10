@@ -15,7 +15,7 @@ describe.skipIf(!enabled)("GitHub client against api.github.com", () => {
     const results = await Effect.runPromise(
       GitHub.use((github) =>
         github.fetch([trackerRef(78), trackerRef(79), trackerRef(999999)]),
-      ).pipe(Effect.provide(live(memoryStorage().storage))),
+      ).pipe(Effect.provide(live(memoryStorage().storage, "all"))),
     )
 
     expect(results.get(trackerRef(78).url)).toMatchObject({
@@ -32,7 +32,7 @@ describe.skipIf(!enabled)("GitHub client against api.github.com", () => {
   test("resolves a number in this checkout's repository", async () => {
     const found = await Effect.runPromise(
       GitHub.use((github) => github.pullRequestInRepository(import.meta.dir, 78)).pipe(
-        Effect.provide(live(memoryStorage().storage)),
+        Effect.provide(live(memoryStorage().storage, "all")),
       ),
     )
 

@@ -1,8 +1,10 @@
 import type { ToolDomain } from "@opencode/plugin/effect/tool"
 import { Tool } from "@opencode/schema/tool"
-import { Effect, Schema, type Scope } from "effect"
+import { Effect, Option, Schema, type Scope } from "effect"
 
 import { appearance } from "../domain/Appearance.ts"
+import { reviewOfStatus, reviewSummary } from "../domain/ReviewAppearance.ts"
+import type { Status } from "../domain/Snapshot.ts"
 import { failureMessage, type RequestFailure } from "../messages.ts"
 import { requests, type Change, type Requests, type Services, type Settings } from "./Requests.ts"
 
@@ -35,6 +37,16 @@ type NoArguments = typeof NoArguments
 const asToolError = (failure: RequestFailure): Tool.Error =>
   new Tool.Error({ message: failureMessage(failure) })
 
+/** A `pr.list` line: the URL, then the status and review state, such as `(pending; changes requested)`. */
+export function listLine(url: string, status: Status): string {
+  const review = Option.match(reviewOfStatus(status), {
+    onNone: (): readonly string[] => [],
+    onSome: (found) => reviewSummary(found),
+  })
+
+  return `- ${url} (${[appearance(status).label, ...review].join("; ")})`
+}
+
 const listTool = (list: Requests["list"]): Tool.Info<NoArguments> => ({
   description: "List the pull requests attached to this session, with their status.",
   execute: (_input, context) =>
@@ -43,9 +55,7 @@ const listTool = (list: Requests["list"]): Tool.Info<NoArguments> => ({
         content:
           view.entries.length === 0
             ? "No pull requests are attached to this session."
-            : view.entries
-                .map((entry) => `- ${entry.ref.url} (${appearance(entry.status).label})`)
-                .join("\n"),
+            : view.entries.map((entry) => listLine(entry.ref.url, entry.status)).join("\n"),
       })),
       Effect.mapError(asToolError),
     ),

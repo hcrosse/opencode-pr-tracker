@@ -86,7 +86,7 @@ const record = Effect.fn("record")(function* (
 ) {
   const fs = yield* FileSystem.FileSystem
   const variables = Object.fromEntries(urls.map((url, index) => [alias(index), url]))
-  const first = yield* post(batch(urls.length, pageSize), variables)
+  const first = yield* post(batch(urls.length, "all", pageSize), variables)
 
   const continuations = yield* Effect.forEach(urls, (url: string, index: number) =>
     pages(first, { key: alias(index), pageSize, url }),
@@ -116,8 +116,8 @@ const program = Effect.gen(function* () {
     ],
     100,
   )
-  yield* record("status-contexts", [`${kubernetes}/142335`, `${kubernetes}/142334`], 100)
-  yield* record("paginated", [`${kubernetes}/142339`, `${repository}/127`], 5)
+  yield* record("status-contexts", [`${kubernetes}/142875`, `${kubernetes}/142334`], 100)
+  yield* record("paginated", [`${kubernetes}/142865`, `${repository}/127`], 5)
 })
 
 NodeRuntime.runMain(program.pipe(Effect.provide([NodeServices.layer, commandLayer])))

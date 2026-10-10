@@ -2,12 +2,10 @@ import { describe, expect, test } from "bun:test"
 
 import { Option, Result } from "effect"
 
-import {
-  toReport,
-  toMembership,
-  type PullRequestNode,
-} from "../../../src/adapters/github/Response.ts"
+import { toReport, type PullRequestNode } from "../../../src/adapters/github/Response.ts"
+import { toMembership } from "../../../src/adapters/github/Stacks.ts"
 import { parsePullRequestUrl } from "../../../src/domain/PullRequest.ts"
+import { noReview } from "../../../src/domain/Review.ts"
 
 interface StackEntry {
   readonly position: number
@@ -74,7 +72,7 @@ describe("Stack member states", () => {
   const named = Result.getOrThrow(parsePullRequestUrl(first.url))
 
   const nonOpenOf = (stack: PullRequestNode["stack"]): readonly string[] =>
-    toReport(named, withStack(stack), []).nonOpenMembers
+    toReport(named, withStack(stack), { contexts: [], review: noReview }).nonOpenMembers
 
   test("reports the members GitHub lists as merged or closed, by canonical URL", () => {
     const stack = stackOf(4, false, [

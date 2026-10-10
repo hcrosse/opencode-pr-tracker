@@ -1,10 +1,11 @@
 import { Array as Arr, Option, Result, Schema } from "effect"
 
 import { classifyCi, type Check, type CheckOutcome } from "../../domain/Checks.ts"
-import { parsePullRequestUrl, type PullRequestRef } from "../../domain/PullRequest.ts"
+import type { PullRequestRef } from "../../domain/PullRequest.ts"
+import type { Review } from "../../domain/Review.ts"
 import type { Diagnostic, Mergeability, PullRequestState } from "../../domain/Snapshot.ts"
-import type { Membership } from "../../domain/StackLayout.ts"
 import type { ItemResult, Report } from "../../ports/GitHub.ts"
+import { LifecycleState, nonOpenMembersOf, StackNode, toMembership } from "./Stacks.ts"
 
 const PageInfo = Schema.Struct({
   endCursor: Schema.NullOr(Schema.String),
@@ -56,22 +57,6 @@ export const Contexts = Schema.Struct({
 })
 
 export type Contexts = typeof Contexts.Type
-
-const LifecycleState = Schema.Literals(["OPEN", "CLOSED", "MERGED"])
-
-const StackNode = Schema.Struct({
-  entries: Schema.Struct({
-    nodes: Schema.Array(
-      Schema.Struct({
-        position: Schema.Int,
-        pullRequest: Schema.Struct({ state: LifecycleState, url: Schema.String }),
-      }),
-    ),
-    pageInfo: Schema.Struct({ hasNextPage: Schema.Boolean }),
-  }),
-  id: Schema.String,
-  size: Schema.Int,
-})
 
 export const PullRequestNode = Schema.Struct({
   __typename: Schema.Literal("PullRequest"),
@@ -167,7 +152,13 @@ export function toCheck(node: ContextNode): Check {
   })
 }
 
-function toState(node: PullRequestNode, contexts: readonly ContextNode[]): PullRequestState {
+/** What the client gathered beside the pull request node: every check context, and the review state. */
+export interface Details {
+  readonly contexts: readonly ContextNode[]
+  readonly review: Review
+}
+
+function toState(node: PullRequestNode, { contexts, review }: Details): PullRequestState {
   if (node.state === "MERGED") return { _tag: "Merged" }
 
   if (node.state === "CLOSED") return { _tag: "Closed" }
@@ -178,49 +169,15 @@ function toState(node: PullRequestNode, contexts: readonly ContextNode[]): PullR
     ci: classifyCi(contexts.map((context) => toCheck(context))),
     draft: node.isDraft,
     mergeability: mergeabilities[node.mergeable],
+    review,
   }
 }
 
-/** None when GitHub returned only part of the Stack, or a member URL we cannot parse. */
-export function toMembership(node: PullRequestNode): Option.Option<Membership> {
-  if (node.stack === null) return Option.some({ _tag: "Standalone" })
-
-  const { entries, id, size } = node.stack
-  const ordered = entries.nodes.toSorted((left, right) => left.position - right.position)
-
-  const members = ordered.flatMap((entry) =>
-    Option.toArray(Result.getSuccess(parsePullRequestUrl(entry.pullRequest.url))),
-  )
-
-  const complete = !entries.pageInfo.hasNextPage && members.length === size
-
-  return complete && Arr.isArrayNonEmpty(members)
-    ? Option.some({ _tag: "Stack", id, members })
-    : Option.none()
-}
-
-/** Canonical URLs of the Stack members GitHub reports as merged or closed. */
-function nonOpenMembersOf(node: PullRequestNode): readonly string[] {
-  const entries = node.stack === null ? [] : node.stack.entries.nodes
-
-  return entries.flatMap((entry) =>
-    entry.pullRequest.state === "OPEN"
-      ? []
-      : Option.toArray(Result.getSuccess(parsePullRequestUrl(entry.pullRequest.url))).map(
-          (member) => member.url,
-        ),
-  )
-}
-
-export function toReport(
-  ref: PullRequestRef,
-  node: PullRequestNode,
-  contexts: readonly ContextNode[],
-): Report {
+export function toReport(ref: PullRequestRef, node: PullRequestNode, details: Details): Report {
   return {
     membership: toMembership(node),
     nonOpenMembers: nonOpenMembersOf(node),
-    snapshot: { ref, state: toState(node, contexts), title: node.title },
+    snapshot: { ref, state: toState(node, details), title: node.title },
   }
 }
 

@@ -1,6 +1,6 @@
 # OpenCode PR Tracker
 
-Track GitHub pull requests in an OpenCode session. Attach pull requests with a slash command or let the agent attach them, and the session's sidebar shows each one's state, checks, and mergeability.
+Track GitHub pull requests in an OpenCode session. Attach pull requests with a slash command or let the agent attach them, and the session's sidebar shows each one's state, checks, and mergeability, and optionally its review state.
 
 ## Requirements
 
@@ -81,6 +81,29 @@ The sidebar shows one line per pull request, without titles. To show each pull r
 ```
 
 Any other value keeps the compact layout.
+
+### Review state
+
+Review state is off by default. To show it after the status of each open pull request, drafts included, set the `reviews` option to `"all"`:
+
+```jsonc
+{
+  "plugins": [{ "package": "@hcrosse/opencode-pr-tracker", "options": { "reviews": "all" } }],
+}
+```
+
+A row then reads, for example, `acme/api#13 pending · changes · 2 unreplied · 1 replied`, and `pr.list` reports the same. Review state never changes the status color, and a stale row keeps its last review state. Any other value, or none, leaves review state off, and the plugin asks GitHub for no review data.
+
+| Review state     | Appearance | Meaning                                                  |
+| ---------------- | ---------- | -------------------------------------------------------- |
+| `approved`       | Green      | Approved, with an approval of the latest commit          |
+| `stale approval` | Yellow     | Approved, but no approval is of the latest commit        |
+| `changes`        | Yellow     | Changes requested                                        |
+| `review`         | Gray       | The base branch requires a review                        |
+| `N unreplied`    | Yellow     | Unresolved review threads the author did not answer last |
+| `N replied`      | Gray       | Unresolved review threads the author answered last       |
+
+When GitHub reports no decision, as when the base branch requires no review, the decision comes from the latest reviews of people with write access: any change request wins, then any approval. If a pull request has more than 100 such reviews, only GitHub's own decision is shown, and an approval is not checked for staleness. Resolved threads aren't counted, and comments not yet submitted are ignored. Only the first 20 review threads are read, so a pull request with more shows lower bounds such as `12+ unreplied`, or `20+ threads` when none of the first 20 is unresolved.
 
 ## Development
 

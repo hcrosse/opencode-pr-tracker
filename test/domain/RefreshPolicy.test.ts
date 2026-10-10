@@ -4,6 +4,7 @@ import { Duration, Option, Result } from "effect"
 
 import { parsePullRequestUrl } from "../../src/domain/PullRequest.ts"
 import { nextRefresh } from "../../src/domain/RefreshPolicy.ts"
+import { noReview } from "../../src/domain/Review.ts"
 import {
   failed,
   succeeded,
@@ -18,7 +19,7 @@ const ref = Result.getOrThrow(parsePullRequestUrl("github.com/acme/api/pull/1"))
 const fresh = (state: PullRequestState): Status => succeeded({ ref, state, title: "Title" })
 
 const openWith = (ci: Ci, mergeability: Mergeability): Status =>
-  fresh({ _tag: "Open", behind: false, ci, draft: false, mergeability })
+  fresh({ _tag: "Open", behind: false, ci, draft: false, mergeability, review: noReview })
 
 describe("nextRefresh", () => {
   test.each([

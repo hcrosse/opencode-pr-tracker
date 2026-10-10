@@ -2,17 +2,21 @@ import { describe, expect, test } from "bun:test"
 
 import * as hegel from "@hegeldev/hegel"
 import * as gs from "@hegeldev/hegel/generators"
-import { Array as Arr, Option } from "effect"
+import { Array as Arr, Option, Schema } from "effect"
 
+import { noReview } from "../../src/domain/Review.ts"
 import {
+  Ci,
   failed,
+  Mergeability,
+  PullRequestState,
   pending,
   succeeded,
   type Diagnostic,
   type Snapshot,
   type Status,
 } from "../../src/domain/Snapshot.ts"
-import { diagnostics, snapshots } from "../support/generators.ts"
+import { diagnostics, reviews, snapshots } from "../support/generators.ts"
 
 const fiveMinutes = 5 * 60 * 1000
 
@@ -148,6 +152,38 @@ describe("refresh status while rate limited", () => {
         failingSince: 0,
         snapshot,
       })
+    })
+  })
+})
+
+describe("snapshot compatibility across versions", () => {
+  const openWithout = {
+    _tag: "Open",
+    behind: false,
+    ci: "passed",
+    draft: false,
+    mergeability: "mergeable",
+  } as const
+
+  test("reads an open state from a server without review state as having none", () => {
+    expect(Schema.decodeUnknownSync(PullRequestState)(openWithout)).toEqual(
+      Object.assign({ review: noReview }, openWithout),
+    )
+  })
+
+  test("sends review state that a client without it ignores", () => {
+    const previous = Schema.TaggedStruct("Open", {
+      behind: Schema.Boolean,
+      ci: Ci,
+      draft: Schema.Boolean,
+      mergeability: Mergeability,
+    })
+
+    hegel.test((tc) => {
+      const review = tc.draw(reviews)
+      const encoded = Schema.encodeSync(PullRequestState)(Object.assign({ review }, openWithout))
+
+      expect(Schema.decodeUnknownSync(previous)(encoded)).toEqual(openWithout)
     })
   })
 })

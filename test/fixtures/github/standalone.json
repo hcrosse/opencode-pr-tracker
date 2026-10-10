@@ -10,7 +10,51 @@
             "state": "OPEN",
             "isDraft": true,
             "mergeable": "MERGEABLE",
-            "mergeStateStatus": "BLOCKED",
+            "mergeStateStatus": "BEHIND",
+            "headRefOid": "5248a25c429060f8eda53bf21913630d271d87d0",
+            "author": {
+              "login": "hcrosse"
+            },
+            "reviewDecision": null,
+            "latestOpinionatedReviews": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
+              "nodes": []
+            },
+            "reviewThreads": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
+              "nodes": [
+                {
+                  "isResolved": false,
+                  "comments": {
+                    "nodes": [
+                      {
+                        "state": "SUBMITTED",
+                        "author": {
+                          "login": "copilot-pull-request-reviewer"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "isResolved": false,
+                  "comments": {
+                    "nodes": [
+                      {
+                        "state": "SUBMITTED",
+                        "author": {
+                          "login": "copilot-pull-request-reviewer"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
             "stack": null,
             "statusCheckRollup": {
               "contexts": {
@@ -255,6 +299,62 @@
             "isDraft": true,
             "mergeable": "MERGEABLE",
             "mergeStateStatus": "BEHIND",
+            "headRefOid": "dae0353128cc1d55bae2fd863afc65541367d017",
+            "author": {
+              "login": "hcrosse"
+            },
+            "reviewDecision": null,
+            "latestOpinionatedReviews": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
+              "nodes": []
+            },
+            "reviewThreads": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
+              "nodes": [
+                {
+                  "isResolved": true,
+                  "comments": {
+                    "nodes": [
+                      {
+                        "state": "SUBMITTED",
+                        "author": {
+                          "login": "copilot-pull-request-reviewer"
+                        }
+                      },
+                      {
+                        "state": "SUBMITTED",
+                        "author": {
+                          "login": "hcrosse"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "isResolved": true,
+                  "comments": {
+                    "nodes": [
+                      {
+                        "state": "SUBMITTED",
+                        "author": {
+                          "login": "copilot-pull-request-reviewer"
+                        }
+                      },
+                      {
+                        "state": "SUBMITTED",
+                        "author": {
+                          "login": "hcrosse"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
             "stack": null,
             "statusCheckRollup": {
               "contexts": {
@@ -499,6 +599,23 @@
             "isDraft": false,
             "mergeable": "MERGEABLE",
             "mergeStateStatus": "BEHIND",
+            "headRefOid": "238fa701c881e0713502be23ddc983e2681386fe",
+            "author": {
+              "login": "hcrosse"
+            },
+            "reviewDecision": null,
+            "latestOpinionatedReviews": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
+              "nodes": []
+            },
+            "reviewThreads": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
+              "nodes": []
+            },
             "stack": null,
             "statusCheckRollup": {
               "contexts": {
@@ -741,8 +858,52 @@
             "title": "fix(core): coordinate OAuth credential refreshes",
             "state": "OPEN",
             "isDraft": false,
-            "mergeable": "MERGEABLE",
-            "mergeStateStatus": "BLOCKED",
+            "mergeable": "CONFLICTING",
+            "mergeStateStatus": "DIRTY",
+            "headRefOid": "a1f92e15b9216e0606a2111e21bd9aa791bcd6fe",
+            "author": {
+              "login": "hcrosse"
+            },
+            "reviewDecision": null,
+            "latestOpinionatedReviews": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
+              "nodes": []
+            },
+            "reviewThreads": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
+              "nodes": [
+                {
+                  "isResolved": false,
+                  "comments": {
+                    "nodes": [
+                      {
+                        "state": "SUBMITTED",
+                        "author": {
+                          "login": "hcrosse"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "isResolved": false,
+                  "comments": {
+                    "nodes": [
+                      {
+                        "state": "SUBMITTED",
+                        "author": {
+                          "login": "copilot-pull-request-reviewer"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
             "stack": null,
             "statusCheckRollup": {
               "contexts": {
@@ -757,14 +918,14 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
-                      "id": "CS_kwDOOiiGL88AAAAWkaj74w",
-                      "createdAt": "2026-09-22T23:46:36Z",
+                      "id": "CS_kwDOOiiGL88AAAAXklO_AA",
+                      "createdAt": "2026-10-05T21:19:59Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
                       },
                       "workflowRun": {
                         "event": "pull_request_target",
-                        "runNumber": 73689,
+                        "runNumber": 77549,
                         "runAttempt": 1,
                         "workflow": {
                           "id": "W_kwDOOiiGL84NOUMB"
@@ -778,14 +939,14 @@
                     "status": "COMPLETED",
                     "conclusion": "SUCCESS",
                     "checkSuite": {
-                      "id": "CS_kwDOOiiGL88AAAAWkaj74w",
-                      "createdAt": "2026-09-22T23:46:36Z",
+                      "id": "CS_kwDOOiiGL88AAAAXklO_AA",
+                      "createdAt": "2026-10-05T21:19:59Z",
                       "app": {
                         "id": "MDM6QXBwMTUzNjg="
                       },
                       "workflowRun": {
                         "event": "pull_request_target",
-                        "runNumber": 73689,
+                        "runNumber": 77549,
                         "runAttempt": 1,
                         "workflow": {
                           "id": "W_kwDOOiiGL84NOUMB"
@@ -810,5 +971,5 @@
     }
   ],
   "pageSize": 100,
-  "recordedAt": "2026-09-23T22:30:57.346Z"
+  "recordedAt": "2026-10-10T01:45:07.538Z"
 }

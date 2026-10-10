@@ -1,8 +1,9 @@
 import type { StorageDomain } from "@opencode/plugin/effect/storage"
 import { Array as Arr, Effect, Layer, Option, Ref, Result, Schema } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
+import { FetchHttpClient, type HttpClient } from "effect/unstable/http"
 
 import type { PullRequestRef } from "../../domain/PullRequest.ts"
+import type { ReviewMode } from "../../domain/Review.ts"
 import type { Diagnostic } from "../../domain/Snapshot.ts"
 import { GitHub, GitHubFailure, type ItemResult } from "../../ports/GitHub.ts"
 import { CommandRunner, layer as commandLayer } from "../Command.ts"
@@ -19,8 +20,9 @@ import {
   type ContextNode,
   type Entry,
 } from "./Response.ts"
+import { reviewStates } from "./Reviews.ts"
 import { Suspects } from "./Suspects.ts"
-import { layer as tokenLayer } from "./Token.ts"
+import { layer as tokenLayer, type Token } from "./Token.ts"
 
 const ContinuationData = Schema.Struct({
   resource: Schema.Struct({ statusCheckRollup: Schema.Struct({ contexts: Contexts }) }),
@@ -86,6 +88,7 @@ function aliasFailure(request: Batch, key: string): Option.Option<Diagnostic> {
 }
 
 interface Batch {
+  readonly reviews: ReviewMode
   readonly post: Post
   readonly suspects: Suspects
   readonly envelope: Envelope
@@ -110,6 +113,10 @@ const itemResult = Effect.fn("itemResult")(function* (
 
   if (Option.isNone(node)) return failed("InvalidResponse", false)
 
+  const review = Schema.decodeUnknownOption(reviewStates[request.reviews])(raw.value)
+
+  if (Option.isNone(review)) return failed("InvalidResponse", false)
+
   const contexts = yield* Effect.result(allContexts(post, node.value))
 
   if (Result.isFailure(contexts)) {
@@ -120,7 +127,7 @@ const itemResult = Effect.fn("itemResult")(function* (
 
   return {
     _tag: "Reported",
-    report: toReport(ref, node.value, contexts.success),
+    report: toReport(ref, node.value, { contexts: contexts.success, review: review.value }),
   } satisfies ItemResult
 })
 
@@ -128,14 +135,14 @@ const fetchBatch = Effect.fn("fetchBatch")(function* (
   sending: Sending,
   refs: readonly PullRequestRef[],
 ) {
-  const { post, suspects } = sending
+  const { post, reviews, suspects } = sending
   const variables = Object.fromEntries(refs.map((ref, index) => [alias(index), ref.url]))
-  const envelope = yield* post(batch(refs.length), variables)
+  const envelope = yield* post(batch(refs.length, reviews), variables)
   const aliases = new Set(Object.keys(variables))
 
   const results = yield* Effect.forEach(
     refs,
-    (ref, index) => itemResult({ aliases, envelope, post, suspects }, ref, alias(index)),
+    (ref, index) => itemResult({ aliases, envelope, post, reviews, suspects }, ref, alias(index)),
     {
       concurrency: 4,
     },
@@ -148,6 +155,7 @@ const fetchBatch = Effect.fn("fetchBatch")(function* (
 })
 
 interface Sending {
+  readonly reviews: ReviewMode
   readonly post: Post
   readonly suspects: Suspects
   /** Set once a batch times out: the fetch's remaining batches are not sent. */
@@ -190,46 +198,52 @@ const outcomeOf = (
     }
   })
 
-/** The GitHub port over GraphQL. Requires an HTTP client, a token source, a rate limit, and `gh`. */
-export const layer = Layer.effect(
-  GitHub,
-  Effect.gen(function* () {
-    const post = yield* makePost()
-    const runner = yield* CommandRunner
-    const rateLimit = yield* RateLimit
-    const suspects = new Suspects()
+/** What the GitHub port requires: an HTTP client, a token source, a rate limit, and `gh`. */
+type Requirements = HttpClient.HttpClient | Token | RateLimit | CommandRunner
 
-    return GitHub.of({
-      fetch: (refs) =>
-        Effect.gen(function* () {
-          const sending: Sending = { post, stopped: yield* Ref.make(false), suspects }
-          const unique = Arr.dedupeWith(refs, (left, right) => left.url === right.url)
+/** The GitHub port over GraphQL, fetching the review state `reviews` asks for. */
+export const layer = (reviews: ReviewMode): Layer.Layer<GitHub, never, Requirements> =>
+  Layer.effect(
+    GitHub,
+    Effect.gen(function* () {
+      const post = yield* makePost()
+      const runner = yield* CommandRunner
+      const rateLimit = yield* RateLimit
+      const suspects = new Suspects()
 
-          const outcomes = yield* Effect.forEach(
-            suspects.batches(unique),
-            (refsInBatch: readonly PullRequestRef[]) => outcomeOf(sending, refsInBatch),
-          )
+      return GitHub.of({
+        fetch: (refs) =>
+          Effect.gen(function* () {
+            const sending: Sending = { post, reviews, stopped: yield* Ref.make(false), suspects }
+            const unique = Arr.dedupeWith(refs, (left, right) => left.url === right.url)
 
-          return yield* Effect.fromResult(combined(outcomes)).pipe(
-            Effect.mapError((diagnostic: Diagnostic) => new GitHubFailure({ diagnostic })),
-          )
-        }),
-      // `gh repo view` queries GitHub, so it waits out a rate limit too.
-      pullRequestInRepository: (directory, number) =>
-        Effect.andThen(
-          rateLimit.check,
-          resolveInRepository(directory, number).pipe(Effect.provideService(CommandRunner, runner)),
-        ),
-    })
-  }),
-)
+            const outcomes = yield* Effect.forEach(
+              suspects.batches(unique),
+              (refsInBatch: readonly PullRequestRef[]) => outcomeOf(sending, refsInBatch),
+            )
+
+            return yield* Effect.fromResult(combined(outcomes)).pipe(
+              Effect.mapError((diagnostic: Diagnostic) => new GitHubFailure({ diagnostic })),
+            )
+          }),
+        // `gh repo view` queries GitHub, so it waits out a rate limit too.
+        pullRequestInRepository: (directory, number) =>
+          Effect.andThen(
+            rateLimit.check,
+            resolveInRepository(directory, number).pipe(
+              Effect.provideService(CommandRunner, runner),
+            ),
+          ),
+      })
+    }),
+  )
 
 /**
  * The GitHub port over `api.github.com`, with tokens from the environment or `gh`, and rate-limit
  * waits kept in plugin storage.
  */
-export const live = (storage: StorageDomain): Layer.Layer<GitHub> =>
-  layer.pipe(
+export const live = (storage: StorageDomain, reviews: ReviewMode): Layer.Layer<GitHub> =>
+  layer(reviews).pipe(
     Layer.provide([tokenLayer, rateLimitLayer(storage)]),
     Layer.provide([commandLayer, FetchHttpClient.layer]),
   )

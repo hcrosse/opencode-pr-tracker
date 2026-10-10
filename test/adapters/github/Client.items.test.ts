@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test"
 
 import { Effect, Exit, Schema } from "effect"
 
-import { PullRequestNode } from "../../../src/adapters/github/Response.ts"
 import type { Diagnostic } from "../../../src/domain/Snapshot.ts"
 import type { GitHubApi, ItemResult } from "../../../src/ports/GitHub.ts"
 import {
@@ -88,8 +87,8 @@ describe("GitHub client failures in a pull request's data", () => {
 const recorded = JSON.stringify(recordedPullRequest)
 
 /** #127 as recorded, but claiming a further page of checks after `cursor`. */
-const withNextPage = (cursor: string | null): PullRequestNode =>
-  Schema.decodeUnknownSync(PullRequestNode)(
+const withNextPage = (cursor: string | null): Schema.Json =>
+  Schema.decodeUnknownSync(Schema.Json)(
     JSON.parse(
       recorded.replace(
         '"hasNextPage":false,"endCursor":"MTE"',
@@ -123,7 +122,7 @@ const lastPage = laterPage(null)
 
 /** The result for #127 when the first request answers with `first` and every later one with `later`. */
 async function resultFor(
-  first: PullRequestNode,
+  first: Schema.Json,
   later: () => Response,
 ): Promise<Exit.Exit<ItemResult | undefined, unknown>> {
   const http = httpClient((_body, count: number) =>
@@ -138,7 +137,7 @@ async function resultFor(
 }
 
 interface PageCase {
-  readonly first: PullRequestNode
+  readonly first: Schema.Json
   readonly later: () => Response
   readonly diagnostic: Diagnostic
 }

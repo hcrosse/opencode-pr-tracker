@@ -10,6 +10,7 @@ import {
 } from "../../src/application/Monitor.ts"
 import { layer as trackerLayer, Tracker, type TrackerApi } from "../../src/application/Tracker.ts"
 import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
+import { noReview } from "../../src/domain/Review.ts"
 import type { PullRequestState } from "../../src/domain/Snapshot.ts"
 import type { Membership } from "../../src/domain/StackLayout.ts"
 import {
@@ -67,7 +68,14 @@ export function scripted(): GitHubScript {
     [other, openState],
     [
       checking,
-      { _tag: "Open", behind: false, ci: "pending", draft: false, mergeability: "mergeable" },
+      {
+        _tag: "Open",
+        behind: false,
+        ci: "pending",
+        draft: false,
+        mergeability: "mergeable",
+        review: noReview,
+      },
     ],
   ]
 

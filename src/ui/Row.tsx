@@ -6,6 +6,7 @@ import { createSignal, For, Show } from "solid-js"
 
 import { appearance, type Appearance } from "../domain/Appearance.ts"
 import type { PullRequestRef } from "../domain/PullRequest.ts"
+import { reviewOfStatus, reviewParts, type ReviewPart } from "../domain/ReviewAppearance.ts"
 import type { Status } from "../domain/Snapshot.ts"
 import type { Connector, Entry, Marker, Row } from "../domain/StackLayout.ts"
 import type { Palette } from "./Palette.ts"
@@ -111,6 +112,26 @@ const titleOf = (status: Status): string =>
     Unavailable: () => "Title unavailable",
   })
 
+/** The review state after the status, each part after a muted separator. */
+function ReviewSpans(props: { readonly status: Status; readonly palette: Palette }): JSX.Element {
+  const parts = (): readonly ReviewPart[] =>
+    Option.match(reviewOfStatus(props.status), {
+      onNone: () => [],
+      onSome: (review) => reviewParts(review),
+    })
+
+  return (
+    <For each={parts()}>
+      {(part) => (
+        <>
+          <span style={{ fg: props.palette.muted }}>{" · "}</span>
+          <span style={{ fg: props.palette.tones[part.tone] }}>{part.text}</span>
+        </>
+      )}
+    </For>
+  )
+}
+
 export function PullRequestRow(props: {
   readonly entry: SidebarEntry
   readonly marker: Marker
@@ -136,6 +157,7 @@ export function PullRequestRow(props: {
           {props.entry.ref.label}
         </span>
         <span style={{ fg: color() }}>{` ${shown().label}`}</span>
+        <ReviewSpans palette={props.palette} status={props.entry.status} />
         <Show when={shown().stale}>
           <span style={{ fg: props.palette.muted, italic: true }}>{" · stale"}</span>
         </Show>
