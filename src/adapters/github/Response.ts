@@ -59,7 +59,6 @@ export const Contexts = Schema.Struct({
 export type Contexts = typeof Contexts.Type
 
 export const PullRequestNode = Schema.Struct({
-  __typename: Schema.Literal("PullRequest"),
   isDraft: Schema.Boolean,
   mergeStateStatus: Schema.String,
   mergeable: MergeableState,
@@ -67,7 +66,6 @@ export const PullRequestNode = Schema.Struct({
   state: LifecycleState,
   statusCheckRollup: Schema.NullOr(Schema.Struct({ contexts: Contexts })),
   title: Schema.String,
-  url: Schema.String,
 })
 
 export type PullRequestNode = typeof PullRequestNode.Type

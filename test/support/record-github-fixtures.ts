@@ -6,12 +6,18 @@
 import path from "node:path"
 
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
-import { Effect, FileSystem, Option, Schema } from "effect"
+import { Effect, FileSystem, Option, Result, Schema } from "effect"
 
 import { CommandRunner, layer as commandLayer } from "../../src/adapters/Command.ts"
-import { alias, batch, continuation } from "../../src/adapters/github/Query.ts"
-
-type Variables = Readonly<Record<string, string>>
+import type { Variables } from "../../src/adapters/github/Post.ts"
+import {
+  alias,
+  batch,
+  batchVariables,
+  continuation,
+  continuationVariables,
+} from "../../src/adapters/github/Query.ts"
+import { parsePullRequestUrl, type PullRequestRef } from "../../src/domain/PullRequest.ts"
 
 const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Json))
 
@@ -23,27 +29,39 @@ const PageInfo = Schema.Struct({
 const ContextPages = Schema.Struct({
   data: Schema.Record(
     Schema.String,
-    Schema.Struct({
-      statusCheckRollup: Schema.NullOr(
-        Schema.Struct({ contexts: Schema.Struct({ pageInfo: PageInfo }) }),
-      ),
-    }),
+    Schema.NullOr(
+      Schema.Struct({
+        pullRequest: Schema.NullOr(
+          Schema.Struct({
+            statusCheckRollup: Schema.NullOr(
+              Schema.Struct({ contexts: Schema.Struct({ pageInfo: PageInfo }) }),
+            ),
+          }),
+        ),
+      }),
+    ),
   ),
 })
 
+/**
+ * Posts straight to GitHub rather than through `gh api graphql`, which fails without printing the
+ * response when it carries GraphQL errors, as it does for a missing pull request.
+ */
 const post = Effect.fn("post")(function* (query: string, variables: Variables) {
   const runner = yield* CommandRunner
+  const token = (yield* runner.run("gh", ["auth", "token"], process.cwd())).trim()
 
-  const fields = Object.entries(variables).flatMap(([name, value]: readonly [string, string]) => [
-    "-f",
-    `${name}=${value}`,
-  ])
+  const output = yield* Effect.tryPromise(async () => {
+    const response = await fetch("https://api.github.com/graphql", {
+      body: JSON.stringify({ query, variables }),
+      headers: { authorization: `Bearer ${token}` },
+      method: "POST",
+    })
 
-  const output = yield* runner.run(
-    "gh",
-    ["api", "graphql", "-f", `query=${query}`, ...fields],
-    process.cwd(),
-  )
+    if (!response.ok) throw new Error(`GitHub answered ${String(response.status)}`)
+
+    return response.text()
+  })
 
   return yield* decodeJson(output)
 })
@@ -52,6 +70,7 @@ const post = Effect.fn("post")(function* (query: string, variables: Variables) {
 function nextCursor(response: Schema.Json, key: string): Option.Option<string> {
   return Schema.decodeUnknownOption(ContextPages)(response).pipe(
     Option.flatMap(({ data }) => Option.fromNullishOr(data[key])),
+    Option.flatMap((repository) => Option.fromNullishOr(repository.pullRequest)),
     Option.flatMap((node) => Option.fromNullishOr(node.statusCheckRollup)),
     Option.filter((rollup) => rollup.contexts.pageInfo.hasNextPage),
     Option.flatMap((rollup) => Option.fromNullishOr(rollup.contexts.pageInfo.endCursor)),
@@ -59,21 +78,21 @@ function nextCursor(response: Schema.Json, key: string): Option.Option<string> {
 }
 
 interface Pending {
-  readonly url: string
+  readonly ref: PullRequestRef
   readonly key: string
   readonly pageSize: number
 }
 
-const pages = Effect.fn("pages")(function* (first: Schema.Json, { key, pageSize, url }: Pending) {
+const pages = Effect.fn("pages")(function* (first: Schema.Json, { key, pageSize, ref }: Pending) {
   const exchanges: { variables: Variables; response: Schema.Json }[] = []
   let cursor = nextCursor(first, key)
 
   while (Option.isSome(cursor)) {
-    const variables = { cursor: cursor.value, url }
+    const variables = continuationVariables(ref, cursor.value)
     const response = yield* post(continuation(pageSize), variables)
 
     exchanges.push({ response, variables })
-    cursor = nextCursor(response, "resource")
+    cursor = nextCursor(response, "repository")
   }
 
   return exchanges
@@ -85,11 +104,12 @@ const record = Effect.fn("record")(function* (
   pageSize: number,
 ) {
   const fs = yield* FileSystem.FileSystem
-  const variables = Object.fromEntries(urls.map((url, index) => [alias(index), url]))
-  const first = yield* post(batch(urls.length, "all", pageSize), variables)
+  const refs = urls.map((url: string) => Result.getOrThrow(parsePullRequestUrl(url)))
+  const variables = batchVariables(refs)
+  const first = yield* post(batch(refs.length, "all", pageSize), variables)
 
-  const continuations = yield* Effect.forEach(urls, (url: string, index: number) =>
-    pages(first, { key: alias(index), pageSize, url }),
+  const continuations = yield* Effect.forEach(refs, (ref: PullRequestRef, index: number) =>
+    pages(first, { key: alias(index), pageSize, ref }),
   )
 
   const exchanges = [{ response: first, variables }, ...continuations.flat()]
@@ -116,6 +136,7 @@ const program = Effect.gen(function* () {
     ],
     100,
   )
+  yield* record("mixed-case", ["https://github.com/Effect-TS/effect/pull/8431"], 100)
   yield* record("status-contexts", [`${kubernetes}/142875`, `${kubernetes}/142334`], 100)
   yield* record("paginated", [`${kubernetes}/142865`, `${repository}/127`], 5)
 })

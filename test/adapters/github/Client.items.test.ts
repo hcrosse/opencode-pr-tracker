@@ -14,12 +14,13 @@ import {
   acmeRef,
   fetchOne,
 } from "../../support/github.ts"
+import { found, requested } from "../../support/lookup.ts"
 
 describe("GitHub client failures of one pull request", () => {
   test("reports a GraphQL error on one alias for that pull request only", async () => {
     const http = httpClient(() =>
       Response.json({
-        data: { pr0: recordedPullRequest, pr1: null },
+        data: { pr0: found(recordedPullRequest), pr1: null },
         errors: [{ path: ["pr1"], type: "FORBIDDEN" }],
       }),
     )
@@ -41,7 +42,7 @@ describe("GitHub client failures of one pull request", () => {
     "reports %s that names no pull request as invalid for every one",
     async (_name, type: string) => {
       const http = httpClient(() =>
-        Response.json({ data: { pr0: recordedPullRequest }, errors: [{ type }] }),
+        Response.json({ data: { pr0: found(recordedPullRequest) }, errors: [{ type }] }),
       )
 
       const result = await runClient({ http }, (github: GitHubApi) => github.fetch([tracker127]))
@@ -58,9 +59,9 @@ describe("GitHub client failures in a pull request's data", () => {
     const paged = recordedNode("paginated", "pr1")
 
     const http = httpClient((body: RequestBody) =>
-      "pr0" in body.variables
-        ? Response.json({ data: { pr0: paged } })
-        : Response.json({ data: { resource: null } }),
+      requested(body).has("pr0")
+        ? Response.json({ data: { pr0: found(paged) } })
+        : Response.json({ data: { repository: null } }),
     )
 
     const result = await runClient({ http }, (github: GitHubApi) => github.fetch([tracker127]))
@@ -72,9 +73,7 @@ describe("GitHub client failures in a pull request's data", () => {
   })
 
   test("reports an unexpected pull request shape as an invalid response", async () => {
-    const http = httpClient(() =>
-      Response.json({ data: { pr0: { __typename: "PullRequest", url: 7 } } }),
-    )
+    const http = httpClient(() => Response.json({ data: { pr0: found({ title: 7 }) } }))
 
     const result = await runClient({ http }, fetchOne)
 
@@ -99,11 +98,13 @@ const withNextPage = (cursor: string | null): Schema.Json =>
 
 /** A later page of checks as GitHub returns it. */
 interface LaterPage {
-  readonly resource: {
-    readonly statusCheckRollup: {
-      readonly contexts: {
-        readonly nodes: readonly never[]
-        readonly pageInfo: { readonly endCursor: string | null; readonly hasNextPage: boolean }
+  readonly repository: {
+    readonly pullRequest: {
+      readonly statusCheckRollup: {
+        readonly contexts: {
+          readonly nodes: readonly never[]
+          readonly pageInfo: { readonly endCursor: string | null; readonly hasNextPage: boolean }
+        }
       }
     }
   }
@@ -111,9 +112,11 @@ interface LaterPage {
 
 /** A later page with no checks of its own; with a cursor, it claims more checks after it. */
 const laterPage = (cursor: string | null): LaterPage => ({
-  resource: {
-    statusCheckRollup: {
-      contexts: { nodes: [], pageInfo: { endCursor: cursor, hasNextPage: cursor !== null } },
+  repository: {
+    pullRequest: {
+      statusCheckRollup: {
+        contexts: { nodes: [], pageInfo: { endCursor: cursor, hasNextPage: cursor !== null } },
+      },
     },
   },
 })
@@ -126,7 +129,7 @@ async function resultFor(
   later: () => Response,
 ): Promise<Exit.Exit<ItemResult | undefined, unknown>> {
   const http = httpClient((_body, count: number) =>
-    count === 1 ? Response.json({ data: { pr0: first } }) : later(),
+    count === 1 ? Response.json({ data: { pr0: found(first) } }) : later(),
   )
 
   const result = await runClient({ http }, (github) =>
@@ -160,7 +163,7 @@ describe("GitHub client on further pages of checks", () => {
         diagnostic: "InvalidResponse",
         first: withNextPage("c1"),
         later: (): Response =>
-          Response.json({ data: lastPage, errors: [{ path: ["resource"], type: "INTERNAL" }] }),
+          Response.json({ data: lastPage, errors: [{ path: ["repository"], type: "INTERNAL" }] }),
       },
     ],
     [

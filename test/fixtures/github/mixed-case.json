@@ -1,0 +1,286 @@
+{
+  "exchanges": [
+    {
+      "response": {
+        "data": {
+          "pr0": {
+            "pullRequest": {
+              "url": "https://github.com/Effect-TS/effect/pull/8431",
+              "title": "Add missing is guards to ClusterError, SocketServer and Trie",
+              "state": "OPEN",
+              "isDraft": false,
+              "mergeable": "MERGEABLE",
+              "mergeStateStatus": "BLOCKED",
+              "headRefOid": "872e070e663bdb7683d778241a2517629ed06078",
+              "author": {
+                "login": "xia-chao"
+              },
+              "reviewDecision": "CHANGES_REQUESTED",
+              "latestOpinionatedReviews": {
+                "pageInfo": {
+                  "hasNextPage": false
+                },
+                "nodes": [
+                  {
+                    "state": "CHANGES_REQUESTED",
+                    "commit": {
+                      "oid": "71f1b309ad869ba9d5226cd200307ef39a31900f"
+                    }
+                  }
+                ]
+              },
+              "reviewThreads": {
+                "pageInfo": {
+                  "hasNextPage": false
+                },
+                "nodes": [
+                  {
+                    "isResolved": false,
+                    "comments": {
+                      "nodes": [
+                        {
+                          "state": "SUBMITTED",
+                          "author": {
+                            "login": "tim-smart"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "stack": null,
+              "statusCheckRollup": {
+                "contexts": {
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "endCursor": "MTA"
+                  },
+                  "nodes": [
+                    {
+                      "__typename": "CheckRun",
+                      "name": "approval-gate",
+                      "status": "WAITING",
+                      "conclusion": null,
+                      "checkSuite": {
+                        "id": "CS_kwDODTMu2M8AAAAWq0Aj9w",
+                        "createdAt": "2026-09-24T04:27:35Z",
+                        "app": {
+                          "id": "MDM6QXBwMTUzNjg="
+                        },
+                        "workflowRun": {
+                          "event": "pull_request_target",
+                          "runNumber": 27479,
+                          "runAttempt": 1,
+                          "workflow": {
+                            "id": "W_kwDODTMu2M4EzNPb"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "approval-gate",
+                      "status": "WAITING",
+                      "conclusion": null,
+                      "checkSuite": {
+                        "id": "CS_kwDODTMu2M8AAAAWq0AzJg",
+                        "createdAt": "2026-09-24T04:27:36Z",
+                        "app": {
+                          "id": "MDM6QXBwMTUzNjg="
+                        },
+                        "workflowRun": {
+                          "event": "pull_request",
+                          "runNumber": 16327,
+                          "runAttempt": 1,
+                          "workflow": {
+                            "id": "W_kwDODTMu2M4Eh7Bt"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "Static",
+                      "status": "COMPLETED",
+                      "conclusion": "SUCCESS",
+                      "checkSuite": {
+                        "id": "CS_kwDODTMu2M8AAAAWq0AznA",
+                        "createdAt": "2026-09-24T04:27:36Z",
+                        "app": {
+                          "id": "MDM6QXBwMTUzNjg="
+                        },
+                        "workflowRun": {
+                          "event": "pull_request",
+                          "runNumber": 23362,
+                          "runAttempt": 1,
+                          "workflow": {
+                            "id": "W_kwDODTMu2M4Eba0l"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "Types",
+                      "status": "COMPLETED",
+                      "conclusion": "SUCCESS",
+                      "checkSuite": {
+                        "id": "CS_kwDODTMu2M8AAAAWq0AznA",
+                        "createdAt": "2026-09-24T04:27:36Z",
+                        "app": {
+                          "id": "MDM6QXBwMTUzNjg="
+                        },
+                        "workflowRun": {
+                          "event": "pull_request",
+                          "runNumber": 23362,
+                          "runAttempt": 1,
+                          "workflow": {
+                            "id": "W_kwDODTMu2M4Eba0l"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "Build",
+                      "status": "COMPLETED",
+                      "conclusion": "SUCCESS",
+                      "checkSuite": {
+                        "id": "CS_kwDODTMu2M8AAAAWq0AznA",
+                        "createdAt": "2026-09-24T04:27:36Z",
+                        "app": {
+                          "id": "MDM6QXBwMTUzNjg="
+                        },
+                        "workflowRun": {
+                          "event": "pull_request",
+                          "runNumber": 23362,
+                          "runAttempt": 1,
+                          "workflow": {
+                            "id": "W_kwDODTMu2M4Eba0l"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "Bundle",
+                      "status": "COMPLETED",
+                      "conclusion": "SUCCESS",
+                      "checkSuite": {
+                        "id": "CS_kwDODTMu2M8AAAAWq0AznA",
+                        "createdAt": "2026-09-24T04:27:36Z",
+                        "app": {
+                          "id": "MDM6QXBwMTUzNjg="
+                        },
+                        "workflowRun": {
+                          "event": "pull_request",
+                          "runNumber": 23362,
+                          "runAttempt": 1,
+                          "workflow": {
+                            "id": "W_kwDODTMu2M4Eba0l"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "Test (Node)",
+                      "status": "COMPLETED",
+                      "conclusion": "SUCCESS",
+                      "checkSuite": {
+                        "id": "CS_kwDODTMu2M8AAAAWq0AznA",
+                        "createdAt": "2026-09-24T04:27:36Z",
+                        "app": {
+                          "id": "MDM6QXBwMTUzNjg="
+                        },
+                        "workflowRun": {
+                          "event": "pull_request",
+                          "runNumber": 23362,
+                          "runAttempt": 1,
+                          "workflow": {
+                            "id": "W_kwDODTMu2M4Eba0l"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "Test (Deno)",
+                      "status": "COMPLETED",
+                      "conclusion": "SUCCESS",
+                      "checkSuite": {
+                        "id": "CS_kwDODTMu2M8AAAAWq0AznA",
+                        "createdAt": "2026-09-24T04:27:36Z",
+                        "app": {
+                          "id": "MDM6QXBwMTUzNjg="
+                        },
+                        "workflowRun": {
+                          "event": "pull_request",
+                          "runNumber": 23362,
+                          "runAttempt": 1,
+                          "workflow": {
+                            "id": "W_kwDODTMu2M4Eba0l"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "Test (Bun)",
+                      "status": "COMPLETED",
+                      "conclusion": "SUCCESS",
+                      "checkSuite": {
+                        "id": "CS_kwDODTMu2M8AAAAWq0AznA",
+                        "createdAt": "2026-09-24T04:27:36Z",
+                        "app": {
+                          "id": "MDM6QXBwMTUzNjg="
+                        },
+                        "workflowRun": {
+                          "event": "pull_request",
+                          "runNumber": 23362,
+                          "runAttempt": 1,
+                          "workflow": {
+                            "id": "W_kwDODTMu2M4Eba0l"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "__typename": "CheckRun",
+                      "name": "Test (Documentation)",
+                      "status": "COMPLETED",
+                      "conclusion": "SUCCESS",
+                      "checkSuite": {
+                        "id": "CS_kwDODTMu2M8AAAAWq0AznA",
+                        "createdAt": "2026-09-24T04:27:36Z",
+                        "app": {
+                          "id": "MDM6QXBwMTUzNjg="
+                        },
+                        "workflowRun": {
+                          "event": "pull_request",
+                          "runNumber": 23362,
+                          "runAttempt": 1,
+                          "workflow": {
+                            "id": "W_kwDODTMu2M4Eba0l"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "variables": {
+        "pr0_owner": "effect-ts",
+        "pr0_name": "effect",
+        "pr0_number": 8431
+      }
+    }
+  ],
+  "pageSize": 100,
+  "recordedAt": "2026-10-10T02:08:27.005Z"
+}

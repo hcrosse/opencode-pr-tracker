@@ -10,10 +10,11 @@ import {
   type RequestBody,
   type Responder,
 } from "../../support/github.ts"
+import { requested } from "../../support/lookup.ts"
 
 const answered = (body: RequestBody): Response =>
   Response.json({
-    data: Object.fromEntries(Object.keys(body.variables).map((key: string) => [key, null])),
+    data: Object.fromEntries([...requested(body).keys()].map((key: string) => [key, null])),
   })
 
 /** One more pull request than fits in a batch. */
@@ -43,7 +44,7 @@ const fetchTwice = (github: GitHubApi): Effect.Effect<readonly unknown[], unknow
   )
 
 const sizesOf = (requests: readonly RequestBody[]): number[] =>
-  requests.map((request: RequestBody) => Object.keys(request.variables).length)
+  requests.map((request: RequestBody) => requested(request).size)
 
 const unreadable = (): Response =>
   new Response(

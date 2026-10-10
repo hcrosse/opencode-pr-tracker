@@ -3,6 +3,7 @@ import { Exit, Option, type Schema } from "effect"
 import type { Review, ReviewMode } from "../../src/domain/Review.ts"
 import type { ItemResult } from "../../src/ports/GitHub.ts"
 import { httpClient, recordedNode, runClient, tracker127 } from "./github.ts"
+import { found } from "./lookup.ts"
 
 /** The commit at the head of #127 in the responses below. */
 export const head = "5248a25"
@@ -24,7 +25,7 @@ export interface Fetched {
 /** What the client reports for #127 when GitHub answers with the recorded node and `fields`. */
 export async function fetch127(fields: ReviewFields, reviews: ReviewMode): Promise<Fetched> {
   const node = Object.assign({}, recordedNode("standalone", "pr0"), { headRefOid: head }, fields)
-  const http = httpClient(() => Response.json({ data: { pr0: node } }))
+  const http = httpClient(() => Response.json({ data: { pr0: found(node) } }))
   const exit = await runClient({ http, reviews }, (github) => github.fetch([tracker127]))
 
   return {

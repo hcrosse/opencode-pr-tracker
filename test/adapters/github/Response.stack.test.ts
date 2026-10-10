@@ -30,7 +30,6 @@ const stackOf = (
 })
 
 const withStack = (stack: PullRequestNode["stack"]): PullRequestNode => ({
-  __typename: "PullRequest",
   isDraft: false,
   mergeStateStatus: "CLEAN",
   mergeable: "MERGEABLE",
@@ -38,7 +37,6 @@ const withStack = (stack: PullRequestNode["stack"]): PullRequestNode => ({
   state: "OPEN",
   statusCheckRollup: null,
   title: "Title",
-  url: "https://github.com/acme/api/pull/1",
 })
 
 const first = { position: 1, url: "https://github.com/acme/api/pull/1" }
@@ -65,6 +63,17 @@ describe("Stack membership", () => {
     )
 
     expect(numbers).toEqual(Option.some([1, 2]))
+  })
+
+  test("names members by canonical URL when GitHub names them in mixed case", () => {
+    const mixed = { position: 2, url: "https://github.com/Acme/API/pull/2" }
+    const membership = toMembership(withStack(stackOf(2, false, [first, mixed])))
+
+    const urls = Option.map(membership, (found) =>
+      found._tag === "Stack" ? found.members.map((member) => member.url) : [],
+    )
+
+    expect(urls).toEqual(Option.some([first.url, second.url]))
   })
 })
 

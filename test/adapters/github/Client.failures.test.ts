@@ -15,6 +15,7 @@ import {
   acmeRef,
   fetchOne,
 } from "../../support/github.ts"
+import { requested } from "../../support/lookup.ts"
 
 const nulls = (keys: readonly string[]): Record<string, null> =>
   Object.fromEntries(keys.map((key: string) => [key, null]))
@@ -71,7 +72,7 @@ describe("GitHub client failures of a whole request", () => {
 
 describe("GitHub client batching", () => {
   test("fetches each pull request once, at most 5 per request", async () => {
-    const http = httpClient((body) => Response.json({ data: nulls(Object.keys(body.variables)) }))
+    const http = httpClient((body) => Response.json({ data: nulls([...requested(body).keys()]) }))
 
     const refs = [
       ...Array.from({ length: 12 }, (_, index: number) => acmeRef(index + 1)),
@@ -81,7 +82,7 @@ describe("GitHub client batching", () => {
 
     const result = await runClient({ http }, (github: GitHubApi) => github.fetch(refs))
 
-    expect(http.requests.map((request) => Object.keys(request.variables).length)).toEqual([5, 5, 2])
+    expect(http.requests.map((request) => requested(request).size)).toEqual([5, 5, 2])
     expect(Exit.map(result, (results) => results.size)).toEqual(Exit.succeed(12))
   })
 })
@@ -90,7 +91,7 @@ describe("GitHub client batch failures", () => {
   test("keeps the results of batches that succeeded when another batch fails", async () => {
     const http = httpClient((body, count: number) =>
       count === 1
-        ? Response.json({ data: nulls(Object.keys(body.variables)) })
+        ? Response.json({ data: nulls([...requested(body).keys()]) })
         : new Response("", { status: 502 }),
     )
 

@@ -13,6 +13,9 @@ const ref = (url: string): PullRequestRef => Result.getOrThrow(parsePullRequestU
 const kubernetes = (number: number): PullRequestRef =>
   ref(`github.com/kubernetes/kubernetes/pull/${String(number)}`)
 
+/** Effect-TS/effect#8431, in a repository whose canonical name has capitals. */
+const effect8431 = ref("https://github.com/Effect-TS/effect/pull/8431")
+
 /** The pull requests recorded together in the `standalone` fixture. */
 const standalone = [
   trackerRef(127),
@@ -114,6 +117,14 @@ describe("GitHub client on recorded standalone pull requests", () => {
 
     expect(stateOf(results, kubernetes(142875))).toMatchObject(Option.some({ ci: "failed" }))
     expect(stateOf(results, kubernetes(142334))).toMatchObject(Option.some({ ci: "pending" }))
+  })
+})
+
+describe("GitHub client on a recorded repository named with capitals", () => {
+  test("reports a pull request GitHub names in mixed case", async () => {
+    const results = await fetch(replay(fixture("mixed-case")), [effect8431])
+
+    expect(stateOf(results, effect8431)).toMatchObject(Option.some({ _tag: "Open" }))
   })
 })
 

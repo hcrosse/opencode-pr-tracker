@@ -26,7 +26,8 @@ const parseJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknow
 
 const decodeEnvelope = Schema.decodeUnknownOption(Envelope)
 
-export type Variables = Readonly<Record<string, string>>
+/** GraphQL variables: strings, and pull request numbers. */
+export type Variables = Readonly<Record<string, string | number>>
 
 /**
  * What a failed request cost GitHub. `TimedOut` is a query GitHub could not finish in time: a 502,
